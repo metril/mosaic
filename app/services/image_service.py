@@ -295,4 +295,21 @@ class ImageService:
         image.save(buffer, format=pil_format)
         buffer.seek(0)
 
-        return (buffer, content_type, image_path.name)
+        # Update filename extension to match the output format
+        if output_format:
+            # User specified format - change extension to match
+            base_name = image_path.stem  # filename without extension
+            extension_map = {
+                'JPEG': '.jpg',
+                'PNG': '.png',
+                'WEBP': '.webp',
+                'BMP': '.bmp',
+                'GIF': '.gif'
+            }
+            new_extension = extension_map.get(pil_format, '.png')
+            filename = f"{base_name}{new_extension}"
+        else:
+            # No format conversion - use original filename
+            filename = image_path.name
+
+        return (buffer, content_type, filename)
