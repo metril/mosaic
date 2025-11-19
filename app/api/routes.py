@@ -29,7 +29,8 @@ async def root(
     height: Optional[int] = Query(None, description="Target height in pixels", ge=1),
     preserve_aspect: bool = Query(True, description="Preserve aspect ratio when resizing"),
     mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode - 'fit' or 'crop'"),
-    eink: bool = Query(False, description="Apply Spectra-6 E-Ink color mapping")
+    eink: bool = Query(False, description="Apply Spectra-6 E-Ink color mapping"),
+    format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None, description="Output format (defaults to original format)")
 ):
     """
     Main endpoint - serves either the web interface or random image API.
@@ -41,13 +42,15 @@ async def root(
     - preserve_aspect: Whether to preserve aspect ratio (default: true)
     - mode: Resize mode - 'fit' (letterbox) or 'crop' (fill, default: fit)
     - eink: Apply Spectra-6 dithering for E-Ink displays (default: false)
+    - format: Output format - 'jpeg', 'png', 'webp', 'bmp', 'gif' (defaults to original)
 
     Examples:
     - GET / - Web interface
-    - GET /?api=random-image - Random image
+    - GET /?api=random-image - Random image (original format)
+    - GET /?api=random-image&format=png - Random image as PNG
     - GET /?api=random-image&width=800&height=600 - Resized image
-    - GET /?api=random-image&eink=true - E-Ink dithered image
-    - GET /?api=random-image&width=800&height=600&eink=true&mode=crop - Combined
+    - GET /?api=random-image&eink=true&format=png - E-Ink dithered as PNG
+    - GET /?api=random-image&width=800&height=600&eink=true&format=jpeg - Combined
     """
     # API mode - return random image
     if api == "random-image":
@@ -59,7 +62,8 @@ async def root(
             height,
             preserve_aspect,
             mode,
-            eink
+            eink,
+            format
         )
 
         if result is None:

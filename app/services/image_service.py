@@ -208,7 +208,8 @@ class ImageService:
         height: Optional[int] = None,
         preserve_aspect: bool = True,
         mode: Literal['fit', 'crop'] = 'fit',
-        apply_eink: bool = False
+        apply_eink: bool = False,
+        output_format: Optional[str] = None
     ) -> Optional[Tuple[BytesIO, str, str]]:
         """
         Process a random image with specified parameters.
@@ -226,6 +227,7 @@ class ImageService:
             preserve_aspect: Whether to preserve aspect ratio
             mode: Resize mode - 'fit' or 'crop'
             apply_eink: Whether to apply Spectra-6 dithering
+            output_format: Output format - 'jpeg', 'png', 'webp', 'bmp', 'gif' (optional, defaults to original)
 
         Returns:
             Tuple of (BytesIO buffer, content_type, filename) or None if no images
@@ -246,34 +248,46 @@ class ImageService:
         if width is not None or height is not None:
             image = self.resize_image(image, width, height, preserve_aspect, mode)
 
-        # Determine output format based on original file
-        original_format = image_path.suffix.lower()
-        if original_format in {'.jpg', '.jpeg'}:
-            output_format = 'JPEG'
-            content_type = 'image/jpeg'
-        elif original_format == '.png':
-            output_format = 'PNG'
-            content_type = 'image/png'
-        elif original_format == '.bmp':
-            output_format = 'BMP'
-            content_type = 'image/bmp'
-        elif original_format == '.gif':
-            output_format = 'GIF'
-            content_type = 'image/gif'
-        elif original_format in {'.webp'}:
-            output_format = 'WEBP'
-            content_type = 'image/webp'
-        elif original_format in {'.tiff', '.tif'}:
-            output_format = 'TIFF'
-            content_type = 'image/tiff'
+        # Determine output format
+        if output_format:
+            # User specified format - use it
+            format_map = {
+                'jpeg': ('JPEG', 'image/jpeg'),
+                'png': ('PNG', 'image/png'),
+                'webp': ('WEBP', 'image/webp'),
+                'bmp': ('BMP', 'image/bmp'),
+                'gif': ('GIF', 'image/gif')
+            }
+            pil_format, content_type = format_map.get(output_format.lower(), ('PNG', 'image/png'))
         else:
-            # Default to PNG for unknown formats
-            output_format = 'PNG'
-            content_type = 'image/png'
+            # No format specified - use original file format
+            original_format = image_path.suffix.lower()
+            if original_format in {'.jpg', '.jpeg'}:
+                pil_format = 'JPEG'
+                content_type = 'image/jpeg'
+            elif original_format == '.png':
+                pil_format = 'PNG'
+                content_type = 'image/png'
+            elif original_format == '.bmp':
+                pil_format = 'BMP'
+                content_type = 'image/bmp'
+            elif original_format == '.gif':
+                pil_format = 'GIF'
+                content_type = 'image/gif'
+            elif original_format in {'.webp'}:
+                pil_format = 'WEBP'
+                content_type = 'image/webp'
+            elif original_format in {'.tiff', '.tif'}:
+                pil_format = 'TIFF'
+                content_type = 'image/tiff'
+            else:
+                # Default to PNG for unknown formats
+                pil_format = 'PNG'
+                content_type = 'image/png'
 
         # Convert to bytes
         buffer = BytesIO()
-        image.save(buffer, format=output_format)
+        image.save(buffer, format=pil_format)
         buffer.seek(0)
 
         return (buffer, content_type, image_path.name)
