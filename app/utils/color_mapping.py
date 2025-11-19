@@ -86,8 +86,8 @@ def floyd_steinberg_dither(image: Image.Image) -> Image.Image:
             # Set the new pixel value
             img_array[y, x] = new_pixel
 
-            # Calculate quantization error
-            error = img_array[y, x] - np.array(old_pixel, dtype=np.float32)
+            # Calculate quantization error (old - new, not new - old!)
+            error = np.array(old_pixel, dtype=np.float32) - new_pixel
 
             # Distribute error to neighboring pixels (Floyd-Steinberg weights)
             if x + 1 < width:

@@ -5,6 +5,7 @@ Provides endpoints for random image serving and web interface.
 """
 
 import os
+import asyncio
 from pathlib import Path
 from typing import Optional, Literal
 from fastapi import APIRouter, Query, HTTPException
@@ -50,12 +51,15 @@ async def root(
     """
     # API mode - return random image
     if api == "random-image":
-        result = image_service.process_image(
-            width=width,
-            height=height,
-            preserve_aspect=preserve_aspect,
-            mode=mode,
-            apply_eink=eink
+        # Run CPU-intensive image processing in thread pool to avoid blocking event loop
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,  # Use default ThreadPoolExecutor
+            image_service.process_image,
+            width,
+            height,
+            preserve_aspect,
+            mode,
+            eink
         )
 
         if result is None:
