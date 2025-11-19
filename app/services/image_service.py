@@ -285,7 +285,12 @@ class ImageService:
                 pil_format = 'PNG'
                 content_type = 'image/png'
 
-        # Convert to bytes
+        # Convert image to appropriate mode for the target format
+        if pil_format == 'JPEG' and image.mode != 'RGB':
+            # JPEG requires RGB mode (no transparency)
+            image = image.convert('RGB')
+
+        # Convert to bytes - Pillow handles format conversion automatically
         buffer = BytesIO()
         image.save(buffer, format=pil_format)
         buffer.seek(0)
