@@ -1,8 +1,8 @@
 """
 Spectra-6 E-Ink Color Mapping Utilities
 
-Implements Floyd-Steinberg dithering for converting images to the 6-color
-Spectra palette used in E-Ink displays.
+Uses Pillow's built-in Floyd-Steinberg dithering for converting images to the
+6-color Spectra palette used in E-Ink displays.
 
 Palette colors:
 - Red: (255, 0, 0)
@@ -14,8 +14,6 @@ Palette colors:
 """
 
 from PIL import Image
-import numpy as np
-from typing import Tuple
 
 
 # Define the Spectra-6 color palette
@@ -29,42 +27,36 @@ SPECTRA_6_PALETTE = [
 ]
 
 
-def find_nearest_color(pixel: Tuple[int, int, int]) -> Tuple[int, int, int]:
+def _create_palette_image() -> Image.Image:
     """
-    Find the nearest color in the Spectra-6 palette using Euclidean distance.
-
-    Args:
-        pixel: RGB tuple (r, g, b)
+    Create a palette image for Spectra-6 colors.
 
     Returns:
-        RGB tuple of the nearest palette color
+        PIL Image in 'P' mode with Spectra-6 palette
     """
-    min_distance = float('inf')
-    nearest_color = SPECTRA_6_PALETTE[0]
+    palette_img = Image.new('P', (1, 1))
 
-    for palette_color in SPECTRA_6_PALETTE:
-        # Calculate Euclidean distance in RGB space
-        distance = sum((p - c) ** 2 for p, c in zip(pixel, palette_color)) ** 0.5
+    # Flatten RGB tuples into a list and extend to 768 bytes (256 colors * 3 RGB)
+    palette_data = []
+    for color in SPECTRA_6_PALETTE:
+        palette_data.extend(color)
 
-        if distance < min_distance:
-            min_distance = distance
-            nearest_color = palette_color
+    # Pad with zeros for remaining palette entries (256 - 6 = 250 unused colors)
+    palette_data.extend([0] * (768 - len(palette_data)))
 
-    return nearest_color
+    palette_img.putpalette(palette_data)
+    return palette_img
 
 
 def floyd_steinberg_dither(image: Image.Image) -> Image.Image:
     """
     Apply Floyd-Steinberg dithering to convert an image to the Spectra-6 palette.
 
-    Floyd-Steinberg error diffusion distributes quantization error to neighboring pixels:
-    - 7/16 to the pixel on the right
-    - 3/16 to the pixel below-left
-    - 5/16 to the pixel below
-    - 1/16 to the pixel below-right
+    Uses Pillow's built-in optimized Floyd-Steinberg implementation via quantize().
+    This is significantly faster and more reliable than a custom implementation.
 
     Args:
-        image: Input PIL Image in RGB mode
+        image: Input PIL Image
 
     Returns:
         Dithered PIL Image in RGB mode with Spectra-6 colors
@@ -73,42 +65,18 @@ def floyd_steinberg_dither(image: Image.Image) -> Image.Image:
     if image.mode != 'RGB':
         image = image.convert('RGB')
 
-    # Convert to numpy array for efficient processing
-    img_array = np.array(image, dtype=np.float32)
-    height, width = img_array.shape[:2]
+    # Create palette image with Spectra-6 colors
+    palette_img = _create_palette_image()
 
-    # Process each pixel
-    for y in range(height):
-        for x in range(width):
-            # Keep old_pixel as float to preserve accumulated error from neighbors
-            old_pixel = img_array[y, x]
-            # Convert to int only for color matching
-            new_pixel = find_nearest_color(tuple(old_pixel.astype(int)))
+    # Apply quantization with Floyd-Steinberg dithering
+    # This uses Pillow's C-optimized implementation
+    quantized = image.quantize(
+        palette=palette_img,
+        dither=Image.Dither.FLOYDSTEINBERG
+    )
 
-            # Set the new pixel value
-            img_array[y, x] = new_pixel
-
-            # Calculate quantization error from float value (preserves fractional error)
-            error = old_pixel - new_pixel
-
-            # Distribute error to neighboring pixels (Floyd-Steinberg weights)
-            if x + 1 < width:
-                img_array[y, x + 1] += error * 7/16
-
-            if y + 1 < height:
-                if x > 0:
-                    img_array[y + 1, x - 1] += error * 3/16
-
-                img_array[y + 1, x] += error * 5/16
-
-                if x + 1 < width:
-                    img_array[y + 1, x + 1] += error * 1/16
-
-    # Clip values to valid range and convert back to uint8
-    img_array = np.clip(img_array, 0, 255).astype(np.uint8)
-
-    # Convert back to PIL Image
-    return Image.fromarray(img_array, mode='RGB')
+    # Convert back to RGB mode for consistency with API
+    return quantized.convert('RGB')
 
 
 def apply_spectra_6(image: Image.Image) -> Image.Image:
