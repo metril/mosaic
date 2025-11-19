@@ -14,7 +14,6 @@ Palette colors:
 """
 
 from PIL import Image
-import numpy as np
 from typing import Tuple
 
 
@@ -73,40 +72,63 @@ def floyd_steinberg_dither(image: Image.Image) -> Image.Image:
     if image.mode != 'RGB':
         image = image.convert('RGB')
 
-    # Convert to numpy array for efficient processing
-    img_array = np.array(image, dtype=np.float32)
-    height, width = img_array.shape[:2]
+    # Load pixel data
+    pixels = image.load()
+    width, height = image.size
+
+    # Create a 2D array to store float values during processing
+    # This allows us to accumulate error values
+    pixel_array = []
+    for y in range(height):
+        row = []
+        for x in range(width):
+            r, g, b = pixels[x, y]
+            row.append([float(r), float(g), float(b)])
+        pixel_array.append(row)
 
     # Process each pixel
     for y in range(height):
         for x in range(width):
-            old_pixel = tuple(img_array[y, x].astype(int))
+            # Get old pixel value (may have error from previous pixels added)
+            old_pixel = (
+                int(round(pixel_array[y][x][0])),
+                int(round(pixel_array[y][x][1])),
+                int(round(pixel_array[y][x][2]))
+            )
+
+            # Find nearest palette color
             new_pixel = find_nearest_color(old_pixel)
 
-            # Set the new pixel value
-            img_array[y, x] = new_pixel
+            # Set the new pixel value in the image
+            pixels[x, y] = new_pixel
 
             # Calculate quantization error
-            error = img_array[y, x] - np.array(old_pixel, dtype=np.float32)
+            error_r = pixel_array[y][x][0] - new_pixel[0]
+            error_g = pixel_array[y][x][1] - new_pixel[1]
+            error_b = pixel_array[y][x][2] - new_pixel[2]
 
             # Distribute error to neighboring pixels (Floyd-Steinberg weights)
             if x + 1 < width:
-                img_array[y, x + 1] += error * 7/16
+                pixel_array[y][x + 1][0] += error_r * 7/16
+                pixel_array[y][x + 1][1] += error_g * 7/16
+                pixel_array[y][x + 1][2] += error_b * 7/16
 
             if y + 1 < height:
                 if x > 0:
-                    img_array[y + 1, x - 1] += error * 3/16
+                    pixel_array[y + 1][x - 1][0] += error_r * 3/16
+                    pixel_array[y + 1][x - 1][1] += error_g * 3/16
+                    pixel_array[y + 1][x - 1][2] += error_b * 3/16
 
-                img_array[y + 1, x] += error * 5/16
+                pixel_array[y + 1][x][0] += error_r * 5/16
+                pixel_array[y + 1][x][1] += error_g * 5/16
+                pixel_array[y + 1][x][2] += error_b * 5/16
 
                 if x + 1 < width:
-                    img_array[y + 1, x + 1] += error * 1/16
+                    pixel_array[y + 1][x + 1][0] += error_r * 1/16
+                    pixel_array[y + 1][x + 1][1] += error_g * 1/16
+                    pixel_array[y + 1][x + 1][2] += error_b * 1/16
 
-    # Clip values to valid range and convert back to uint8
-    img_array = np.clip(img_array, 0, 255).astype(np.uint8)
-
-    # Convert back to PIL Image
-    return Image.fromarray(img_array, mode='RGB')
+    return image
 
 
 def apply_spectra_6(image: Image.Image) -> Image.Image:
