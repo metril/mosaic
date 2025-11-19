@@ -80,14 +80,16 @@ def floyd_steinberg_dither(image: Image.Image) -> Image.Image:
     # Process each pixel
     for y in range(height):
         for x in range(width):
-            old_pixel = tuple(img_array[y, x].astype(int))
-            new_pixel = find_nearest_color(old_pixel)
+            # Keep old_pixel as float to preserve accumulated error from neighbors
+            old_pixel = img_array[y, x]
+            # Convert to int only for color matching
+            new_pixel = find_nearest_color(tuple(old_pixel.astype(int)))
 
             # Set the new pixel value
             img_array[y, x] = new_pixel
 
-            # Calculate quantization error (old - new, not new - old!)
-            error = np.array(old_pixel, dtype=np.float32) - new_pixel
+            # Calculate quantization error from float value (preserves fractional error)
+            error = old_pixel - new_pixel
 
             # Distribute error to neighboring pixels (Floyd-Steinberg weights)
             if x + 1 < width:
