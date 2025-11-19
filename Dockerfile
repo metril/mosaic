@@ -21,7 +21,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ ./app/
 COPY templates/ ./templates/
-COPY static/ ./static/
 
 # Create directory for images (will be mounted as volume)
 RUN mkdir -p /www/images
