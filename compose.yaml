@@ -4,26 +4,17 @@ networks:
     driver: bridge
 
 services:
-  nginx:
-    image: nginx:latest
-    container_name: nginx
+  screensaver:
+    build: .
+    container_name: screensaver
     restart: unless-stopped
     networks:
       - screensaver
     ports:
       - 80:80
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./www/index.php:/www/index.php:ro
       - /mnt/usb-storage-1/images:/www/images:ro
-        
-  php:
-    image: php:7-fpm
-    container_name: php
-    restart: unless-stopped
-    networks:
-      - screensaver
-    volumes:
-      - ./php/php.ini:/usr/local/etc/php/php.ini:ro
-      - ./www/index.php:/www/index.php:ro
-      - /mnt/usb-storage-1/images:/www/images:ro
+    env_file:
+      - .env
+    environment:
+      - BASE_URL=${BASE_URL:-}
