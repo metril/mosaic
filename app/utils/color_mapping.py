@@ -136,7 +136,9 @@ def apply_spectra_6(image: Image.Image) -> Image.Image:
     """
     Apply Spectra-6 color mapping to an image using Floyd-Steinberg dithering.
 
-    This is the main entry point for E-Ink color conversion.
+    This is the main entry point for E-Ink color conversion. It performs
+    preprocessing (saturation/contrast enhancement) BEFORE dithering for
+    optimal results on E-Ink displays.
 
     Args:
         image: Input PIL Image
@@ -144,4 +146,8 @@ def apply_spectra_6(image: Image.Image) -> Image.Image:
     Returns:
         Image converted to Spectra-6 palette with Floyd-Steinberg dithering
     """
+    # Preprocess for E-Ink display characteristics
+    image = preprocess_for_eink(image)
+
+    # Apply dithering and color quantization
     return floyd_steinberg_dither(image)
