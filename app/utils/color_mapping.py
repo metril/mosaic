@@ -17,11 +17,14 @@ from PIL import Image
 
 
 # Define the Spectra-6 color palette
+# Using calibrated values instead of pure RGB for better E-Ink display accuracy
+# These values are empirically derived to match actual Spectra-6 display output
+# Source: Community calibration (mattdm @ Pimoroni forums)
 SPECTRA_6_PALETTE = [
-    (255, 0, 0),      # Red
-    (0, 255, 0),      # Green
-    (0, 0, 255),      # Blue
-    (255, 255, 0),    # Yellow
+    (160, 32, 32),    # Red (#a02020)
+    (96, 128, 80),    # Green (#608050)
+    (80, 128, 184),   # Blue (#5080b8)
+    (240, 224, 80),   # Yellow (#f0e050)
     (0, 0, 0),        # Black
     (255, 255, 255),  # White
 ]
