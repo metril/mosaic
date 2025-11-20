@@ -74,10 +74,16 @@ async def root(
 
         buffer, content_type, filename = result
 
+        # Get buffer size for Content-Length header
+        buffer.seek(0, 2)  # Seek to end
+        content_length = buffer.tell()
+        buffer.seek(0)  # Seek back to beginning
+
         return StreamingResponse(
             buffer,
             media_type=content_type,
             headers={
+                "Content-Length": str(content_length),
                 "Cache-Control": "no-cache, no-store, must-revalidate",
                 "Pragma": "no-cache",
                 "Expires": "0",
