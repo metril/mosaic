@@ -240,13 +240,16 @@ class ImageService:
         # Load image
         image = self.load_image(image_path)
 
-        # Apply E-Ink color mapping first (before resizing, as requested)
-        if apply_eink:
-            image = apply_spectra_6(image)
-
-        # Resize if parameters provided
+        # Resize first if parameters provided
+        # This ensures preprocessing and dithering happen at final resolution
         if width is not None or height is not None:
             image = self.resize_image(image, width, height, preserve_aspect, mode)
+
+        # Apply E-Ink color mapping after resizing
+        # Preprocessing (saturation/contrast) and dithering should be applied
+        # at the final display resolution for optimal quality
+        if apply_eink:
+            image = apply_spectra_6(image)
 
         # Determine output format
         if output_format:
