@@ -13,7 +13,7 @@ Palette colors:
 - White: (255, 255, 255)
 """
 
-from PIL import Image
+from PIL import Image, ImageEnhance, ImageFilter
 
 
 # Define the Spectra-6 color palette
@@ -28,6 +28,56 @@ SPECTRA_6_PALETTE = [
     (0, 0, 0),        # Black
     (255, 255, 255),  # White
 ]
+
+
+def preprocess_for_eink(image: Image.Image,
+                        saturation: float = 2.5,
+                        contrast: float = 1.2,
+                        brightness: float = 1.1,
+                        sharpen: bool = True) -> Image.Image:
+    """
+    Preprocess image for optimal display on Spectra-6 E-Ink screens.
+
+    E-Ink displays lack backlighting and have muted pigments, so images need
+    significant enhancement to appear vibrant. This preprocessing should happen
+    BEFORE dithering for best results.
+
+    Args:
+        image: Input PIL Image
+        saturation: Saturation multiplier (default 2.5 = 150% boost)
+                   Higher values make colors more vibrant on E-Ink
+        contrast: Contrast multiplier (default 1.2 = 20% boost)
+        brightness: Brightness multiplier (default 1.1 = 10% boost)
+        sharpen: Whether to apply sharpening filter (compensates for dithering)
+
+    Returns:
+        Enhanced PIL Image ready for dithering
+    """
+    # Convert to RGB if needed
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+
+    # Apply sharpening first (before other enhancements)
+    if sharpen:
+        image = image.filter(ImageFilter.SHARPEN)
+
+    # Boost contrast
+    if contrast != 1.0:
+        contrast_enhancer = ImageEnhance.Contrast(image)
+        image = contrast_enhancer.enhance(contrast)
+
+    # CRITICAL: Boost saturation significantly
+    # E-Ink displays appear desaturated due to reflective pigments
+    if saturation != 1.0:
+        saturation_enhancer = ImageEnhance.Color(image)
+        image = saturation_enhancer.enhance(saturation)
+
+    # Slight brightness boost
+    if brightness != 1.0:
+        brightness_enhancer = ImageEnhance.Brightness(image)
+        image = brightness_enhancer.enhance(brightness)
+
+    return image
 
 
 def _create_palette_image() -> Image.Image:
