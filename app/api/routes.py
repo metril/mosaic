@@ -30,7 +30,11 @@ async def root(
     preserve_aspect: bool = Query(True, description="Preserve aspect ratio when resizing"),
     mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode - 'fit' or 'crop'"),
     eink: bool = Query(False, description="Apply Spectra-6 E-Ink color mapping"),
-    format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None, description="Output format (defaults to original format)")
+    format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None, description="Output format (defaults to original format)"),
+    saturation: float = Query(2.5, description="E-Ink saturation multiplier (default: 2.5)", ge=0.0, le=10.0),
+    contrast: float = Query(1.2, description="E-Ink contrast multiplier (default: 1.2)", ge=0.0, le=5.0),
+    brightness: float = Query(1.1, description="E-Ink brightness multiplier (default: 1.1)", ge=0.0, le=5.0),
+    sharpen: bool = Query(True, description="Apply sharpening for E-Ink preprocessing (default: true)")
 ):
     """
     Main endpoint - serves either the web interface or random image API.
@@ -43,6 +47,10 @@ async def root(
     - mode: Resize mode - 'fit' (letterbox) or 'crop' (fill, default: fit)
     - eink: Apply Spectra-6 dithering for E-Ink displays (default: false)
     - format: Output format - 'jpeg', 'png', 'webp', 'bmp', 'gif' (defaults to original)
+    - saturation: E-Ink saturation multiplier 0.0-10.0 (default: 2.5)
+    - contrast: E-Ink contrast multiplier 0.0-5.0 (default: 1.2)
+    - brightness: E-Ink brightness multiplier 0.0-5.0 (default: 1.1)
+    - sharpen: Apply sharpening for E-Ink (default: true)
 
     Examples:
     - GET / - Web interface
@@ -50,6 +58,7 @@ async def root(
     - GET /?api=random-image&format=png - Random image as PNG
     - GET /?api=random-image&width=800&height=600 - Resized image
     - GET /?api=random-image&eink=true&format=png - E-Ink dithered as PNG
+    - GET /?api=random-image&eink=true&saturation=3.0 - E-Ink with more vibrant colors
     - GET /?api=random-image&width=800&height=600&eink=true&format=jpeg - Combined
     """
     # API mode - return random image
@@ -63,7 +72,11 @@ async def root(
             preserve_aspect,
             mode,
             eink,
-            format
+            format,
+            saturation,
+            contrast,
+            brightness,
+            sharpen
         )
 
         if result is None:
