@@ -209,7 +209,11 @@ class ImageService:
         preserve_aspect: bool = True,
         mode: Literal['fit', 'crop'] = 'fit',
         apply_eink: bool = False,
-        output_format: Optional[str] = None
+        output_format: Optional[str] = None,
+        saturation: float = 2.5,
+        contrast: float = 1.2,
+        brightness: float = 1.1,
+        sharpen: bool = True
     ) -> Optional[Tuple[BytesIO, str, str]]:
         """
         Process a random image with specified parameters.
@@ -228,6 +232,10 @@ class ImageService:
             mode: Resize mode - 'fit' or 'crop'
             apply_eink: Whether to apply Spectra-6 dithering
             output_format: Output format - 'jpeg', 'png', 'webp', 'bmp', 'gif' (optional, defaults to original)
+            saturation: Saturation multiplier for E-Ink preprocessing (default 2.5)
+            contrast: Contrast multiplier for E-Ink preprocessing (default 1.2)
+            brightness: Brightness multiplier for E-Ink preprocessing (default 1.1)
+            sharpen: Whether to apply sharpening for E-Ink preprocessing (default True)
 
         Returns:
             Tuple of (BytesIO buffer, content_type, filename) or None if no images
@@ -249,7 +257,7 @@ class ImageService:
         # Preprocessing (saturation/contrast) and dithering should be applied
         # at the final display resolution for optimal quality
         if apply_eink:
-            image = apply_spectra_6(image)
+            image = apply_spectra_6(image, saturation, contrast, brightness, sharpen)
 
         # Determine output format
         if output_format:
