@@ -132,7 +132,11 @@ def floyd_steinberg_dither(image: Image.Image) -> Image.Image:
     return quantized.convert('RGB')
 
 
-def apply_spectra_6(image: Image.Image) -> Image.Image:
+def apply_spectra_6(image: Image.Image,
+                    saturation: float = 2.5,
+                    contrast: float = 1.2,
+                    brightness: float = 1.1,
+                    sharpen: bool = True) -> Image.Image:
     """
     Apply Spectra-6 color mapping to an image using Floyd-Steinberg dithering.
 
@@ -142,12 +146,16 @@ def apply_spectra_6(image: Image.Image) -> Image.Image:
 
     Args:
         image: Input PIL Image
+        saturation: Saturation multiplier (default 2.5)
+        contrast: Contrast multiplier (default 1.2)
+        brightness: Brightness multiplier (default 1.1)
+        sharpen: Whether to apply sharpening filter (default True)
 
     Returns:
         Image converted to Spectra-6 palette with Floyd-Steinberg dithering
     """
     # Preprocess for E-Ink display characteristics
-    image = preprocess_for_eink(image)
+    image = preprocess_for_eink(image, saturation, contrast, brightness, sharpen)
 
     # Apply dithering and color quantization
     return floyd_steinberg_dither(image)
