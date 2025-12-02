@@ -673,13 +673,24 @@
                 }
             }
 
+            // Determine size category
+            const sizeBytes = file.size || 0;
+            let sizeCategory = 'small';
+            if (sizeBytes > 2 * 1024 * 1024) {
+                sizeCategory = 'large';  // > 2MB
+            } else if (sizeBytes > 500 * 1024) {
+                sizeCategory = 'medium';  // 500KB - 2MB
+            }
+
             return `
                 <div class="image-card"
                      onclick="openLightbox('${fullImageUrl}', '${file.name}', '${file.dimensions}', '${file.size_formatted}')"
                      data-path="${file.path}"
                      data-name="${file.name}"
                      data-orientation="${orientation}"
-                     data-format="${file.format || ''}">
+                     data-format="${file.format || ''}"
+                     data-size="${sizeCategory}"
+                     data-size-bytes="${sizeBytes}">
                     <div class="thumbnail-container">
                         <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
                     </div>
@@ -898,19 +909,19 @@
         // Apply filters to image cards
         function applyFilters() {
             const orientationFilter = document.getElementById('orientationFilter').value;
-            const formatFilter = document.getElementById('formatFilter').value;
+            const sizeFilter = document.getElementById('sizeFilter').value;
             const allCards = document.querySelectorAll('.image-card');
 
             allCards.forEach(card => {
                 let show = true;
 
                 // Check orientation filter
-                if (orientationFilter && card.dataset.orientation !== orientationFilter) {
+                if (orientationFilter && orientationFilter !== 'all' && card.dataset.orientation !== orientationFilter) {
                     show = false;
                 }
 
-                // Check format filter
-                if (formatFilter && card.dataset.format !== formatFilter) {
+                // Check size filter
+                if (sizeFilter && sizeFilter !== 'all' && card.dataset.size !== sizeFilter) {
                     show = false;
                 }
 
@@ -920,9 +931,9 @@
         }
 
         // Clear all filters
-        function clearFilters() {
-            document.getElementById('orientationFilter').value = '';
-            document.getElementById('formatFilter').value = '';
+        function resetFilters() {
+            document.getElementById('orientationFilter').value = 'all';
+            document.getElementById('sizeFilter').value = 'all';
             document.getElementById('searchInput').value = '';
 
             // Show all cards
