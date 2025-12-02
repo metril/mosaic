@@ -25,7 +25,7 @@ templates = Jinja2Templates(directory="templates")
 @router.get("/{folder_path:path}")
 async def root(
     request: Request,
-    folder_path: str = PathParam("", description="Folder path (e.g., 'earth' or 'earth/folder1')"),
+    folder_path: str,
     api: Optional[str] = Query(None, description="API mode - 'random-image' for image endpoint"),
     width: Optional[int] = Query(None, description="Target width in pixels", ge=1),
     height: Optional[int] = Query(None, description="Target height in pixels", ge=1),
