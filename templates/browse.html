@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browse Images - Screensaver</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 30px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            color: #1a1a1a;
+        }
+
+        .stats {
+            color: #666;
+            margin-bottom: 25px;
+            font-size: 14px;
+        }
+
+        .stats strong {
+            color: #333;
+        }
+
+        .tree {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .tree-item {
+            padding: 6px 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .folder {
+            font-weight: 600;
+            color: #0066cc;
+        }
+
+        .folder:hover {
+            background-color: #f0f8ff;
+        }
+
+        .folder-icon {
+            display: inline-block;
+            width: 20px;
+            text-align: center;
+        }
+
+        .folder-name {
+            margin-left: 5px;
+        }
+
+        .folder-stats {
+            color: #888;
+            font-size: 12px;
+            margin-left: 8px;
+            font-weight: normal;
+        }
+
+        .file {
+            color: #333;
+            padding-left: 25px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            padding: 4px 0;
+        }
+
+        .file-icon {
+            margin-right: 8px;
+            font-size: 16px;
+        }
+
+        .file-name {
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-meta {
+            color: #888;
+            font-size: 12px;
+            margin-left: 12px;
+            white-space: nowrap;
+        }
+
+        .file-actions {
+            margin-left: 12px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .file-item:hover .file-actions {
+            opacity: 1;
+        }
+
+        .btn {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            margin-left: 4px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background-color: #0052a3;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+
+        .children {
+            display: none;
+            padding-left: 20px;
+        }
+
+        .children.expanded {
+            display: block;
+        }
+
+        .empty {
+            color: #999;
+            font-style: italic;
+            padding-left: 25px;
+        }
+
+        .search-box {
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            width: 100%;
+            max-width: 500px;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #0066cc;
+        }
+
+        .highlight {
+            background-color: #ffeb3b;
+            padding: 2px 4px;
+            border-radius: 2px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .container {
+                padding: 15px;
+            }
+
+            h1 {
+                font-size: 22px;
+            }
+
+            .file-meta {
+                display: none;
+            }
+
+            .tree {
+                font-size: 13px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📁 Browse Images</h1>
+        <div class="stats">
+            <strong>{{ total_folders }}</strong> folders •
+            <strong>{{ total_files }}</strong> files
+        </div>
+
+        <div class="search-box">
+            <input
+                type="text"
+                id="searchInput"
+                placeholder="Search files and folders..."
+                onkeyup="filterTree()"
+            >
+        </div>
+
+        <div class="tree" id="tree">
+            <!-- Tree will be rendered here by JavaScript -->
+        </div>
+    </div>
+
+    <script>
+        // Tree data from server
+        const treeData = {{ tree_json | safe }};
+
+        // Render the tree
+        function renderTree() {
+            const treeContainer = document.getElementById('tree');
+            treeContainer.innerHTML = renderNode(treeData.tree, 0);
+        }
+
+        // Render a single node (folder or file)
+        function renderNode(node, depth) {
+            if (node.type === 'folder') {
+                return renderFolder(node, depth);
+            } else {
+                return renderFile(node, depth);
+            }
+        }
+
+        // Render a folder
+        function renderFolder(folder, depth) {
+            const hasChildren = folder.children && folder.children.length > 0;
+            const folderId = 'folder-' + folder.path.replace(/\//g, '-');
+            const childrenId = 'children-' + folderId;
+
+            let html = `
+                <div class="tree-item folder" onclick="toggleFolder('${childrenId}')" data-path="${folder.path}" data-name="${folder.name}">
+                    <span class="folder-icon" id="icon-${childrenId}">▶</span>
+                    <span class="folder-name">${folder.name || 'Root'}</span>
+                    <span class="folder-stats">(${folder.file_count} files, ${folder.folder_count} folders)</span>
+                </div>
+            `;
+
+            if (hasChildren) {
+                html += `<div class="children" id="${childrenId}">`;
+                for (const child of folder.children) {
+                    html += renderNode(child, depth + 1);
+                }
+                html += '</div>';
+            } else if (folder.file_count === 0) {
+                html += `<div class="children" id="${childrenId}"><div class="empty">Empty folder</div></div>`;
+            }
+
+            return html;
+        }
+
+        // Render a file
+        function renderFile(file, depth) {
+            const viewUrl = `/images/${file.path}`;
+            const screensaverUrl = `/${file.path.split('/').slice(0, -1).join('/')}?api=random-image`;
+
+            return `
+                <div class="file" data-path="${file.path}" data-name="${file.name}">
+                    <div class="file-item">
+                        <span class="file-icon">🖼️</span>
+                        <span class="file-name" title="${file.name}">${file.name}</span>
+                        <span class="file-meta">
+                            ${file.dimensions} • ${file.size_formatted}
+                        </span>
+                        <span class="file-actions">
+                            <a href="${viewUrl}" target="_blank" class="btn">View</a>
+                            <a href="${screensaverUrl}" target="_blank" class="btn btn-secondary">Folder</a>
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Toggle folder expand/collapse
+        function toggleFolder(childrenId) {
+            const childrenEl = document.getElementById(childrenId);
+            const iconEl = document.getElementById('icon-' + childrenId);
+
+            if (childrenEl.classList.contains('expanded')) {
+                childrenEl.classList.remove('expanded');
+                iconEl.textContent = '▶';
+            } else {
+                childrenEl.classList.add('expanded');
+                iconEl.textContent = '▼';
+            }
+        }
+
+        // Filter tree based on search input
+        function filterTree() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const allItems = document.querySelectorAll('.tree-item, .file');
+
+            if (!searchTerm) {
+                // Show all items
+                allItems.forEach(item => {
+                    item.style.display = '';
+                });
+                // Collapse all folders
+                document.querySelectorAll('.children.expanded').forEach(el => {
+                    el.classList.remove('expanded');
+                    const iconId = 'icon-' + el.id;
+                    const icon = document.getElementById(iconId);
+                    if (icon) icon.textContent = '▶';
+                });
+                return;
+            }
+
+            // Search and expand matching paths
+            allItems.forEach(item => {
+                const name = item.dataset.name || '';
+                const path = item.dataset.path || '';
+
+                if (name.toLowerCase().includes(searchTerm) || path.toLowerCase().includes(searchTerm)) {
+                    item.style.display = '';
+
+                    // Expand parent folders
+                    let parent = item.parentElement;
+                    while (parent && parent.classList.contains('children')) {
+                        parent.classList.add('expanded');
+                        const iconId = 'icon-' + parent.id;
+                        const icon = document.getElementById(iconId);
+                        if (icon) icon.textContent = '▼';
+                        parent = parent.parentElement?.parentElement;
+                    }
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        }
+
+        // Initialize
+        renderTree();
+    </script>
+</body>
+</html>
