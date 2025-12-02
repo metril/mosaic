@@ -284,6 +284,37 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background-color: #333;
+            color: white;
+            padding: 16px 24px;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 10000;
+            pointer-events: none;
+            font-size: 14px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .toast.success {
+            background-color: #28a745;
+        }
+
+        .toast.error {
+            background-color: #dc3545;
+        }
+
         @media (max-width: 768px) {
             body {
                 padding: 10px;
@@ -307,6 +338,13 @@
             }
 
             .tree {
+                font-size: 13px;
+            }
+
+            .toast {
+                bottom: 20px;
+                right: 20px;
+                left: 20px;
                 font-size: 13px;
             }
         }
@@ -353,6 +391,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast"></div>
 
     <script>
         // Tree data from server
@@ -482,21 +523,30 @@
             document.body.style.overflow = '';  // Restore scrolling
         }
 
+        // Show toast notification
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast ' + type;
+
+            // Show toast
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 10);
+
+            // Hide toast after 3 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
         // Copy image link to clipboard
         function copyImageLink() {
             const fullUrl = window.location.origin + currentImageUrl;
             navigator.clipboard.writeText(fullUrl).then(() => {
-                // Show feedback
-                const btn = event.target;
-                const originalText = btn.textContent;
-                btn.textContent = 'Copied!';
-                btn.style.backgroundColor = '#28a745';
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.backgroundColor = '';
-                }, 2000);
+                showToast('Link copied to clipboard!', 'success');
             }).catch(err => {
-                alert('Failed to copy: ' + err);
+                showToast('Failed to copy link', 'error');
             });
         }
 
