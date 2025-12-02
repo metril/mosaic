@@ -7,7 +7,8 @@ Handles image selection, loading, resizing, and color mapping operations.
 import os
 import random
 from pathlib import Path
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, Dict, List, Any
+from datetime import datetime
 from PIL import Image
 from io import BytesIO
 
@@ -381,3 +382,165 @@ class ImageService:
             filename = image_path.name
 
         return (buffer, content_type, filename)
+
+    def get_image_metadata(self, file_path: Path) -> Dict[str, Any]:
+        """
+        Extract metadata from an image file.
+
+        Args:
+            file_path: Path to the image file
+
+        Returns:
+            Dict with file metadata (name, size, dimensions, modified time)
+        """
+        try:
+            # Get file stats
+            stats = file_path.stat()
+            file_size = stats.st_size
+            modified_time = datetime.fromtimestamp(stats.st_mtime)
+
+            # Format file size
+            if file_size < 1024:
+                size_formatted = f"{file_size} B"
+            elif file_size < 1024 * 1024:
+                size_formatted = f"{file_size / 1024:.1f} KB"
+            else:
+                size_formatted = f"{file_size / (1024 * 1024):.1f} MB"
+
+            # Get image dimensions efficiently (only reads header)
+            try:
+                with Image.open(file_path) as img:
+                    dimensions = f"{img.width}x{img.height}"
+                    width, height = img.width, img.height
+            except Exception:
+                dimensions = "Unknown"
+                width, height = None, None
+
+            # Get relative path from image directory
+            try:
+                relative_path = file_path.relative_to(self.image_dir)
+            except ValueError:
+                relative_path = file_path.name
+
+            return {
+                "name": file_path.name,
+                "path": str(relative_path),
+                "size": file_size,
+                "size_formatted": size_formatted,
+                "dimensions": dimensions,
+                "width": width,
+                "height": height,
+                "modified": modified_time.isoformat(),
+                "type": "file"
+            }
+        except Exception as e:
+            # Return basic info if metadata extraction fails
+            return {
+                "name": file_path.name,
+                "path": str(file_path.name),
+                "size": 0,
+                "size_formatted": "Unknown",
+                "dimensions": "Unknown",
+                "width": None,
+                "height": None,
+                "modified": None,
+                "type": "file",
+                "error": str(e)
+            }
+
+    def build_directory_tree(self) -> Dict[str, Any]:
+        """
+        Build a complete recursive directory tree of all folders and image files.
+
+        Returns:
+            Dict containing the complete directory tree structure with metadata
+        """
+        def scan_directory(directory: Path, relative_path: str = "") -> Dict[str, Any]:
+            """
+            Recursively scan a directory and build tree structure.
+
+            Args:
+                directory: Absolute path to directory to scan
+                relative_path: Relative path from image root
+
+            Returns:
+                Dict representing folder with children
+            """
+            folder_data = {
+                "type": "folder",
+                "name": directory.name if directory.name else "images",
+                "path": relative_path,
+                "children": [],
+                "file_count": 0,
+                "folder_count": 0
+            }
+
+            try:
+                # Skip if directory doesn't exist or is a symlink
+                if not directory.exists() or directory.is_symlink():
+                    return folder_data
+
+                # Get all items in directory
+                items = sorted(directory.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+
+                for item in items:
+                    # Skip symlinks
+                    if item.is_symlink():
+                        continue
+
+                    # Skip hidden files/folders
+                    if item.name.startswith('.'):
+                        continue
+
+                    if item.is_dir():
+                        # Recursively scan subdirectory
+                        child_relative_path = f"{relative_path}/{item.name}" if relative_path else item.name
+                        child_folder = scan_directory(item, child_relative_path)
+                        folder_data["children"].append(child_folder)
+                        folder_data["folder_count"] += 1
+                        # Propagate counts up from children
+                        folder_data["file_count"] += child_folder["file_count"]
+
+                    elif item.is_file() and item.suffix.lower() in SUPPORTED_FORMATS:
+                        # Add image file with metadata
+                        file_metadata = self.get_image_metadata(item)
+                        folder_data["children"].append(file_metadata)
+                        folder_data["file_count"] += 1
+
+            except PermissionError:
+                pass  # Skip directories we can't read
+            except Exception as e:
+                folder_data["error"] = str(e)
+
+            return folder_data
+
+        # Build the complete tree starting from image root
+        tree = scan_directory(self.image_dir, "")
+
+        # Count totals
+        def count_totals(node: Dict[str, Any]) -> Tuple[int, int]:
+            """Recursively count total folders and files."""
+            if node["type"] == "file":
+                return (0, 1)
+
+            total_folders = 0
+            total_files = 0
+
+            for child in node.get("children", []):
+                child_folders, child_files = count_totals(child)
+                total_folders += child_folders
+                total_files += child_files
+
+            if node["type"] == "folder":
+                total_folders += 1
+
+            return (total_folders, total_files)
+
+        total_folders, total_files = count_totals(tree)
+
+        return {
+            "root": str(self.image_dir),
+            "total_folders": total_folders - 1,  # Exclude root from count
+            "total_files": total_files,
+            "tree": tree
+        }
