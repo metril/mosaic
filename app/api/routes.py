@@ -10,6 +10,7 @@ import json
 from io import BytesIO
 from pathlib import Path
 from typing import Optional, Literal
+from urllib.parse import unquote
 from fastapi import APIRouter, Query, HTTPException, Path as PathParam
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -102,8 +103,12 @@ async def get_thumbnail(image_path: str):
     Examples:
     - GET /thumbnail/earth/photo.jpg
     - GET /thumbnail/space/nebula.png
+    - GET /thumbnail/landscape/%D0%9C%D0%BE%D0%B6%D0%B6%D0%B5%D0%B2%D0%B5%D0%BB%D0%BE%D0%B2%D0%B0%D1%8F.jpg (Cyrillic)
     """
     try:
+        # Decode URL-encoded characters (handles Cyrillic, Chinese, emoji, etc.)
+        image_path = unquote(image_path)
+
         # Validate the path using security checks
         from app.utils.path_security import validate_folder_path
 
