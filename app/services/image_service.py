@@ -12,6 +12,8 @@ from PIL import Image
 from io import BytesIO
 
 from app.utils.color_mapping import apply_spectra_6
+from app.utils.path_security import validate_folder_paths
+from app.exceptions import NoImagesFoundError
 
 
 # Supported image formats
@@ -33,31 +35,79 @@ class ImageService:
         """
         self.image_dir = image_dir
 
-    def get_image_files(self) -> list[Path]:
+    def get_image_files(
+        self,
+        folder_paths: Optional[list[str]] = None,
+        recursive: bool = False
+    ) -> list[Path]:
         """
-        Get a list of all supported image files in the image directory.
+        Get a list of supported image files, optionally filtered by folder paths.
+
+        Args:
+            folder_paths: Optional list of relative folder paths to search within.
+                         If None, searches the base image directory.
+                         Example: ["earth", "space/nebula"]
+            recursive: If True, recursively search subfolders. If False, only
+                      search the specified folder(s) non-recursively.
 
         Returns:
             List of Path objects for image files
-        """
-        if not self.image_dir.exists():
-            return []
 
+        Raises:
+            PathSecurityError: If any folder path fails security validation
+        """
         image_files = []
-        for file_path in self.image_dir.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_FORMATS:
-                image_files.append(file_path)
+
+        # Determine which directories to search
+        if folder_paths:
+            # Validate and resolve all folder paths
+            search_dirs = validate_folder_paths(folder_paths, self.image_dir)
+        else:
+            # No folder specified - search base directory
+            search_dirs = [self.image_dir]
+
+        # Search each directory
+        for search_dir in search_dirs:
+            if not search_dir.exists():
+                # Skip non-existent directories
+                continue
+
+            if recursive:
+                # Recursive search using rglob
+                for file_path in search_dir.rglob('*'):
+                    if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_FORMATS:
+                        # Additional security: verify file is not a symlink
+                        if not file_path.is_symlink():
+                            image_files.append(file_path)
+            else:
+                # Non-recursive search using iterdir
+                for file_path in search_dir.iterdir():
+                    if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_FORMATS:
+                        # Additional security: verify file is not a symlink
+                        if not file_path.is_symlink():
+                            image_files.append(file_path)
 
         return image_files
 
-    def get_random_image_path(self) -> Optional[Path]:
+    def get_random_image_path(
+        self,
+        folder_paths: Optional[list[str]] = None,
+        recursive: bool = False
+    ) -> Optional[Path]:
         """
-        Get a random image file path from the image directory.
+        Get a random image file path, optionally filtered by folder paths.
+
+        Args:
+            folder_paths: Optional list of relative folder paths to search within
+            recursive: If True, recursively search subfolders
 
         Returns:
             Path to a random image file, or None if no images found
+
+        Raises:
+            PathSecurityError: If any folder path fails security validation
         """
-        image_files = self.get_image_files()
+        image_files = self.get_image_files(folder_paths, recursive)
         if not image_files:
             return None
 
@@ -213,7 +263,9 @@ class ImageService:
         saturation: float = 2.5,
         contrast: float = 1.2,
         brightness: float = 1.1,
-        sharpen: bool = True
+        sharpen: bool = True,
+        folder_paths: Optional[list[str]] = None,
+        recursive: bool = False
     ) -> Optional[Tuple[BytesIO, str, str]]:
         """
         Process a random image with specified parameters.
@@ -236,12 +288,17 @@ class ImageService:
             contrast: Contrast multiplier for E-Ink preprocessing (default 1.2)
             brightness: Brightness multiplier for E-Ink preprocessing (default 1.1)
             sharpen: Whether to apply sharpening for E-Ink preprocessing (default True)
+            folder_paths: Optional list of relative folder paths to search within
+            recursive: If True, recursively search subfolders
 
         Returns:
             Tuple of (BytesIO buffer, content_type, filename) or None if no images
+
+        Raises:
+            PathSecurityError: If any folder path fails security validation
         """
-        # Get random image
-        image_path = self.get_random_image_path()
+        # Get random image from specified folders
+        image_path = self.get_random_image_path(folder_paths, recursive)
         if image_path is None:
             return None
 
