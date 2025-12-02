@@ -22,6 +22,23 @@ image_service = ImageService()
 templates = Jinja2Templates(directory="templates")
 
 
+@router.get("/health")
+async def health_check():
+    """
+    Health check endpoint.
+
+    Returns:
+        JSON with status and image count
+    """
+    image_files = image_service.get_image_files()
+
+    return {
+        "status": "healthy",
+        "image_count": len(image_files),
+        "image_directory": str(image_service.image_dir)
+    }
+
+
 @router.get("/{folder_path:path}")
 async def root(
     request: Request,
@@ -171,20 +188,3 @@ async def root(
         except PathSecurityError as e:
             # Security violation - return 400 Bad Request
             raise HTTPException(status_code=400, detail="Invalid folder path")
-
-
-@router.get("/health")
-async def health_check():
-    """
-    Health check endpoint.
-
-    Returns:
-        JSON with status and image count
-    """
-    image_files = image_service.get_image_files()
-
-    return {
-        "status": "healthy",
-        "image_count": len(image_files),
-        "image_directory": str(image_service.image_dir)
-    }
