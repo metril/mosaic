@@ -6,6 +6,8 @@ Provides endpoints for random image serving and web interface.
 
 import os
 import asyncio
+import json
+from io import BytesIO
 from pathlib import Path
 from typing import Optional, Literal
 from fastapi import APIRouter, Query, HTTPException, Path as PathParam
@@ -72,7 +74,6 @@ async def browse_images(
         return JSONResponse(content=tree_data)
 
     # Return HTML by default
-    import json
     return templates.TemplateResponse(
         "browse.html",
         {
