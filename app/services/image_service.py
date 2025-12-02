@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Literal, Dict, List, Any
 from datetime import datetime
 from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
 from io import BytesIO
 
 from app.utils.color_mapping import apply_spectra_6
@@ -383,15 +384,101 @@ class ImageService:
 
         return (buffer, content_type, filename)
 
-    def get_image_metadata(self, file_path: Path) -> Dict[str, Any]:
+    def _extract_exif(self, img: Image.Image) -> Dict[str, Any]:
+        """
+        Extract and parse EXIF data from a PIL Image.
+
+        Args:
+            img: PIL Image object
+
+        Returns:
+            Dict with parsed EXIF data
+        """
+        exif_data = {}
+
+        try:
+            exif = img.getexif()
+            if not exif:
+                return exif_data
+
+            for tag_id, value in exif.items():
+                # Get the tag name
+                tag = TAGS.get(tag_id, tag_id)
+
+                # Convert bytes to string for readability
+                if isinstance(value, bytes):
+                    try:
+                        value = value.decode('utf-8', errors='ignore')
+                    except:
+                        value = str(value)
+
+                # Handle GPS info separately
+                if tag == 'GPSInfo':
+                    gps_data = {}
+                    for gps_tag_id, gps_value in value.items():
+                        gps_tag = GPSTAGS.get(gps_tag_id, gps_tag_id)
+                        gps_data[gps_tag] = gps_value
+                    exif_data['GPSInfo'] = gps_data
+                else:
+                    # Store common/useful EXIF tags
+                    exif_data[tag] = value
+
+            # Parse specific useful fields
+            parsed = {}
+
+            # Camera info
+            if 'Make' in exif_data:
+                parsed['camera_make'] = exif_data['Make']
+            if 'Model' in exif_data:
+                parsed['camera_model'] = exif_data['Model']
+
+            # Date/time
+            if 'DateTime' in exif_data:
+                parsed['date_time'] = exif_data['DateTime']
+            if 'DateTimeOriginal' in exif_data:
+                parsed['date_time_original'] = exif_data['DateTimeOriginal']
+
+            # Camera settings
+            if 'ExposureTime' in exif_data:
+                parsed['exposure_time'] = str(exif_data['ExposureTime'])
+            if 'FNumber' in exif_data:
+                parsed['f_number'] = str(exif_data['FNumber'])
+            if 'ISOSpeedRatings' in exif_data:
+                parsed['iso'] = exif_data['ISOSpeedRatings']
+            if 'FocalLength' in exif_data:
+                parsed['focal_length'] = str(exif_data['FocalLength'])
+
+            # Orientation
+            if 'Orientation' in exif_data:
+                parsed['orientation'] = exif_data['Orientation']
+
+            # GPS
+            if 'GPSInfo' in exif_data:
+                parsed['gps'] = exif_data['GPSInfo']
+
+            # Software
+            if 'Software' in exif_data:
+                parsed['software'] = exif_data['Software']
+
+            # Add raw EXIF for completeness
+            parsed['raw'] = {k: str(v) if not isinstance(v, dict) else v
+                           for k, v in exif_data.items()}
+
+            return parsed
+
+        except Exception as e:
+            return {"error": f"Failed to extract EXIF: {str(e)}"}
+
+    def get_image_metadata(self, file_path: Path, include_exif: bool = False) -> Dict[str, Any]:
         """
         Extract metadata from an image file.
 
         Args:
             file_path: Path to the image file
+            include_exif: Whether to include EXIF data (default False for performance)
 
         Returns:
-            Dict with file metadata (name, size, dimensions, modified time)
+            Dict with file metadata (name, size, dimensions, modified time, optionally EXIF)
         """
         try:
             # Get file stats
@@ -408,13 +495,22 @@ class ImageService:
                 size_formatted = f"{file_size / (1024 * 1024):.1f} MB"
 
             # Get image dimensions efficiently (only reads header)
+            exif_data = None
             try:
                 with Image.open(file_path) as img:
                     dimensions = f"{img.width}x{img.height}"
                     width, height = img.width, img.height
+                    format_name = img.format
+                    mode = img.mode
+
+                    # Extract EXIF data if requested
+                    if include_exif:
+                        exif_data = self._extract_exif(img)
             except Exception:
                 dimensions = "Unknown"
                 width, height = None, None
+                format_name = None
+                mode = None
 
             # Get relative path from image directory
             try:
@@ -422,7 +518,7 @@ class ImageService:
             except ValueError:
                 relative_path = file_path.name
 
-            return {
+            metadata = {
                 "name": file_path.name,
                 "path": str(relative_path),
                 "size": file_size,
@@ -430,9 +526,16 @@ class ImageService:
                 "dimensions": dimensions,
                 "width": width,
                 "height": height,
+                "format": format_name,
+                "mode": mode,
                 "modified": modified_time.isoformat(),
                 "type": "file"
             }
+
+            if include_exif and exif_data:
+                metadata["exif"] = exif_data
+
+            return metadata
         except Exception as e:
             # Return basic info if metadata extraction fails
             return {

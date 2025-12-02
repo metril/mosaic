@@ -191,6 +191,67 @@ async def get_thumbnail(image_path: str):
         )
 
 
+@router.get("/metadata/{image_path:path}")
+async def get_image_metadata(
+    image_path: str,
+    include_exif: bool = Query(False, description="Include EXIF data (default: false)")
+):
+    """
+    Get detailed metadata for a specific image, optionally including EXIF data.
+
+    Examples:
+    - GET /metadata/landscape/photo.jpg
+    - GET /metadata/landscape/photo.jpg?include_exif=true
+
+    Returns JSON with:
+    - Basic metadata: name, path, size, dimensions, format, modified date
+    - EXIF data (if include_exif=true): camera info, settings, GPS, timestamps
+    """
+    try:
+        # Decode URL-encoded characters (handles Cyrillic, Chinese, emoji, etc.)
+        image_path = unquote(image_path)
+
+        # Validate the path using security checks
+        from app.utils.path_security import validate_folder_path
+
+        # Split into folder and filename
+        path_parts = Path(image_path).parts
+        if len(path_parts) > 1:
+            folder_path = str(Path(*path_parts[:-1]))
+            filename = path_parts[-1]
+            validated_folder = validate_folder_path(folder_path, image_service.image_dir)
+            full_path = validated_folder / filename
+        else:
+            filename = path_parts[0]
+            full_path = image_service.image_dir / filename
+
+        # Check if file exists
+        if not full_path.exists() or not full_path.is_file():
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Image not found"}
+            )
+
+        # Get metadata (runs in thread pool for EXIF extraction)
+        def extract_metadata():
+            return image_service.get_image_metadata(full_path, include_exif=include_exif)
+
+        metadata = await asyncio.get_event_loop().run_in_executor(None, extract_metadata)
+
+        return JSONResponse(content=metadata)
+
+    except PathSecurityError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid image path"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to extract metadata: {str(e)}"}
+        )
+
+
 @router.get("/{folder_path:path}")
 async def root(
     request: Request,
