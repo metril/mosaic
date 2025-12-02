@@ -9,31 +9,13 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from app.exceptions import PathSecurityError, PathTraversalError, InvalidPathError, SymlinkError
+
 
 # Security constants
 MAX_PATH_DEPTH = 10  # Maximum number of directory levels
 MAX_PATH_LENGTH = 255  # Maximum path length in characters
 ALLOWED_PATH_PATTERN = re.compile(r'^[a-zA-Z0-9_\-/]*$')  # Whitelist: alphanumeric, dash, underscore, slash
-
-
-class PathSecurityError(Exception):
-    """Base exception for path security violations."""
-    pass
-
-
-class PathTraversalError(PathSecurityError):
-    """Raised when path traversal attempt is detected."""
-    pass
-
-
-class InvalidPathError(PathSecurityError):
-    """Raised when path contains invalid characters or format."""
-    pass
-
-
-class SymlinkError(PathSecurityError):
-    """Raised when path contains or points to a symlink."""
-    pass
 
 
 def validate_folder_path(folder_path: str, base_dir: Path) -> Path:
