@@ -144,6 +144,48 @@
             font-weight: normal;
         }
 
+        .folder-stats-detail {
+            display: none;
+            margin-left: 45px;
+            margin-top: 8px;
+            margin-bottom: 8px;
+            padding: 10px;
+            background: var(--bg-card);
+            border-left: 3px solid #0066cc;
+            border-radius: 4px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .folder-stats-detail.visible {
+            display: block;
+        }
+
+        .stats-row {
+            margin-bottom: 6px;
+            line-height: 1.6;
+        }
+
+        .stats-label {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-right: 6px;
+        }
+
+        .stats-value {
+            color: var(--text-secondary);
+        }
+
+        .stats-badge {
+            display: inline-block;
+            background: var(--bg-hover);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-right: 4px;
+            color: var(--text-primary);
+        }
+
         .children {
             display: none;
             padding-left: 20px;
@@ -613,19 +655,73 @@
             }
         }
 
+        // Render folder statistics
+        function renderFolderStats(stats) {
+            if (!stats) {
+                return '<div class="stats-row"><span class="stats-value">No statistics available</span></div>';
+            }
+
+            let html = '';
+
+            // Formats
+            if (stats.formats && Object.keys(stats.formats).length > 0) {
+                html += '<div class="stats-row"><span class="stats-label">Formats:</span>';
+                Object.entries(stats.formats).sort((a, b) => b[1] - a[1]).forEach(([format, count]) => {
+                    html += `<span class="stats-badge">${format} (${count})</span>`;
+                });
+                html += '</div>';
+            }
+
+            // Orientations
+            if (stats.orientations && Object.keys(stats.orientations).length > 0) {
+                html += '<div class="stats-row"><span class="stats-label">Orientations:</span>';
+                Object.entries(stats.orientations).sort((a, b) => b[1] - a[1]).forEach(([orientation, count]) => {
+                    const label = orientation.charAt(0).toUpperCase() + orientation.slice(1);
+                    html += `<span class="stats-badge">${label} (${count})</span>`;
+                });
+                html += '</div>';
+            }
+
+            // Total size
+            if (stats.total_size_formatted) {
+                html += '<div class="stats-row"><span class="stats-label">Total Size:</span>';
+                html += `<span class="stats-value">${stats.total_size_formatted}</span>`;
+                html += '</div>';
+            }
+
+            // Dimension range
+            if (stats.dimension_range && stats.dimension_range.width && stats.dimension_range.width.max > 0) {
+                const widthMin = stats.dimension_range.width.min;
+                const widthMax = stats.dimension_range.width.max;
+                const heightMin = stats.dimension_range.height.min;
+                const heightMax = stats.dimension_range.height.max;
+                html += '<div class="stats-row"><span class="stats-label">Dimensions:</span>';
+                html += `<span class="stats-value">${widthMin}×${heightMin} - ${widthMax}×${heightMax}</span>`;
+                html += '</div>';
+            }
+
+            return html || '<div class="stats-row"><span class="stats-value">No images in this folder</span></div>';
+        }
+
         // Render a folder
         function renderFolder(folder, depth) {
             const hasChildren = folder.children && folder.children.length > 0;
             const folderId = 'folder-' + folder.path.replace(/\//g, '-');
             const childrenId = 'children-' + folderId;
+            const statsId = 'stats-' + folderId;
 
             let html = `
-                <div class="tree-item folder" onclick="toggleFolder('${childrenId}')" data-path="${folder.path}" data-name="${folder.name}">
+                <div class="tree-item folder" onclick="toggleFolder('${childrenId}', '${statsId}')" data-path="${folder.path}" data-name="${folder.name}">
                     <span class="folder-icon" id="icon-${childrenId}">▶</span>
                     <span class="folder-name">${folder.name || 'Root'}</span>
                     <span class="folder-stats">(${folder.file_count} files, ${folder.folder_count} folders)</span>
                 </div>
             `;
+
+            // Add stats detail section (hidden by default)
+            if (folder.stats) {
+                html += `<div class="folder-stats-detail" id="${statsId}">${renderFolderStats(folder.stats)}</div>`;
+            }
 
             if (hasChildren) {
                 // Separate files and subfolders
@@ -708,16 +804,23 @@
         }
 
         // Toggle folder expand/collapse
-        function toggleFolder(childrenId) {
+        function toggleFolder(childrenId, statsId) {
             const childrenEl = document.getElementById(childrenId);
             const iconEl = document.getElementById('icon-' + childrenId);
+            const statsEl = statsId ? document.getElementById(statsId) : null;
 
             if (childrenEl.classList.contains('expanded')) {
                 childrenEl.classList.remove('expanded');
                 iconEl.textContent = '▶';
+                if (statsEl) {
+                    statsEl.classList.remove('visible');
+                }
             } else {
                 childrenEl.classList.add('expanded');
                 iconEl.textContent = '▼';
+                if (statsEl) {
+                    statsEl.classList.add('visible');
+                }
             }
         }
 

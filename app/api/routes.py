@@ -45,32 +45,29 @@ async def health_check():
 @router.get("/browse")
 async def browse_images(
     request: Request,
-    format: Optional[Literal['json', 'html']] = Query(None, description="Output format - 'json' or 'html' (default)"),
-    stats: bool = Query(False, description="Include folder statistics (formats, orientations, size ranges)")
+    format: Optional[Literal['json', 'html']] = Query(None, description="Output format - 'json' or 'html' (default)")
 ):
     """
     Browse all folders, subfolders, and image files in a tree structure.
 
-    Returns complete recursive directory tree in a single response.
+    Returns complete recursive directory tree in a single response with folder statistics.
     Client-side JavaScript handles expand/collapse for folders.
 
     Query Parameters:
     - format: 'json' for API access, 'html' (default) for interactive web interface
-    - stats: Include detailed folder statistics (default: false for performance)
 
     Examples:
-    - GET /browse - Interactive HTML file explorer
-    - GET /browse?format=json - JSON directory tree API
-    - GET /browse?format=json&stats=true - JSON with folder statistics
+    - GET /browse - Interactive HTML file explorer with statistics
+    - GET /browse?format=json - JSON directory tree API with statistics
 
     Returns:
-        HTML: Interactive file explorer with collapsible folder tree
-        JSON: Complete directory tree structure with metadata and optional stats
+        HTML: Interactive file explorer with collapsible folder tree and statistics
+        JSON: Complete directory tree structure with metadata and statistics
     """
-    # Build complete directory tree
+    # Build complete directory tree with statistics (always enabled)
     tree_data = await asyncio.get_event_loop().run_in_executor(
         None,
-        lambda: image_service.build_directory_tree(include_stats=stats)
+        image_service.build_directory_tree
     )
 
     # Return JSON if requested

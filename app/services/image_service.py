@@ -627,15 +627,12 @@ class ImageService:
 
         return stats
 
-    def build_directory_tree(self, include_stats: bool = False) -> Dict[str, Any]:
+    def build_directory_tree(self) -> Dict[str, Any]:
         """
-        Build a complete recursive directory tree of all folders and image files.
-
-        Args:
-            include_stats: Whether to include folder statistics (default False for performance)
+        Build a complete recursive directory tree of all folders and image files with statistics.
 
         Returns:
-            Dict containing the complete directory tree structure with metadata
+            Dict containing the complete directory tree structure with metadata and statistics
         """
         def scan_directory(directory: Path, relative_path: str = "") -> Dict[str, Any]:
             """
@@ -694,13 +691,34 @@ class ImageService:
             except Exception as e:
                 folder_data["error"] = str(e)
 
-            # Calculate folder statistics if requested
-            if include_stats:
-                files = [child for child in folder_data["children"] if child.get("type") == "file"]
-                if files:
-                    folder_data["stats"] = self._calculate_folder_stats(files)
+            # Calculate folder statistics recursively (include all descendant files)
+            all_files = self._collect_all_files(folder_data)
+            if all_files:
+                folder_data["stats"] = self._calculate_folder_stats(all_files)
 
             return folder_data
+
+        def _collect_all_files(node: Dict[str, Any]) -> List[Dict[str, Any]]:
+            """
+            Recursively collect all file metadata from a folder node and its children.
+
+            Args:
+                node: Folder node with children
+
+            Returns:
+                List of all file metadata dictionaries
+            """
+            files = []
+            for child in node.get("children", []):
+                if child.get("type") == "file":
+                    files.append(child)
+                elif child.get("type") == "folder":
+                    # Recursively collect files from subfolders
+                    files.extend(_collect_all_files(child))
+            return files
+
+        # Make _collect_all_files accessible within scan_directory
+        self._collect_all_files = _collect_all_files
 
         # Build the complete tree starting from image root
         tree = scan_directory(self.image_dir, "")
