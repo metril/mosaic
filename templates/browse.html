@@ -81,72 +81,6 @@
             font-weight: normal;
         }
 
-        .file {
-            color: #333;
-            padding-left: 25px;
-        }
-
-        .file-item {
-            display: flex;
-            align-items: center;
-            padding: 4px 0;
-        }
-
-        .file-icon {
-            margin-right: 8px;
-            font-size: 16px;
-        }
-
-        .file-name {
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .file-meta {
-            color: #888;
-            font-size: 12px;
-            margin-left: 12px;
-            white-space: nowrap;
-        }
-
-        .file-actions {
-            margin-left: 12px;
-            opacity: 0;
-            transition: opacity 0.2s;
-        }
-
-        .file-item:hover .file-actions {
-            opacity: 1;
-        }
-
-        .btn {
-            background-color: #0066cc;
-            color: white;
-            border: none;
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 11px;
-            cursor: pointer;
-            margin-left: 4px;
-            text-decoration: none;
-            display: inline-block;
-        }
-
-        .btn:hover {
-            background-color: #0052a3;
-        }
-
-        .btn-secondary {
-            background-color: #6c757d;
-        }
-
-        .btn-secondary:hover {
-            background-color: #5a6268;
-        }
-
         .children {
             display: none;
             padding-left: 20px;
@@ -167,7 +101,7 @@
         }
 
         .search-box input {
-            width: 100%;
+            width: 100%:
             max-width: 500px;
             padding: 10px 15px;
             border: 1px solid #ddd;
@@ -180,16 +114,174 @@
             border-color: #0066cc;
         }
 
-        .highlight {
-            background-color: #ffeb3b;
-            padding: 2px 4px;
-            border-radius: 2px;
+        /* Thumbnail Grid Styles */
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+            padding-left: 25px;
+            margin-top: 10px;
         }
 
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: #666;
+        .image-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .image-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            border-color: #0066cc;
+        }
+
+        .thumbnail-container {
+            width: 100%;
+            height: 200px;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .thumbnail-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .image-info {
+            padding: 12px;
+        }
+
+        .image-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: #333;
+            margin-bottom: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .image-meta {
+            font-size: 11px;
+            color: #888;
+        }
+
+        /* Lightbox/Modal Styles */
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox-content {
+            position: relative;
+            max-width: 95%;
+            max-height: 95%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .lightbox img {
+            max-width: 100%;
+            max-height: 85vh;
+            object-fit: contain;
+            border-radius: 4px;
+        }
+
+        .lightbox-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            align-items: center;
+        }
+
+        .lightbox-info {
+            color: white;
+            font-size: 14px;
+            margin-right: 15px;
+        }
+
+        .btn {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 0.2s;
+        }
+
+        .btn:hover {
+            background-color: #0052a3;
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+
+        .close-button {
+            position: absolute;
+            top: -40px;
+            right: 0;
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 32px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .close-button:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Loading indicator */
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0066cc;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
         @media (max-width: 768px) {
@@ -205,12 +297,24 @@
                 font-size: 22px;
             }
 
-            .file-meta {
-                display: none;
+            .image-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+                gap: 15px;
+            }
+
+            .thumbnail-container {
+                height: 150px;
             }
 
             .tree {
                 font-size: 13px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .image-grid {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+                gap: 10px;
             }
         }
     </style>
@@ -237,9 +341,24 @@
         </div>
     </div>
 
+    <!-- Lightbox Modal -->
+    <div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+        <div class="lightbox-content" onclick="event.stopPropagation()">
+            <button class="close-button" onclick="closeLightbox()">&times;</button>
+            <img id="lightbox-image" src="" alt="">
+            <div class="lightbox-controls">
+                <span class="lightbox-info" id="lightbox-info"></span>
+                <button class="btn" onclick="copyImageLink()">Copy Link</button>
+                <a class="btn btn-secondary" id="lightbox-open-link" href="" target="_blank">Open in New Tab</a>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Tree data from server
         const treeData = {{ tree_json | safe }};
+        let currentImageUrl = '';
+        let currentImageName = '';
 
         // Render the tree
         function renderTree() {
@@ -271,10 +390,26 @@
             `;
 
             if (hasChildren) {
+                // Separate files and subfolders
+                const files = folder.children.filter(c => c.type === 'file');
+                const subfolders = folder.children.filter(c => c.type === 'folder');
+
                 html += `<div class="children" id="${childrenId}">`;
-                for (const child of folder.children) {
-                    html += renderNode(child, depth + 1);
+
+                // Render subfolders first
+                for (const subfolder of subfolders) {
+                    html += renderNode(subfolder, depth + 1);
                 }
+
+                // Render files in grid if there are any
+                if (files.length > 0) {
+                    html += '<div class="image-grid">';
+                    for (const file of files) {
+                        html += renderFileCard(file);
+                    }
+                    html += '</div>';
+                }
+
                 html += '</div>';
             } else if (folder.file_count === 0) {
                 html += `<div class="children" id="${childrenId}"><div class="empty">Empty folder</div></div>`;
@@ -283,26 +418,27 @@
             return html;
         }
 
-        // Render a file
-        function renderFile(file, depth) {
-            const viewUrl = `/images/${file.path}`;
-            const screensaverUrl = `/${file.path.split('/').slice(0, -1).join('/')}?api=random-image`;
+        // Render a file as a card with thumbnail
+        function renderFileCard(file) {
+            const thumbnailUrl = `/thumbnail/${file.path}`;
+            const fullImageUrl = `/images/${file.path}`;
 
             return `
-                <div class="file" data-path="${file.path}" data-name="${file.name}">
-                    <div class="file-item">
-                        <span class="file-icon">🖼️</span>
-                        <span class="file-name" title="${file.name}">${file.name}</span>
-                        <span class="file-meta">
-                            ${file.dimensions} • ${file.size_formatted}
-                        </span>
-                        <span class="file-actions">
-                            <a href="${viewUrl}" target="_blank" class="btn">View</a>
-                            <a href="${screensaverUrl}" target="_blank" class="btn btn-secondary">Folder</a>
-                        </span>
+                <div class="image-card" onclick="openLightbox('${fullImageUrl}', '${file.name}', '${file.dimensions}', '${file.size_formatted}')" data-path="${file.path}" data-name="${file.name}">
+                    <div class="thumbnail-container">
+                        <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
+                    </div>
+                    <div class="image-info">
+                        <div class="image-name" title="${file.name}">${file.name}</div>
+                        <div class="image-meta">${file.dimensions} • ${file.size_formatted}</div>
                     </div>
                 </div>
             `;
+        }
+
+        // Render a file (legacy text view - no longer used, kept for compatibility)
+        function renderFile(file, depth) {
+            return '';  // Files are now rendered as cards in renderFileCard
         }
 
         // Toggle folder expand/collapse
@@ -319,15 +455,71 @@
             }
         }
 
+        // Open lightbox with image
+        function openLightbox(imageUrl, imageName, dimensions, fileSize) {
+            currentImageUrl = imageUrl;
+            currentImageName = imageName;
+
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImage = document.getElementById('lightbox-image');
+            const lightboxInfo = document.getElementById('lightbox-info');
+            const lightboxLink = document.getElementById('lightbox-open-link');
+
+            lightboxImage.src = imageUrl;
+            lightboxInfo.textContent = `${imageName} - ${dimensions} - ${fileSize}`;
+            lightboxLink.href = imageUrl;
+
+            lightbox.classList.add('active');
+            document.body.style.overflow = 'hidden';  // Prevent background scrolling
+        }
+
+        // Close lightbox
+        function closeLightbox(event) {
+            if (event && event.target.id !== 'lightbox') return;
+
+            const lightbox = document.getElementById('lightbox');
+            lightbox.classList.remove('active');
+            document.body.style.overflow = '';  // Restore scrolling
+        }
+
+        // Copy image link to clipboard
+        function copyImageLink() {
+            const fullUrl = window.location.origin + currentImageUrl;
+            navigator.clipboard.writeText(fullUrl).then(() => {
+                // Show feedback
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = 'Copied!';
+                btn.style.backgroundColor = '#28a745';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.backgroundColor = '';
+                }, 2000);
+            }).catch(err => {
+                alert('Failed to copy: ' + err);
+            });
+        }
+
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeLightbox();
+            }
+        });
+
         // Filter tree based on search input
         function filterTree() {
             const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const allItems = document.querySelectorAll('.tree-item, .file');
+            const allFolders = document.querySelectorAll('.tree-item.folder');
+            const allCards = document.querySelectorAll('.image-card');
 
             if (!searchTerm) {
                 // Show all items
-                allItems.forEach(item => {
+                allFolders.forEach(item => {
                     item.style.display = '';
+                });
+                allCards.forEach(card => {
+                    card.style.display = '';
                 });
                 // Collapse all folders
                 document.querySelectorAll('.children.expanded').forEach(el => {
@@ -340,7 +532,7 @@
             }
 
             // Search and expand matching paths
-            allItems.forEach(item => {
+            allFolders.forEach(item => {
                 const name = item.dataset.name || '';
                 const path = item.dataset.path || '';
 
@@ -358,6 +550,27 @@
                     }
                 } else {
                     item.style.display = 'none';
+                }
+            });
+
+            allCards.forEach(card => {
+                const name = card.dataset.name || '';
+                const path = card.dataset.path || '';
+
+                if (name.toLowerCase().includes(searchTerm) || path.toLowerCase().includes(searchTerm)) {
+                    card.style.display = '';
+
+                    // Expand parent folders
+                    let parent = card.parentElement?.parentElement;  // .image-grid -> .children
+                    while (parent && parent.classList.contains('children')) {
+                        parent.classList.add('expanded');
+                        const iconId = 'icon-' + parent.id;
+                        const icon = document.getElementById(iconId);
+                        if (icon) icon.textContent = '▼';
+                        parent = parent.parentElement?.parentElement;
+                    }
+                } else {
+                    card.style.display = 'none';
                 }
             });
         }

@@ -84,6 +84,107 @@ async def browse_images(
     )
 
 
+@router.get("/thumbnail/{image_path:path}")
+async def get_thumbnail(image_path: str):
+    """
+    Generate and serve a thumbnail for a specific image.
+
+    Thumbnails are generated on-the-fly at 200x200px with crop mode.
+    This endpoint is used by the browse interface for lazy-loaded thumbnails.
+
+    Args:
+        image_path: Relative path to the image file (e.g., "earth/photo.jpg")
+
+    Returns:
+        Thumbnail image (200x200px, cropped to square)
+
+    Examples:
+    - GET /thumbnail/earth/photo.jpg
+    - GET /thumbnail/space/nebula.png
+    """
+    try:
+        # Validate the path using security checks
+        from app.utils.path_security import validate_folder_path
+
+        # Split into folder and filename
+        path_parts = Path(image_path).parts
+        if len(path_parts) > 1:
+            # Has folder component
+            folder_path = str(Path(*path_parts[:-1]))
+            filename = path_parts[-1]
+            validated_folder = validate_folder_path(folder_path, image_service.image_dir)
+            full_path = validated_folder / filename
+        else:
+            # Just filename in root
+            filename = path_parts[0]
+            full_path = image_service.image_dir / filename
+
+        # Security check: ensure file exists and is not a symlink
+        if not full_path.exists() or full_path.is_symlink():
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Image not found"}
+            )
+
+        # Security check: ensure it's actually within image_dir
+        try:
+            full_path.relative_to(image_service.image_dir)
+        except ValueError:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "Invalid image path"}
+            )
+
+        # Load and resize image in thread pool
+        def process_thumbnail():
+            image = image_service.load_image(full_path)
+            # Generate 200x200 thumbnail with crop mode
+            thumbnail = image_service.resize_image(
+                image,
+                width=200,
+                height=200,
+                preserve_aspect=True,
+                mode='crop'
+            )
+
+            # Convert to JPEG for thumbnails (smaller file size)
+            if thumbnail.mode != 'RGB':
+                thumbnail = thumbnail.convert('RGB')
+
+            buffer = BytesIO()
+            thumbnail.save(buffer, format='JPEG', quality=85, optimize=True)
+            buffer.seek(0)
+            return buffer
+
+        buffer = await asyncio.get_event_loop().run_in_executor(None, process_thumbnail)
+
+        # Get buffer size
+        buffer.seek(0, 2)
+        content_length = buffer.tell()
+        buffer.seek(0)
+
+        return StreamingResponse(
+            buffer,
+            media_type="image/jpeg",
+            headers={
+                "Content-Length": str(content_length),
+                "Cache-Control": "public, max-age=86400",  # Cache for 24 hours
+                "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
+            }
+        )
+
+    except PathSecurityError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid image path"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Failed to generate thumbnail"}
+        )
+
+
 @router.get("/{folder_path:path}")
 async def root(
     request: Request,
