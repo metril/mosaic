@@ -180,6 +180,60 @@
             border-color: #0066cc;
         }
 
+        /* Filter controls */
+        .filter-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .filter-group label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .filter-group select {
+            padding: 6px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: border-color 0.3s, background-color 0.3s;
+        }
+
+        .filter-group select:focus {
+            outline: none;
+            border-color: #0066cc;
+        }
+
+        .clear-filters {
+            padding: 6px 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .clear-filters:hover {
+            background: var(--bg-hover);
+            border-color: #0066cc;
+            color: var(--text-primary);
+        }
+
         /* Thumbnail Grid Styles */
         .image-grid {
             display: grid;
@@ -445,6 +499,25 @@
             >
         </div>
 
+        <div class="filter-controls">
+            <div class="filter-group">
+                <label for="orientationFilter">Orientation:</label>
+                <select id="orientationFilter" onchange="applyFilters()">
+                    <option value="">All</option>
+                    <option value="landscape">Landscape</option>
+                    <option value="portrait">Portrait</option>
+                    <option value="square">Square</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="formatFilter">Format:</label>
+                <select id="formatFilter" onchange="applyFilters()">
+                    <option value="">All</option>
+                </select>
+            </div>
+            <button class="clear-filters" onclick="clearFilters()">Clear Filters</button>
+        </div>
+
         <div class="tree" id="tree">
             <!-- Tree will be rendered here by JavaScript -->
         </div>
@@ -535,8 +608,25 @@
             const thumbnailUrl = `/thumbnail/${file.path}`;
             const fullImageUrl = `/images/${file.path}`;
 
+            // Calculate orientation from dimensions
+            let orientation = '';
+            if (file.width && file.height) {
+                if (file.width > file.height) {
+                    orientation = 'landscape';
+                } else if (file.height > file.width) {
+                    orientation = 'portrait';
+                } else {
+                    orientation = 'square';
+                }
+            }
+
             return `
-                <div class="image-card" onclick="openLightbox('${fullImageUrl}', '${file.name}', '${file.dimensions}', '${file.size_formatted}')" data-path="${file.path}" data-name="${file.name}">
+                <div class="image-card"
+                     onclick="openLightbox('${fullImageUrl}', '${file.name}', '${file.dimensions}', '${file.size_formatted}')"
+                     data-path="${file.path}"
+                     data-name="${file.name}"
+                     data-orientation="${orientation}"
+                     data-format="${file.format || ''}">
                     <div class="thumbnail-container">
                         <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
                     </div>
@@ -720,8 +810,96 @@
         // Initialize theme on page load
         initTheme();
 
+        // Populate format filter dropdown
+        function populateFormatFilter() {
+            const formats = new Set();
+            const allCards = document.querySelectorAll('.image-card');
+
+            allCards.forEach(card => {
+                const format = card.dataset.format;
+                if (format) {
+                    formats.add(format);
+                }
+            });
+
+            const formatFilter = document.getElementById('formatFilter');
+            const currentValue = formatFilter.value;
+
+            // Clear existing options except "All"
+            formatFilter.innerHTML = '<option value="">All</option>';
+
+            // Add format options sorted alphabetically
+            Array.from(formats).sort().forEach(format => {
+                const option = document.createElement('option');
+                option.value = format;
+                option.textContent = format;
+                formatFilter.appendChild(option);
+            });
+
+            // Restore previous selection if it still exists
+            if (currentValue && Array.from(formats).includes(currentValue)) {
+                formatFilter.value = currentValue;
+            }
+        }
+
+        // Apply filters to image cards
+        function applyFilters() {
+            const orientationFilter = document.getElementById('orientationFilter').value;
+            const formatFilter = document.getElementById('formatFilter').value;
+            const allCards = document.querySelectorAll('.image-card');
+
+            allCards.forEach(card => {
+                let show = true;
+
+                // Check orientation filter
+                if (orientationFilter && card.dataset.orientation !== orientationFilter) {
+                    show = false;
+                }
+
+                // Check format filter
+                if (formatFilter && card.dataset.format !== formatFilter) {
+                    show = false;
+                }
+
+                // Apply visibility
+                card.style.display = show ? '' : 'none';
+            });
+        }
+
+        // Clear all filters
+        function clearFilters() {
+            document.getElementById('orientationFilter').value = '';
+            document.getElementById('formatFilter').value = '';
+            document.getElementById('searchInput').value = '';
+
+            // Show all cards
+            const allCards = document.querySelectorAll('.image-card');
+            allCards.forEach(card => {
+                card.style.display = '';
+            });
+
+            // Show all folders
+            const allFolders = document.querySelectorAll('.tree-item.folder');
+            allFolders.forEach(item => {
+                item.style.display = '';
+            });
+
+            // Collapse all expanded folders
+            document.querySelectorAll('.children.expanded').forEach(el => {
+                el.classList.remove('expanded');
+                const iconId = 'icon-' + el.id;
+                const icon = document.getElementById(iconId);
+                if (icon) icon.textContent = '▶';
+            });
+        }
+
         // Initialize
         renderTree();
+
+        // Populate format filter after tree is rendered
+        setTimeout(() => {
+            populateFormatFilter();
+        }, 100);
     </script>
 </body>
 </html>

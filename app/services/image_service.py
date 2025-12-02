@@ -551,9 +551,88 @@ class ImageService:
                 "error": str(e)
             }
 
-    def build_directory_tree(self) -> Dict[str, Any]:
+    def _calculate_folder_stats(self, files: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Calculate statistics for a folder based on its image files.
+
+        Args:
+            files: List of file metadata dictionaries
+
+        Returns:
+            Dict with folder statistics (formats, orientations, size ranges)
+        """
+        if not files:
+            return {}
+
+        stats = {
+            "formats": {},
+            "orientations": {},
+            "total_size": 0,
+            "size_range": {"min": float('inf'), "max": 0},
+            "dimension_range": {
+                "width": {"min": float('inf'), "max": 0},
+                "height": {"min": float('inf'), "max": 0}
+            }
+        }
+
+        for file_meta in files:
+            # Count formats
+            if file_meta.get("format"):
+                fmt = file_meta["format"]
+                stats["formats"][fmt] = stats["formats"].get(fmt, 0) + 1
+
+            # Determine orientation
+            width = file_meta.get("width")
+            height = file_meta.get("height")
+            if width and height:
+                if width > height:
+                    orientation = "landscape"
+                elif height > width:
+                    orientation = "portrait"
+                else:
+                    orientation = "square"
+                stats["orientations"][orientation] = stats["orientations"].get(orientation, 0) + 1
+
+                # Track dimension ranges
+                stats["dimension_range"]["width"]["min"] = min(stats["dimension_range"]["width"]["min"], width)
+                stats["dimension_range"]["width"]["max"] = max(stats["dimension_range"]["width"]["max"], width)
+                stats["dimension_range"]["height"]["min"] = min(stats["dimension_range"]["height"]["min"], height)
+                stats["dimension_range"]["height"]["max"] = max(stats["dimension_range"]["height"]["max"], height)
+
+            # Track size
+            size = file_meta.get("size", 0)
+            if size:
+                stats["total_size"] += size
+                stats["size_range"]["min"] = min(stats["size_range"]["min"], size)
+                stats["size_range"]["max"] = max(stats["size_range"]["max"], size)
+
+        # Format total size
+        total_size = stats["total_size"]
+        if total_size < 1024:
+            stats["total_size_formatted"] = f"{total_size} B"
+        elif total_size < 1024 * 1024:
+            stats["total_size_formatted"] = f"{total_size / 1024:.1f} KB"
+        elif total_size < 1024 * 1024 * 1024:
+            stats["total_size_formatted"] = f"{total_size / (1024 * 1024):.1f} MB"
+        else:
+            stats["total_size_formatted"] = f"{total_size / (1024 * 1024 * 1024):.2f} GB"
+
+        # Clean up infinite values
+        if stats["size_range"]["min"] == float('inf'):
+            stats["size_range"]["min"] = 0
+        if stats["dimension_range"]["width"]["min"] == float('inf'):
+            stats["dimension_range"]["width"]["min"] = 0
+        if stats["dimension_range"]["height"]["min"] == float('inf'):
+            stats["dimension_range"]["height"]["min"] = 0
+
+        return stats
+
+    def build_directory_tree(self, include_stats: bool = False) -> Dict[str, Any]:
         """
         Build a complete recursive directory tree of all folders and image files.
+
+        Args:
+            include_stats: Whether to include folder statistics (default False for performance)
 
         Returns:
             Dict containing the complete directory tree structure with metadata
@@ -614,6 +693,12 @@ class ImageService:
                 pass  # Skip directories we can't read
             except Exception as e:
                 folder_data["error"] = str(e)
+
+            # Calculate folder statistics if requested
+            if include_stats:
+                files = [child for child in folder_data["children"] if child.get("type") == "file"]
+                if files:
+                    folder_data["stats"] = self._calculate_folder_stats(files)
 
             return folder_data
 

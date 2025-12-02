@@ -45,7 +45,8 @@ async def health_check():
 @router.get("/browse")
 async def browse_images(
     request: Request,
-    format: Optional[Literal['json', 'html']] = Query(None, description="Output format - 'json' or 'html' (default)")
+    format: Optional[Literal['json', 'html']] = Query(None, description="Output format - 'json' or 'html' (default)"),
+    stats: bool = Query(False, description="Include folder statistics (formats, orientations, size ranges)")
 ):
     """
     Browse all folders, subfolders, and image files in a tree structure.
@@ -55,19 +56,21 @@ async def browse_images(
 
     Query Parameters:
     - format: 'json' for API access, 'html' (default) for interactive web interface
+    - stats: Include detailed folder statistics (default: false for performance)
 
     Examples:
     - GET /browse - Interactive HTML file explorer
     - GET /browse?format=json - JSON directory tree API
+    - GET /browse?format=json&stats=true - JSON with folder statistics
 
     Returns:
         HTML: Interactive file explorer with collapsible folder tree
-        JSON: Complete directory tree structure with metadata
+        JSON: Complete directory tree structure with metadata and optional stats
     """
     # Build complete directory tree
     tree_data = await asyncio.get_event_loop().run_in_executor(
         None,
-        image_service.build_directory_tree
+        lambda: image_service.build_directory_tree(include_stats=stats)
     )
 
     # Return JSON if requested
