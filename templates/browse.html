@@ -88,22 +88,52 @@
             position: absolute;
             top: 30px;
             right: 30px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            transition: all 0.3s;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
         }
 
-        .theme-toggle:hover {
-            background: var(--bg-hover);
-            transform: scale(1.1);
+        .theme-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--border-color);
+            transition: 0.3s;
+            border-radius: 30px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+        }
+
+        .theme-toggle input:checked + .toggle-slider {
+            background-color: #0066cc;
+        }
+
+        .theme-toggle input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        .theme-toggle:hover .toggle-slider {
+            opacity: 0.8;
         }
 
         .tree {
@@ -779,9 +809,10 @@
 </head>
 <body>
     <div class="container">
-        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
-            <span id="theme-icon">🌙</span>
-        </button>
+        <label class="theme-toggle" aria-label="Toggle dark mode">
+            <input type="checkbox" id="theme-toggle" onchange="toggleTheme()">
+            <span class="toggle-slider"></span>
+        </label>
 
         <h1>📁 Browse Images</h1>
         <div class="stats">
@@ -1554,19 +1585,19 @@
             const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
             const theme = savedTheme || (prefersDark ? 'dark' : 'light');
             document.documentElement.setAttribute('data-theme', theme);
-            updateThemeIcon(theme);
+            updateThemeToggle(theme);
         }
 
         function toggleTheme() {
-            const current = document.documentElement.getAttribute('data-theme') || 'light';
-            const newTheme = current === 'light' ? 'dark' : 'light';
+            const checkbox = document.getElementById('theme-toggle');
+            const newTheme = checkbox.checked ? 'dark' : 'light';
             document.documentElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
-            updateThemeIcon(newTheme);
         }
 
-        function updateThemeIcon(theme) {
-            document.getElementById('theme-icon').textContent = theme === 'light' ? '🌙' : '☀️';
+        function updateThemeToggle(theme) {
+            const checkbox = document.getElementById('theme-toggle');
+            checkbox.checked = theme === 'dark';
         }
 
         // Initialize theme on page load
