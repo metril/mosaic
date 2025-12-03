@@ -410,6 +410,19 @@
             background-color: #5a6268;
         }
 
+        .btn.loading {
+            opacity: 0.7;
+            cursor: wait;
+        }
+
+        .btn.active {
+            background-color: #28a745;
+        }
+
+        .btn.active:hover {
+            background-color: #218838;
+        }
+
         .close-button {
             position: absolute;
             top: -40px;
@@ -476,6 +489,189 @@
 
         .toast.error {
             background-color: #dc3545;
+        }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+            color: var(--text-primary);
+        }
+
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: var(--text-primary);
+        }
+
+        .param-slider {
+            margin: 20px 0;
+        }
+
+        .param-slider label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .param-slider input[type="range"] {
+            width: 100%;
+            margin-top: 10px;
+            height: 6px;
+            border-radius: 3px;
+            background: var(--border-color);
+            outline: none;
+        }
+
+        .param-slider input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #0066cc;
+            cursor: pointer;
+        }
+
+        .param-slider input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #0066cc;
+            cursor: pointer;
+            border: none;
+        }
+
+        .param-checkbox {
+            margin: 20px 0;
+        }
+
+        .param-checkbox label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-primary);
+            cursor: pointer;
+        }
+
+        .param-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .preview-area {
+            margin: 20px 0;
+            text-align: center;
+            position: relative;
+            min-height: 200px;
+            background: var(--bg-card);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .preview-area img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 4px;
+        }
+
+        .presets {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .presets button {
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+
+        .presets button:hover {
+            background: var(--bg-hover);
+            border-color: #0066cc;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .modal-actions .btn {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        /* Lightbox navigation */
+        .nav-button {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            font-size: 40px;
+            width: 60px;
+            height: 60px;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: background 0.2s;
+            z-index: 10001;
+        }
+
+        .nav-button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .nav-button.prev {
+            left: 20px;
+        }
+
+        .nav-button.next {
+            right: 20px;
+        }
+
+        .image-counter {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
         }
 
         /* Filter controls */
@@ -610,6 +806,19 @@
                     <option value="">All</option>
                 </select>
             </div>
+            <div class="filter-group">
+                <label for="sortBy">Sort:</label>
+                <select id="sortBy" onchange="applySorting()">
+                    <option value="name-asc">Name (A-Z)</option>
+                    <option value="name-desc">Name (Z-A)</option>
+                    <option value="date-asc">Date (Oldest)</option>
+                    <option value="date-desc">Date (Newest)</option>
+                    <option value="size-asc">Size (Smallest)</option>
+                    <option value="size-desc">Size (Largest)</option>
+                    <option value="dimensions-asc">Dimensions (Smallest)</option>
+                    <option value="dimensions-desc">Dimensions (Largest)</option>
+                </select>
+            </div>
             <button class="clear-filters" onclick="clearFilters()">Clear Filters</button>
         </div>
 
@@ -622,9 +831,16 @@
     <div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
         <div class="lightbox-content" onclick="event.stopPropagation()">
             <button class="close-button" onclick="closeLightbox()">&times;</button>
+            <div class="image-counter" id="image-counter"></div>
+            <button class="nav-button prev" id="nav-prev" onclick="navigateImage(-1)">&lsaquo;</button>
+            <button class="nav-button next" id="nav-next" onclick="navigateImage(1)">&rsaquo;</button>
             <img id="lightbox-image" src="" alt="">
             <div class="lightbox-controls">
                 <span class="lightbox-info" id="lightbox-info"></span>
+                <button class="btn" id="eink-toggle" onclick="toggleEinkPreview()">
+                    <span id="eink-toggle-text">E-Ink Preview</span>
+                </button>
+                <button class="btn" onclick="openEinkSettings()">E-Ink Settings</button>
                 <button class="btn" onclick="copyImageLink()">Copy Link</button>
                 <a class="btn btn-secondary" id="lightbox-open-link" href="" target="_blank">Open in New Tab</a>
             </div>
@@ -634,11 +850,64 @@
     <!-- Toast Notification -->
     <div class="toast" id="toast"></div>
 
+    <!-- E-Ink Settings Modal -->
+    <div id="eink-settings-modal" class="modal">
+        <div class="modal-content">
+            <h3>E-Ink Parameter Tuning</h3>
+
+            <div class="presets">
+                <button onclick="applyPreset('default')">Default</button>
+                <button onclick="applyPreset('photo')">Photo</button>
+                <button onclick="applyPreset('art')">Art</button>
+                <button onclick="applyPreset('high-contrast')">High Contrast</button>
+            </div>
+
+            <div class="param-slider">
+                <label>Saturation: <span id="sat-value">2.5</span></label>
+                <input type="range" id="saturation" min="0" max="5" step="0.1" value="2.5" oninput="updateParamValue('sat', this.value); debouncedPreview()">
+            </div>
+
+            <div class="param-slider">
+                <label>Contrast: <span id="con-value">1.2</span></label>
+                <input type="range" id="contrast" min="0" max="3" step="0.1" value="1.2" oninput="updateParamValue('con', this.value); debouncedPreview()">
+            </div>
+
+            <div class="param-slider">
+                <label>Brightness: <span id="bri-value">1.1</span></label>
+                <input type="range" id="brightness" min="0" max="3" step="0.1" value="1.1" oninput="updateParamValue('bri', this.value); debouncedPreview()">
+            </div>
+
+            <div class="param-checkbox">
+                <label><input type="checkbox" id="sharpen" checked onchange="debouncedPreview()"> Sharpen</label>
+            </div>
+
+            <div class="preview-area">
+                <div id="preview-loading" class="loading-spinner" style="display: none;"></div>
+                <img id="eink-preview-img" src="" alt="Preview" style="display: none;">
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn" onclick="applyEinkSettings()">Apply to Lightbox</button>
+                <button class="btn" onclick="downloadEinkImage()">Download</button>
+                <button class="btn btn-secondary" onclick="closeEinkSettings()">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // Tree data from server
         const treeData = {{ tree_json | safe }};
         let currentImageUrl = '';
         let currentImageName = '';
+
+        // Navigation state
+        let currentImageList = [];  // Array of image objects in current folder
+        let currentImageIndex = 0;  // Current position in the list
+
+        // E-Ink preview state
+        let einkPreviewCache = new Map();  // Cache for E-Ink processed images
+        let isEinkMode = false;  // Current display mode
+        let originalImageUrl = '';  // Original image URL for toggling back
 
         // Render the tree
         function renderTree() {
@@ -737,9 +1006,9 @@
 
                 // Render files in grid if there are any
                 if (files.length > 0) {
-                    html += '<div class="image-grid">';
+                    html += `<div class="image-grid" data-folder-id="${folderId}">`;
                     for (const file of files) {
-                        html += renderFileCard(file);
+                        html += renderFileCard(file, folderId);
                     }
                     html += '</div>';
                 }
@@ -753,7 +1022,7 @@
         }
 
         // Render a file as a card with thumbnail
-        function renderFileCard(file) {
+        function renderFileCard(file, folderId) {
             const thumbnailUrl = `/thumbnail/${file.path}`;
             const fullImageUrl = `/images/${file.path}`;
 
@@ -780,13 +1049,17 @@
 
             return `
                 <div class="image-card"
-                     onclick="openLightbox('${fullImageUrl}', '${file.name}', '${file.dimensions}', '${file.size_formatted}')"
+                     onclick="openLightboxWithNavigation(this)"
                      data-path="${file.path}"
                      data-name="${file.name}"
                      data-orientation="${orientation}"
                      data-format="${file.format || ''}"
                      data-size="${sizeCategory}"
-                     data-size-bytes="${sizeBytes}">
+                     data-size-bytes="${sizeBytes}"
+                     data-url="${fullImageUrl}"
+                     data-dimensions="${file.dimensions}"
+                     data-filesize="${file.size_formatted}"
+                     data-folder-id="${folderId}">
                     <div class="thumbnail-container">
                         <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
                     </div>
@@ -824,7 +1097,30 @@
             }
         }
 
-        // Open lightbox with image
+        // Open lightbox with navigation context
+        function openLightboxWithNavigation(cardElement) {
+            const folderId = cardElement.dataset.folderId;
+
+            // Get all image cards in the same folder
+            const folderCards = Array.from(document.querySelectorAll(`.image-card[data-folder-id="${folderId}"]`))
+                .filter(card => card.style.display !== 'none');  // Only visible cards
+
+            // Build image list from visible cards
+            currentImageList = folderCards.map(card => ({
+                url: card.dataset.url,
+                name: card.dataset.name,
+                dimensions: card.dataset.dimensions,
+                fileSize: card.dataset.filesize
+            }));
+
+            // Find current index
+            currentImageIndex = folderCards.indexOf(cardElement);
+
+            // Open lightbox with current image
+            showLightboxImage();
+        }
+
+        // Open lightbox with image (legacy support)
         function openLightbox(imageUrl, imageName, dimensions, fileSize) {
             currentImageUrl = imageUrl;
             currentImageName = imageName;
@@ -842,6 +1138,120 @@
             document.body.style.overflow = 'hidden';  // Prevent background scrolling
         }
 
+        // Show current image in lightbox
+        function showLightboxImage() {
+            if (currentImageList.length === 0) return;
+
+            const image = currentImageList[currentImageIndex];
+            currentImageUrl = image.url;
+            currentImageName = image.name;
+            originalImageUrl = image.url;  // Store original for E-Ink toggle
+
+            const lightbox = document.getElementById('lightbox');
+            const lightboxImage = document.getElementById('lightbox-image');
+            const lightboxInfo = document.getElementById('lightbox-info');
+            const lightboxLink = document.getElementById('lightbox-open-link');
+            const imageCounter = document.getElementById('image-counter');
+            const navPrev = document.getElementById('nav-prev');
+            const navNext = document.getElementById('nav-next');
+            const einkToggleBtn = document.getElementById('eink-toggle');
+            const einkToggleText = document.getElementById('eink-toggle-text');
+
+            // Reset E-Ink mode when changing images
+            isEinkMode = false;
+            einkToggleBtn.classList.remove('active');
+            einkToggleText.textContent = 'E-Ink Preview';
+
+            lightboxImage.src = image.url;
+            lightboxInfo.textContent = `${image.name} - ${image.dimensions} - ${image.fileSize}`;
+            lightboxLink.href = image.url;
+
+            // Update counter
+            if (currentImageList.length > 1) {
+                imageCounter.textContent = `${currentImageIndex + 1} of ${currentImageList.length}`;
+                imageCounter.style.display = 'block';
+                navPrev.style.display = 'block';
+                navNext.style.display = 'block';
+            } else {
+                imageCounter.style.display = 'none';
+                navPrev.style.display = 'none';
+                navNext.style.display = 'none';
+            }
+
+            lightbox.classList.add('active');
+            document.body.style.overflow = 'hidden';  // Prevent background scrolling
+        }
+
+        // Navigate to previous/next image
+        function navigateImage(direction) {
+            if (currentImageList.length === 0) return;
+
+            // Update index with wrapping
+            currentImageIndex = (currentImageIndex + direction + currentImageList.length) % currentImageList.length;
+
+            // Update display
+            showLightboxImage();
+        }
+
+        // Toggle E-Ink preview
+        async function toggleEinkPreview() {
+            const lightboxImage = document.getElementById('lightbox-image');
+            const einkToggleBtn = document.getElementById('eink-toggle');
+            const einkToggleText = document.getElementById('eink-toggle-text');
+
+            if (isEinkMode) {
+                // Switch back to original
+                lightboxImage.src = originalImageUrl;
+                isEinkMode = false;
+                einkToggleBtn.classList.remove('active');
+                einkToggleText.textContent = 'E-Ink Preview';
+            } else {
+                // Switch to E-Ink preview
+                const imagePath = currentImageUrl.replace('/images/', '');
+
+                // Check cache first
+                if (einkPreviewCache.has(imagePath)) {
+                    lightboxImage.src = einkPreviewCache.get(imagePath);
+                    isEinkMode = true;
+                    einkToggleBtn.classList.add('active');
+                    einkToggleText.textContent = 'Show Original';
+                } else {
+                    // Show loading state
+                    einkToggleBtn.classList.add('loading');
+                    einkToggleText.textContent = 'Loading...';
+
+                    try {
+                        // Fetch E-Ink version from API
+                        const einkUrl = `/images/${imagePath}?eink=true`;
+                        const response = await fetch(einkUrl);
+
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+
+                        // Get the blob and create object URL
+                        const blob = await response.blob();
+                        const objectUrl = URL.createObjectURL(blob);
+
+                        // Cache the result
+                        einkPreviewCache.set(imagePath, objectUrl);
+
+                        // Update display
+                        lightboxImage.src = objectUrl;
+                        isEinkMode = true;
+                        einkToggleBtn.classList.remove('loading');
+                        einkToggleBtn.classList.add('active');
+                        einkToggleText.textContent = 'Show Original';
+                    } catch (error) {
+                        console.error('Failed to fetch E-Ink preview:', error);
+                        showToast('Failed to load E-Ink preview', 'error');
+                        einkToggleBtn.classList.remove('loading');
+                        einkToggleText.textContent = 'E-Ink Preview';
+                    }
+                }
+            }
+        }
+
         // Close lightbox
         function closeLightbox(event) {
             if (event && event.target.id !== 'lightbox') return;
@@ -849,6 +1259,169 @@
             const lightbox = document.getElementById('lightbox');
             lightbox.classList.remove('active');
             document.body.style.overflow = '';  // Restore scrolling
+        }
+
+        // E-Ink Settings Modal Functions
+        let previewDebounceTimeout = null;
+        let currentPreviewUrl = '';
+
+        const presets = {
+            'default': { saturation: 2.5, contrast: 1.2, brightness: 1.1, sharpen: true },
+            'photo': { saturation: 2.0, contrast: 1.0, brightness: 1.0, sharpen: true },
+            'art': { saturation: 3.0, contrast: 1.5, brightness: 1.2, sharpen: true },
+            'high-contrast': { saturation: 2.5, contrast: 2.0, brightness: 1.0, sharpen: true }
+        };
+
+        function openEinkSettings() {
+            const modal = document.getElementById('eink-settings-modal');
+            modal.classList.add('active');
+
+            // Load saved settings or defaults
+            loadEinkSettings();
+
+            // Generate initial preview
+            updateEinkPreview();
+        }
+
+        function closeEinkSettings() {
+            const modal = document.getElementById('eink-settings-modal');
+            modal.classList.remove('active');
+        }
+
+        function updateParamValue(prefix, value) {
+            document.getElementById(`${prefix}-value`).textContent = value;
+        }
+
+        function applyPreset(presetName) {
+            const preset = presets[presetName];
+            if (!preset) return;
+
+            document.getElementById('saturation').value = preset.saturation;
+            document.getElementById('contrast').value = preset.contrast;
+            document.getElementById('brightness').value = preset.brightness;
+            document.getElementById('sharpen').checked = preset.sharpen;
+
+            updateParamValue('sat', preset.saturation);
+            updateParamValue('con', preset.contrast);
+            updateParamValue('bri', preset.brightness);
+
+            debouncedPreview();
+        }
+
+        function debouncedPreview() {
+            clearTimeout(previewDebounceTimeout);
+            previewDebounceTimeout = setTimeout(() => {
+                updateEinkPreview();
+            }, 300);
+        }
+
+        async function updateEinkPreview() {
+            const imagePath = currentImageUrl.replace('/images/', '');
+            const saturation = document.getElementById('saturation').value;
+            const contrast = document.getElementById('contrast').value;
+            const brightness = document.getElementById('brightness').value;
+            const sharpen = document.getElementById('sharpen').checked;
+
+            const previewImg = document.getElementById('eink-preview-img');
+            const previewLoading = document.getElementById('preview-loading');
+
+            // Show loading indicator
+            previewLoading.style.display = 'block';
+            previewImg.style.display = 'none';
+
+            try {
+                const params = new URLSearchParams({
+                    eink: 'true',
+                    saturation: saturation,
+                    contrast: contrast,
+                    brightness: brightness,
+                    sharpen: sharpen
+                });
+
+                const url = `/images/${imagePath}?${params.toString()}`;
+                currentPreviewUrl = url;
+
+                const response = await fetch(url);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const blob = await response.blob();
+                const objectUrl = URL.createObjectURL(blob);
+
+                previewImg.src = objectUrl;
+                previewImg.style.display = 'block';
+                previewLoading.style.display = 'none';
+
+                // Save settings to localStorage
+                saveEinkSettings();
+            } catch (error) {
+                console.error('Failed to fetch E-Ink preview:', error);
+                showToast('Failed to load preview', 'error');
+                previewLoading.style.display = 'none';
+            }
+        }
+
+        function saveEinkSettings() {
+            const settings = {
+                saturation: document.getElementById('saturation').value,
+                contrast: document.getElementById('contrast').value,
+                brightness: document.getElementById('brightness').value,
+                sharpen: document.getElementById('sharpen').checked
+            };
+            localStorage.setItem('einkSettings', JSON.stringify(settings));
+        }
+
+        function loadEinkSettings() {
+            const savedSettings = localStorage.getItem('einkSettings');
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                document.getElementById('saturation').value = settings.saturation;
+                document.getElementById('contrast').value = settings.contrast;
+                document.getElementById('brightness').value = settings.brightness;
+                document.getElementById('sharpen').checked = settings.sharpen;
+
+                updateParamValue('sat', settings.saturation);
+                updateParamValue('con', settings.contrast);
+                updateParamValue('bri', settings.brightness);
+            }
+        }
+
+        function applyEinkSettings() {
+            // Apply current preview to lightbox
+            const previewImg = document.getElementById('eink-preview-img');
+            const lightboxImage = document.getElementById('lightbox-image');
+
+            if (previewImg.src && previewImg.style.display !== 'none') {
+                lightboxImage.src = previewImg.src;
+                isEinkMode = true;
+
+                const einkToggleBtn = document.getElementById('eink-toggle');
+                const einkToggleText = document.getElementById('eink-toggle-text');
+                einkToggleBtn.classList.add('active');
+                einkToggleText.textContent = 'Show Original';
+
+                // Cache this version
+                const imagePath = currentImageUrl.replace('/images/', '');
+                einkPreviewCache.set(imagePath, currentPreviewUrl);
+
+                closeEinkSettings();
+                showToast('E-Ink settings applied', 'success');
+            }
+        }
+
+        function downloadEinkImage() {
+            if (currentPreviewUrl) {
+                // Create a download link
+                const a = document.createElement('a');
+                a.href = currentPreviewUrl;
+                a.download = `eink_${currentImageName}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                showToast('Download started', 'success');
+            }
         }
 
         // Show toast notification
@@ -880,8 +1453,19 @@
 
         // Keyboard navigation
         document.addEventListener('keydown', (e) => {
+            const lightbox = document.getElementById('lightbox');
+            const isLightboxOpen = lightbox.classList.contains('active');
+
+            if (!isLightboxOpen) return;
+
             if (e.key === 'Escape') {
                 closeLightbox();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                navigateImage(-1);
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                navigateImage(1);
             }
         });
 
@@ -1060,12 +1644,88 @@
             });
         }
 
+        // Apply sorting to all image grids
+        function applySorting() {
+            const sortBy = document.getElementById('sortBy').value;
+            const [field, order] = sortBy.split('-');
+
+            // Save preference to localStorage
+            localStorage.setItem('imageSortPreference', sortBy);
+
+            // Sort each image grid
+            const allGrids = document.querySelectorAll('.image-grid');
+            allGrids.forEach(grid => {
+                const cards = Array.from(grid.querySelectorAll('.image-card'));
+
+                // Sort cards based on field and order
+                cards.sort((a, b) => {
+                    let valA, valB;
+
+                    switch(field) {
+                        case 'name':
+                            valA = a.dataset.name.toLowerCase();
+                            valB = b.dataset.name.toLowerCase();
+                            return order === 'asc'
+                                ? valA.localeCompare(valB)
+                                : valB.localeCompare(valA);
+
+                        case 'date':
+                            // Use path as proxy for date (files are chronologically ordered)
+                            valA = a.dataset.path;
+                            valB = b.dataset.path;
+                            return order === 'asc'
+                                ? valA.localeCompare(valB)
+                                : valB.localeCompare(valA);
+
+                        case 'size':
+                            valA = parseInt(a.dataset.sizeBytes) || 0;
+                            valB = parseInt(b.dataset.sizeBytes) || 0;
+                            return order === 'asc' ? valA - valB : valB - valA;
+
+                        case 'dimensions':
+                            // Parse dimensions (e.g., "1920×1080")
+                            const parseArea = (dims) => {
+                                const match = dims.match(/(\d+)×(\d+)/);
+                                if (match) {
+                                    return parseInt(match[1]) * parseInt(match[2]);
+                                }
+                                return 0;
+                            };
+                            valA = parseArea(a.dataset.dimensions);
+                            valB = parseArea(b.dataset.dimensions);
+                            return order === 'asc' ? valA - valB : valB - valA;
+
+                        default:
+                            return 0;
+                    }
+                });
+
+                // Re-append cards in sorted order
+                cards.forEach(card => grid.appendChild(card));
+            });
+        }
+
+        // Load sort preference from localStorage
+        function loadSortPreference() {
+            const savedSort = localStorage.getItem('imageSortPreference');
+            if (savedSort) {
+                const sortSelect = document.getElementById('sortBy');
+                if (sortSelect) {
+                    sortSelect.value = savedSort;
+                }
+            }
+        }
+
         // Initialize
         renderTree();
 
-        // Populate format filter after tree is rendered
+        // Load saved sort preference
+        loadSortPreference();
+
+        // Populate format filter and apply sorting after tree is rendered
         setTimeout(() => {
             populateFormatFilter();
+            applySorting();
         }, 100);
     </script>
 </body>
