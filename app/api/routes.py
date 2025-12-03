@@ -252,6 +252,125 @@ async def get_image_metadata(
         )
 
 
+@router.get("/api/image/{image_path:path}")
+async def serve_processed_image(
+    image_path: str,
+    width: Optional[int] = Query(None, description="Target width in pixels", ge=1),
+    height: Optional[int] = Query(None, description="Target height in pixels", ge=1),
+    preserve_aspect: bool = Query(True, description="Preserve aspect ratio"),
+    mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode"),
+    eink: bool = Query(False, description="Apply E-Ink color mapping"),
+    format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None),
+    saturation: float = Query(2.5, description="E-Ink saturation", ge=0.0, le=10.0),
+    contrast: float = Query(1.2, description="E-Ink contrast", ge=0.0, le=5.0),
+    brightness: float = Query(1.1, description="E-Ink brightness", ge=0.0, le=5.0),
+    sharpen: bool = Query(True, description="Apply sharpening"),
+):
+    """
+    Serve a specific image with optional processing (resize, E-Ink, format conversion).
+
+    Unlike /images/ static mount, this processes query parameters for dynamic image manipulation.
+
+    Examples:
+    - /api/image/landscape/photo.jpg - Original image
+    - /api/image/landscape/photo.jpg?eink=true - E-Ink processed with defaults
+    - /api/image/landscape/photo.jpg?eink=true&saturation=3.0&contrast=1.5
+    - /api/image/landscape/photo.jpg?width=800&height=600&mode=crop
+    """
+    try:
+        # Decode URL-encoded path
+        image_path = unquote(image_path)
+
+        # Validate path security
+        from app.utils.path_security import validate_folder_path
+
+        path_parts = Path(image_path).parts
+        if len(path_parts) > 1:
+            folder_path = str(Path(*path_parts[:-1]))
+            filename = path_parts[-1]
+            validated_folder = validate_folder_path(folder_path, image_service.image_dir)
+            full_path = validated_folder / filename
+        else:
+            filename = path_parts[0]
+            full_path = image_service.image_dir / filename
+
+        # Check file exists
+        if not full_path.exists() or not full_path.is_file():
+            return JSONResponse(
+                status_code=404,
+                content={"error": "Image not found"}
+            )
+
+        # Process image in thread pool (CPU-intensive operations)
+        def process():
+            from app.utils.color_mapping import apply_spectra_6
+
+            img = image_service.load_image(full_path)
+
+            # Apply resizing if requested
+            if width or height:
+                img = image_service.resize_image(
+                    img, width, height, preserve_aspect, mode
+                )
+
+            # Apply E-Ink processing if requested
+            # apply_spectra_6 handles all preprocessing: sharpen, saturation, contrast, brightness, palette mapping
+            if eink:
+                img = apply_spectra_6(img, saturation, contrast, brightness, sharpen)
+
+            # Determine output format
+            output_format = format if format else full_path.suffix[1:].lower()
+            if output_format not in ['jpeg', 'png', 'webp', 'bmp', 'gif']:
+                output_format = 'jpeg'
+
+            # Convert mode if needed for format
+            if output_format == 'jpeg' and img.mode not in ('RGB', 'L'):
+                img = img.convert('RGB')
+            elif output_format == 'png' and img.mode not in ('RGB', 'RGBA', 'L', 'LA'):
+                img = img.convert('RGBA')
+
+            # Save to buffer
+            buffer = BytesIO()
+            img.save(buffer, format=output_format.upper(), quality=95, optimize=True)
+            buffer.seek(0)
+
+            content_type = f"image/{output_format}"
+            filename_out = f"{full_path.stem}.{output_format}"
+
+            return buffer, content_type, filename_out
+
+        buffer, content_type, filename_out = await asyncio.get_event_loop().run_in_executor(
+            None, process
+        )
+
+        # Get content length
+        buffer.seek(0, 2)
+        content_length = buffer.tell()
+        buffer.seek(0)
+
+        return StreamingResponse(
+            buffer,
+            media_type=content_type,
+            headers={
+                "Content-Length": str(content_length),
+                # Disable caching for processed images to allow parameter changes
+                "Cache-Control": "no-cache, no-store, must-revalidate" if eink else "public, max-age=86400",
+                "Content-Disposition": f'inline; filename="{filename_out}"'
+            }
+        )
+
+    except PathSecurityError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Invalid image path"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Failed to process image: {str(e)}"}
+        )
+
+
 @router.get("/{folder_path:path}")
 async def root(
     request: Request,
