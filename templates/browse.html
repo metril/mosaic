@@ -1263,8 +1263,8 @@
                     einkToggleText.textContent = 'Loading...';
 
                     try {
-                        // Fetch E-Ink version from API
-                        const einkUrl = `/images/${imagePath}?eink=true`;
+                        // Fetch E-Ink version from API with default parameters
+                        const einkUrl = `/api/image/${imagePath}?eink=true&saturation=2.5&contrast=1.2&brightness=1.1&sharpen=true`;
                         const response = await fetch(einkUrl);
 
                         if (!response.ok) {
