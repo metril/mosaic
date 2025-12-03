@@ -1404,7 +1404,7 @@
 
                 // Cache this version
                 const imagePath = currentImageUrl.replace('/images/', '');
-                einkPreviewCache.set(imagePath, currentPreviewUrl);
+                einkPreviewCache.set(imagePath, previewImg.src);
 
                 closeEinkSettings();
                 showToast('E-Ink settings applied', 'success');
