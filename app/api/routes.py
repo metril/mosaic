@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Literal
 from urllib.parse import unquote
 from fastapi import APIRouter, Query, HTTPException, Path as PathParam
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
@@ -24,21 +24,12 @@ router = APIRouter()
 image_service = ImageService()
 templates = Jinja2Templates(directory="templates")
 
-# Favicon SVG data - camera/image icon
-FAVICON_SVG = '''<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
-<rect fill='#333' rx='10' width='100' height='100'/>
-<circle fill='#fff' cx='50' cy='55' r='25'/>
-<circle fill='#333' cx='50' cy='55' r='15'/>
-<rect fill='#555' x='35' y='20' width='30' height='15' rx='3'/>
-</svg>'''
-
-
 @router.get("/favicon.ico")
 async def favicon():
-    """Serve favicon as SVG."""
-    return Response(
-        content=FAVICON_SVG,
-        media_type="image/svg+xml",
+    """Serve favicon.ico file."""
+    return FileResponse(
+        "app/static/favicon.ico",
+        media_type="image/x-icon",
         headers={"Cache-Control": "public, max-age=86400"}
     )
 
