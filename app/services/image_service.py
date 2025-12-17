@@ -268,7 +268,7 @@ class ImageService:
         sharpen: bool = True,
         folder_paths: Optional[list[str]] = None,
         recursive: bool = False
-    ) -> Optional[Tuple[BytesIO, str, str, str, int, int, float]]:
+    ) -> Optional[Tuple[BytesIO, str, str, str, float]]:
         """
         Process a random image with specified parameters.
 
@@ -294,10 +294,9 @@ class ImageService:
             recursive: If True, recursively search subfolders
 
         Returns:
-            Tuple of (BytesIO buffer, content_type, filename, relative_path, img_width, img_height, mtime)
+            Tuple of (BytesIO buffer, content_type, filename, relative_path, mtime)
             or None if no images found.
             - relative_path: can be used to re-request the same image via /api/image/{path}
-            - img_width, img_height: final image dimensions in pixels
             - mtime: file modification time (Unix timestamp)
 
         Raises:
@@ -389,11 +388,10 @@ class ImageService:
         # Calculate relative path from image directory for re-request capability
         relative_path = str(image_path.relative_to(self.image_dir))
 
-        # Get final image dimensions and file modification time
-        img_width, img_height = image.size
+        # Get file modification time for Last-Modified header
         mtime = image_path.stat().st_mtime
 
-        return (buffer, content_type, filename, relative_path, img_width, img_height, mtime)
+        return (buffer, content_type, filename, relative_path, mtime)
 
     def _extract_exif(self, img: Image.Image) -> Dict[str, Any]:
         """

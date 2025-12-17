@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Optional, Literal
 from urllib.parse import unquote
 from fastapi import APIRouter, Query, HTTPException, Path as PathParam
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
@@ -263,8 +263,9 @@ async def get_image_metadata(
         )
 
 
-@router.get("/api/image/{image_path:path}")
+@router.api_route("/api/image/{image_path:path}", methods=["GET", "HEAD"])
 async def serve_processed_image(
+    request: Request,
     image_path: str,
     width: Optional[int] = Query(None, description="Target width in pixels", ge=1),
     height: Optional[int] = Query(None, description="Target height in pixels", ge=1),
@@ -348,13 +349,12 @@ async def serve_processed_image(
             content_type = f"image/{output_format}"
             filename_out = f"{full_path.stem}.{output_format}"
 
-            # Get final dimensions and file mtime
-            img_width, img_height = img.size
+            # Get file mtime for Last-Modified header
             mtime = full_path.stat().st_mtime
 
-            return buffer, content_type, filename_out, img_width, img_height, mtime
+            return buffer, content_type, filename_out, mtime
 
-        buffer, content_type, filename_out, img_width, img_height, mtime = await asyncio.get_event_loop().run_in_executor(
+        buffer, content_type, filename_out, mtime = await asyncio.get_event_loop().run_in_executor(
             None, process
         )
 
@@ -374,20 +374,29 @@ async def serve_processed_image(
         # Format Last-Modified as RFC 7231 HTTP-date
         last_modified = formatdate(mtime, usegmt=True)
 
+        # Check for conditional request (304 Not Modified)
+        if_none_match = request.headers.get("If-None-Match")
+        if if_none_match and if_none_match.strip('"') == etag:
+            return Response(status_code=304)
+
+        headers = {
+            "Content-Length": str(content_length),
+            # Disable caching for processed images to allow parameter changes
+            "Cache-Control": "no-cache, no-store, must-revalidate" if eink else "public, max-age=86400",
+            "Content-Disposition": f'inline; filename="{filename_out}"',
+            "Content-Location": content_location,
+            "ETag": f'"{etag}"',
+            "Last-Modified": last_modified,
+        }
+
+        # HEAD request - return headers only, no body
+        if request.method == "HEAD":
+            return Response(status_code=200, headers=headers, media_type=content_type)
+
         return StreamingResponse(
             buffer,
             media_type=content_type,
-            headers={
-                "Content-Length": str(content_length),
-                # Disable caching for processed images to allow parameter changes
-                "Cache-Control": "no-cache, no-store, must-revalidate" if eink else "public, max-age=86400",
-                "Content-Disposition": f'inline; filename="{filename_out}"',
-                "Content-Location": content_location,
-                "X-Image-Width": str(img_width),
-                "X-Image-Height": str(img_height),
-                "ETag": f'"{etag}"',
-                "Last-Modified": last_modified,
-            }
+            headers=headers
         )
 
     except PathSecurityError:
@@ -402,7 +411,7 @@ async def serve_processed_image(
         )
 
 
-@router.get("/{folder_path:path}")
+@router.api_route("/{folder_path:path}", methods=["GET", "HEAD"])
 async def root(
     request: Request,
     folder_path: str,
@@ -506,7 +515,7 @@ async def root(
                 content={"error": "Invalid folder path"}
             )
 
-        buffer, content_type, filename, relative_path, img_width, img_height, mtime = result
+        buffer, content_type, filename, relative_path, mtime = result
 
         # Get buffer size for Content-Length header
         buffer.seek(0, 2)  # Seek to end
@@ -524,21 +533,30 @@ async def root(
         # Format Last-Modified as RFC 7231 HTTP-date
         last_modified = formatdate(mtime, usegmt=True)
 
+        # Check for conditional request (304 Not Modified)
+        if_none_match = request.headers.get("If-None-Match")
+        if if_none_match and if_none_match.strip('"') == etag:
+            return Response(status_code=304)
+
+        headers = {
+            "Content-Length": str(content_length),
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Location": content_location,
+            "ETag": f'"{etag}"',
+            "Last-Modified": last_modified,
+        }
+
+        # HEAD request - return headers only, no body
+        if request.method == "HEAD":
+            return Response(status_code=200, headers=headers, media_type=content_type)
+
         return StreamingResponse(
             buffer,
             media_type=content_type,
-            headers={
-                "Content-Length": str(content_length),
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache",
-                "Expires": "0",
-                "Content-Disposition": f'inline; filename="{filename}"',
-                "Content-Location": content_location,
-                "X-Image-Width": str(img_width),
-                "X-Image-Height": str(img_height),
-                "ETag": f'"{etag}"',
-                "Last-Modified": last_modified,
-            }
+            headers=headers
         )
 
     # Default mode - serve web interface
