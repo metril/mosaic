@@ -268,7 +268,7 @@ class ImageService:
         sharpen: bool = True,
         folder_paths: Optional[list[str]] = None,
         recursive: bool = False
-    ) -> Optional[Tuple[BytesIO, str, str]]:
+    ) -> Optional[Tuple[BytesIO, str, str, str]]:
         """
         Process a random image with specified parameters.
 
@@ -294,7 +294,8 @@ class ImageService:
             recursive: If True, recursively search subfolders
 
         Returns:
-            Tuple of (BytesIO buffer, content_type, filename) or None if no images
+            Tuple of (BytesIO buffer, content_type, filename, relative_path) or None if no images
+            The relative_path can be used to re-request the same image via /api/image/{path}
 
         Raises:
             PathSecurityError: If any folder path fails security validation
@@ -382,7 +383,10 @@ class ImageService:
             # No format conversion - use original filename
             filename = image_path.name
 
-        return (buffer, content_type, filename)
+        # Calculate relative path from image directory for re-request capability
+        relative_path = str(image_path.relative_to(self.image_dir))
+
+        return (buffer, content_type, filename, relative_path)
 
     def _extract_exif(self, img: Image.Image) -> Dict[str, Any]:
         """

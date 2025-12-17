@@ -348,6 +348,10 @@ async def serve_processed_image(
         content_length = buffer.tell()
         buffer.seek(0)
 
+        # Build Content-Location URI for this specific image
+        # RFC 7231: indicates a URI that can be used as an identifier for this resource
+        content_location = f"/api/image/{image_path}"
+
         return StreamingResponse(
             buffer,
             media_type=content_type,
@@ -355,7 +359,8 @@ async def serve_processed_image(
                 "Content-Length": str(content_length),
                 # Disable caching for processed images to allow parameter changes
                 "Cache-Control": "no-cache, no-store, must-revalidate" if eink else "public, max-age=86400",
-                "Content-Disposition": f'inline; filename="{filename_out}"'
+                "Content-Disposition": f'inline; filename="{filename_out}"',
+                "Content-Location": content_location,
             }
         )
 
@@ -475,12 +480,16 @@ async def root(
                 content={"error": "Invalid folder path"}
             )
 
-        buffer, content_type, filename = result
+        buffer, content_type, filename, relative_path = result
 
         # Get buffer size for Content-Length header
         buffer.seek(0, 2)  # Seek to end
         content_length = buffer.tell()
         buffer.seek(0)  # Seek back to beginning
+
+        # Build Content-Location URI for re-requesting this specific image
+        # RFC 7231: indicates a URI that can be used as an identifier for this resource
+        content_location = f"/api/image/{relative_path}"
 
         return StreamingResponse(
             buffer,
@@ -490,7 +499,8 @@ async def root(
                 "Cache-Control": "no-cache, no-store, must-revalidate",
                 "Pragma": "no-cache",
                 "Expires": "0",
-                "Content-Disposition": f'inline; filename="{filename}"'
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Content-Location": content_location,
             }
         )
 
