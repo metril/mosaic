@@ -7,6 +7,8 @@ Provides endpoints for random image serving and web interface.
 import os
 import asyncio
 import json
+import hashlib
+from email.utils import formatdate
 from io import BytesIO
 from pathlib import Path
 from typing import Optional, Literal
@@ -346,9 +348,13 @@ async def serve_processed_image(
             content_type = f"image/{output_format}"
             filename_out = f"{full_path.stem}.{output_format}"
 
-            return buffer, content_type, filename_out
+            # Get final dimensions and file mtime
+            img_width, img_height = img.size
+            mtime = full_path.stat().st_mtime
 
-        buffer, content_type, filename_out = await asyncio.get_event_loop().run_in_executor(
+            return buffer, content_type, filename_out, img_width, img_height, mtime
+
+        buffer, content_type, filename_out, img_width, img_height, mtime = await asyncio.get_event_loop().run_in_executor(
             None, process
         )
 
@@ -357,9 +363,16 @@ async def serve_processed_image(
         content_length = buffer.tell()
         buffer.seek(0)
 
+        # Generate ETag from content hash
+        etag = hashlib.md5(buffer.read()).hexdigest()
+        buffer.seek(0)
+
         # Build Content-Location URI for this specific image
         # RFC 7231: indicates a URI that can be used as an identifier for this resource
         content_location = f"/api/image/{image_path}"
+
+        # Format Last-Modified as RFC 7231 HTTP-date
+        last_modified = formatdate(mtime, usegmt=True)
 
         return StreamingResponse(
             buffer,
@@ -370,6 +383,10 @@ async def serve_processed_image(
                 "Cache-Control": "no-cache, no-store, must-revalidate" if eink else "public, max-age=86400",
                 "Content-Disposition": f'inline; filename="{filename_out}"',
                 "Content-Location": content_location,
+                "X-Image-Width": str(img_width),
+                "X-Image-Height": str(img_height),
+                "ETag": f'"{etag}"',
+                "Last-Modified": last_modified,
             }
         )
 
@@ -489,16 +506,23 @@ async def root(
                 content={"error": "Invalid folder path"}
             )
 
-        buffer, content_type, filename, relative_path = result
+        buffer, content_type, filename, relative_path, img_width, img_height, mtime = result
 
         # Get buffer size for Content-Length header
         buffer.seek(0, 2)  # Seek to end
         content_length = buffer.tell()
         buffer.seek(0)  # Seek back to beginning
 
+        # Generate ETag from content hash
+        etag = hashlib.md5(buffer.read()).hexdigest()
+        buffer.seek(0)
+
         # Build Content-Location URI for re-requesting this specific image
         # RFC 7231: indicates a URI that can be used as an identifier for this resource
         content_location = f"/api/image/{relative_path}"
+
+        # Format Last-Modified as RFC 7231 HTTP-date
+        last_modified = formatdate(mtime, usegmt=True)
 
         return StreamingResponse(
             buffer,
@@ -510,6 +534,10 @@ async def root(
                 "Expires": "0",
                 "Content-Disposition": f'inline; filename="{filename}"',
                 "Content-Location": content_location,
+                "X-Image-Width": str(img_width),
+                "X-Image-Height": str(img_height),
+                "ETag": f'"{etag}"',
+                "Last-Modified": last_modified,
             }
         )
 
