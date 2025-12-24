@@ -271,6 +271,7 @@ async def serve_processed_image(
     height: Optional[int] = Query(None, description="Target height in pixels", ge=1),
     preserve_aspect: bool = Query(True, description="Preserve aspect ratio"),
     mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode"),
+    pad_color: str = Query("000000", description="Letterbox padding color (hex, e.g., 'ffffff')"),
     eink: bool = Query(False, description="Apply E-Ink color mapping"),
     format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None),
     saturation: float = Query(2.5, description="E-Ink saturation", ge=0.0, le=10.0),
@@ -322,7 +323,7 @@ async def serve_processed_image(
             # Apply resizing if requested
             if width or height:
                 img = image_service.resize_image(
-                    img, width, height, preserve_aspect, mode
+                    img, width, height, preserve_aspect, mode, pad_color
                 )
 
             # Apply E-Ink processing if requested
@@ -420,6 +421,7 @@ async def root(
     height: Optional[int] = Query(None, description="Target height in pixels", ge=1),
     preserve_aspect: bool = Query(True, description="Preserve aspect ratio when resizing"),
     mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode - 'fit' or 'crop'"),
+    pad_color: str = Query("000000", description="Letterbox padding color (hex, e.g., 'ffffff')"),
     eink: bool = Query(False, description="Apply Spectra-6 E-Ink color mapping"),
     format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None, description="Output format (defaults to original format)"),
     saturation: float = Query(2.5, description="E-Ink saturation multiplier (default: 2.5)", ge=0.0, le=10.0),
@@ -493,6 +495,7 @@ async def root(
                 height,
                 preserve_aspect,
                 mode,
+                pad_color,
                 eink,
                 format,
                 saturation,

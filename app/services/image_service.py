@@ -127,13 +127,36 @@ class ImageService:
         """
         return Image.open(image_path)
 
+    def _parse_hex_color(self, hex_color: str) -> Tuple[int, int, int]:
+        """
+        Parse hex color string to RGB tuple.
+
+        Args:
+            hex_color: Hex color string (e.g., 'ff0000' or '#ff0000')
+
+        Returns:
+            Tuple of (R, G, B) values 0-255
+        """
+        hex_color = hex_color.lstrip('#')
+        if len(hex_color) != 6:
+            return (0, 0, 0)  # Default to black on invalid input
+        try:
+            return (
+                int(hex_color[0:2], 16),
+                int(hex_color[2:4], 16),
+                int(hex_color[4:6], 16)
+            )
+        except ValueError:
+            return (0, 0, 0)  # Default to black on invalid input
+
     def resize_image(
         self,
         image: Image.Image,
         width: Optional[int] = None,
         height: Optional[int] = None,
         preserve_aspect: bool = True,
-        mode: Literal['fit', 'crop'] = 'fit'
+        mode: Literal['fit', 'crop'] = 'fit',
+        pad_color: str = "000000"
     ) -> Image.Image:
         """
         Resize an image with specified parameters.
@@ -144,6 +167,7 @@ class ImageService:
             height: Target height (optional)
             preserve_aspect: Whether to preserve aspect ratio
             mode: Resize mode - 'fit' (letterbox) or 'crop' (fill)
+            pad_color: Hex color for letterbox padding (default: black)
 
         Returns:
             Resized PIL Image
@@ -154,22 +178,60 @@ class ImageService:
 
         original_width, original_height = image.size
 
-        # Calculate target dimensions
-        if preserve_aspect:
-            target_width, target_height = self._calculate_aspect_preserving_size(
-                original_width, original_height, width, height
-            )
-        else:
-            target_width = width if width is not None else original_width
-            target_height = height if height is not None else original_height
-
-        # Apply resize based on mode
         if mode == 'fit':
-            # Fit mode: resize to fit within bounds, preserving aspect ratio
-            return image.resize((target_width, target_height), Image.Resampling.LANCZOS)
-        else:
-            # Crop mode: resize and crop to fill exact dimensions
-            return self._resize_and_crop(image, target_width, target_height)
+            if preserve_aspect:
+                # Calculate size that fits within bounds while preserving aspect
+                target_width, target_height = self._calculate_aspect_preserving_size(
+                    original_width, original_height, width, height
+                )
+                resized = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+                # If both dimensions specified, add letterbox padding
+                if width is not None and height is not None:
+                    # Parse padding color
+                    rgb = self._parse_hex_color(pad_color)
+
+                    # Create canvas matching image mode
+                    if image.mode == 'RGBA':
+                        canvas = Image.new('RGBA', (width, height), (*rgb, 255))
+                    elif image.mode == 'LA':
+                        # Grayscale with alpha - use luminance of RGB
+                        luminance = int(0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
+                        canvas = Image.new('LA', (width, height), (luminance, 255))
+                    elif image.mode == 'L':
+                        # Grayscale - use luminance of RGB
+                        luminance = int(0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2])
+                        canvas = Image.new('L', (width, height), luminance)
+                    else:
+                        # RGB or other modes
+                        canvas = Image.new('RGB', (width, height), rgb)
+
+                    # Center the resized image on the canvas
+                    x_offset = (width - target_width) // 2
+                    y_offset = (height - target_height) // 2
+                    canvas.paste(resized, (x_offset, y_offset))
+                    return canvas
+
+                return resized
+            else:
+                # Stretch to exact dimensions (no aspect preservation)
+                target_width = width if width is not None else original_width
+                target_height = height if height is not None else original_height
+                return image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+        else:  # mode == 'crop'
+            if preserve_aspect:
+                # Resize and crop to fill exact dimensions
+                return self._resize_and_crop(
+                    image,
+                    width if width is not None else original_width,
+                    height if height is not None else original_height
+                )
+            else:
+                # Same as fit when not preserving aspect
+                target_width = width if width is not None else original_width
+                target_height = height if height is not None else original_height
+                return image.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
     def _calculate_aspect_preserving_size(
         self,
@@ -260,6 +322,7 @@ class ImageService:
         height: Optional[int] = None,
         preserve_aspect: bool = True,
         mode: Literal['fit', 'crop'] = 'fit',
+        pad_color: str = "000000",
         apply_eink: bool = False,
         output_format: Optional[str] = None,
         saturation: float = 2.5,
@@ -284,6 +347,7 @@ class ImageService:
             height: Target height (optional)
             preserve_aspect: Whether to preserve aspect ratio
             mode: Resize mode - 'fit' or 'crop'
+            pad_color: Hex color for letterbox padding (default: black)
             apply_eink: Whether to apply Spectra-6 dithering
             output_format: Output format - 'jpeg', 'png', 'webp', 'bmp', 'gif' (optional, defaults to original)
             saturation: Saturation multiplier for E-Ink preprocessing (default 2.5)
@@ -313,7 +377,7 @@ class ImageService:
         # Resize first if parameters provided
         # This ensures preprocessing and dithering happen at final resolution
         if width is not None or height is not None:
-            image = self.resize_image(image, width, height, preserve_aspect, mode)
+            image = self.resize_image(image, width, height, preserve_aspect, mode, pad_color)
 
         # Apply E-Ink color mapping after resizing
         # Preprocessing (saturation/contrast) and dithering should be applied
