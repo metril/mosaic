@@ -235,7 +235,7 @@ class ImageService:
         height: Optional[int] = None,
         preserve_aspect: bool = True,
         mode: Literal['fit', 'crop'] = 'fit',
-        pad_color: str = "000000"
+        pad_color: str = "black"
     ) -> Image.Image:
         """
         Resize an image with specified parameters.
@@ -401,7 +401,7 @@ class ImageService:
         height: Optional[int] = None,
         preserve_aspect: bool = True,
         mode: Literal['fit', 'crop'] = 'fit',
-        pad_color: str = "000000",
+        pad_color: str = "black",
         apply_eink: bool = False,
         output_format: Optional[str] = None,
         saturation: float = 2.5,
