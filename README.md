@@ -120,6 +120,7 @@ Content-Length: <size in bytes>
 ETag: "<content hash>"
 Last-Modified: <RFC 7231 date>
 Cache-Control: no-cache, no-store, must-revalidate
+Vary: Accept
 ```
 
 **HEAD Requests:**
@@ -236,13 +237,30 @@ The application implements Floyd-Steinberg dithering to convert images to the 6-
 
 ### Environment Variables
 
-Configure via `.env` file:
+Configure via `.env` file (see `.env.example` for all options):
 
 ```bash
 # Base URL for the application (optional)
 # Leave empty for dynamic detection based on incoming requests
 BASE_URL=https://screensaver.azureolympos.com
+
+# Image directory (inside container)
+IMAGE_DIR=/www/images
+
+# Security limits
+MAX_PATH_DEPTH=10
+MAX_PATH_LENGTH=255
+
+# E-Ink processing defaults
+EINK_SATURATION=2.5
+EINK_CONTRAST=1.2
+EINK_BRIGHTNESS=1.1
+
+# Logging
+LOG_LEVEL=info
 ```
+
+**Dimension Limits:** Width and height parameters are capped at 8192px to prevent memory exhaustion.
 
 ### Docker Compose
 
