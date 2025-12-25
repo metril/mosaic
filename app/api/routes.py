@@ -10,6 +10,7 @@ import json
 import hashlib
 from email.utils import formatdate
 from io import BytesIO
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Literal
 from urllib.parse import unquote
@@ -23,9 +24,41 @@ from app.exceptions import PathSecurityError, NoImagesFoundError
 from app.utils.path_security import validate_folder_path, resolve_image_path
 
 
+# Configuration from environment variables
+THUMBNAIL_SIZE = int(os.environ.get('THUMBNAIL_SIZE', '200'))
+MAX_IMAGE_DIMENSION = int(os.environ.get('MAX_IMAGE_DIMENSION', '8192'))
+EINK_SATURATION = float(os.environ.get('EINK_SATURATION', '2.5'))
+EINK_CONTRAST = float(os.environ.get('EINK_CONTRAST', '1.2'))
+EINK_BRIGHTNESS = float(os.environ.get('EINK_BRIGHTNESS', '1.1'))
+EINK_SHARPEN = os.environ.get('EINK_SHARPEN', 'true').lower() == 'true'
+
+
 router = APIRouter()
 image_service = ImageService()
 templates = Jinja2Templates(directory="templates")
+
+
+def iter_buffer_with_cleanup(buffer: BytesIO, chunk_size: int = 65536):
+    """
+    Generator that yields buffer content in chunks and closes it when done.
+
+    Ensures proper resource cleanup for BytesIO buffers passed to StreamingResponse.
+
+    Args:
+        buffer: BytesIO buffer to read from
+        chunk_size: Size of chunks to yield (default 64KB)
+
+    Yields:
+        Bytes chunks from the buffer
+    """
+    try:
+        while True:
+            chunk = buffer.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+    finally:
+        buffer.close()
 
 @router.get("/favicon.ico")
 async def favicon():
@@ -37,7 +70,16 @@ async def favicon():
     )
 
 
-@router.get("/health")
+@router.get("/health", responses={
+    200: {
+        "description": "Health status with image count",
+        "content": {
+            "application/json": {
+                "example": {"status": "healthy", "image_count": 42, "image_directory": "/www/images"}
+            }
+        }
+    }
+})
 async def health_check():
     """
     Health check endpoint.
@@ -54,7 +96,22 @@ async def health_check():
     }
 
 
-@router.get("/browse")
+@router.get("/browse", responses={
+    200: {
+        "description": "Directory tree with folder statistics",
+        "content": {
+            "application/json": {
+                "example": {
+                    "name": "images",
+                    "type": "folder",
+                    "total_folders": 5,
+                    "total_files": 150,
+                    "children": []
+                }
+            }
+        }
+    }
+})
 async def browse_images(
     request: Request,
     format: Optional[Literal['json', 'html']] = Query(None, description="Output format - 'json' or 'html' (default)")
@@ -98,7 +155,11 @@ async def browse_images(
     )
 
 
-@router.get("/thumbnail/{image_path:path}")
+@router.get("/thumbnail/{image_path:path}", responses={
+    200: {"description": "Thumbnail image (JPEG)", "content": {"image/jpeg": {}}},
+    400: {"description": "Invalid image path", "content": {"application/json": {"example": {"error": "Invalid image path"}}}},
+    404: {"description": "Image not found", "content": {"application/json": {"example": {"error": "Image not found"}}}}
+})
 async def get_thumbnail(image_path: str):
     """
     Generate and serve a thumbnail for a specific image.
@@ -143,11 +204,11 @@ async def get_thumbnail(image_path: str):
         # Load and resize image in thread pool
         def process_thumbnail():
             image = image_service.load_image(full_path)
-            # Generate 200x200 thumbnail with crop mode
+            # Generate thumbnail with configurable size (crop mode for square)
             thumbnail = image_service.resize_image(
                 image,
-                width=200,
-                height=200,
+                width=THUMBNAIL_SIZE,
+                height=THUMBNAIL_SIZE,
                 preserve_aspect=True,
                 mode='crop'
             )
@@ -163,13 +224,13 @@ async def get_thumbnail(image_path: str):
 
         buffer = await asyncio.get_event_loop().run_in_executor(None, process_thumbnail)
 
-        # Get buffer size
-        buffer.seek(0, 2)
-        content_length = buffer.tell()
+        # Get buffer size (read all content, then reset)
+        content = buffer.getvalue()
+        content_length = len(content)
         buffer.seek(0)
 
         return StreamingResponse(
-            buffer,
+            iter_buffer_with_cleanup(buffer),
             media_type="image/jpeg",
             headers={
                 "Content-Length": str(content_length),
@@ -190,7 +251,26 @@ async def get_thumbnail(image_path: str):
         )
 
 
-@router.get("/metadata/{image_path:path}")
+@router.get("/metadata/{image_path:path}", responses={
+    200: {
+        "description": "Image metadata with optional EXIF data",
+        "content": {
+            "application/json": {
+                "example": {
+                    "name": "photo.jpg",
+                    "path": "landscape/photo.jpg",
+                    "size": 1024000,
+                    "width": 1920,
+                    "height": 1080,
+                    "format": "JPEG",
+                    "modified": "2024-01-15T10:30:00Z"
+                }
+            }
+        }
+    },
+    400: {"description": "Invalid image path"},
+    404: {"description": "Image not found"}
+})
 async def get_image_metadata(
     image_path: str,
     include_exif: bool = Query(False, description="Include EXIF data (default: false)")
@@ -240,21 +320,26 @@ async def get_image_metadata(
         )
 
 
-@router.api_route("/api/image/{image_path:path}", methods=["GET", "HEAD"])
+@router.api_route("/api/image/{image_path:path}", methods=["GET", "HEAD"], responses={
+    200: {"description": "Processed image", "content": {"image/*": {}}},
+    304: {"description": "Not Modified (conditional request)"},
+    400: {"description": "Invalid image path"},
+    404: {"description": "Image not found"}
+})
 async def serve_processed_image(
     request: Request,
     image_path: str,
-    width: Optional[int] = Query(None, description="Target width in pixels (max 8192)", ge=1, le=8192),
-    height: Optional[int] = Query(None, description="Target height in pixels (max 8192)", ge=1, le=8192),
+    width: Optional[int] = Query(None, description=f"Target width in pixels (max {MAX_IMAGE_DIMENSION})", ge=1, le=MAX_IMAGE_DIMENSION),
+    height: Optional[int] = Query(None, description=f"Target height in pixels (max {MAX_IMAGE_DIMENSION})", ge=1, le=MAX_IMAGE_DIMENSION),
     preserve_aspect: bool = Query(True, description="Preserve aspect ratio"),
     mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode"),
     pad_color: str = Query("black", description="Letterbox padding color (CSS: name, hex, rgb())"),
     eink: bool = Query(False, description="Apply E-Ink color mapping"),
     format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None),
-    saturation: float = Query(2.5, description="E-Ink saturation", ge=0.0, le=10.0),
-    contrast: float = Query(1.2, description="E-Ink contrast", ge=0.0, le=5.0),
-    brightness: float = Query(1.1, description="E-Ink brightness", ge=0.0, le=5.0),
-    sharpen: bool = Query(True, description="Apply sharpening"),
+    saturation: Optional[float] = Query(None, description=f"E-Ink saturation (default: {EINK_SATURATION})", ge=0.0, le=10.0),
+    contrast: Optional[float] = Query(None, description=f"E-Ink contrast (default: {EINK_CONTRAST})", ge=0.0, le=5.0),
+    brightness: Optional[float] = Query(None, description=f"E-Ink brightness (default: {EINK_BRIGHTNESS})", ge=0.0, le=5.0),
+    sharpen: Optional[bool] = Query(None, description=f"Apply sharpening (default: {EINK_SHARPEN})"),
 ):
     """
     Serve a specific image with optional processing (resize, E-Ink, format conversion).
@@ -294,9 +379,13 @@ async def serve_processed_image(
                 )
 
             # Apply E-Ink processing if requested
-            # apply_spectra_6 handles all preprocessing: sharpen, saturation, contrast, brightness, palette mapping
+            # Use ENV defaults if query params not provided
             if eink:
-                img = apply_spectra_6(img, saturation, contrast, brightness, sharpen)
+                actual_saturation = saturation if saturation is not None else EINK_SATURATION
+                actual_contrast = contrast if contrast is not None else EINK_CONTRAST
+                actual_brightness = brightness if brightness is not None else EINK_BRIGHTNESS
+                actual_sharpen = sharpen if sharpen is not None else EINK_SHARPEN
+                img = apply_spectra_6(img, actual_saturation, actual_contrast, actual_brightness, actual_sharpen)
 
             # Determine output format
             output_format = format if format else full_path.suffix[1:].lower()
@@ -354,12 +443,13 @@ async def serve_processed_image(
             "Vary": "Accept",  # Response varies based on Accept header
         }
 
-        # HEAD request - return headers only, no body
+        # HEAD request - return headers only, no body (close buffer)
         if request.method == "HEAD":
+            buffer.close()
             return Response(status_code=200, headers=headers, media_type=content_type)
 
         return StreamingResponse(
-            buffer,
+            iter_buffer_with_cleanup(buffer),
             media_type=content_type,
             headers=headers
         )
@@ -376,22 +466,27 @@ async def serve_processed_image(
         )
 
 
-@router.api_route("/{folder_path:path}", methods=["GET", "HEAD"])
+@router.api_route("/{folder_path:path}", methods=["GET", "HEAD"], responses={
+    200: {"description": "Random image or web interface"},
+    304: {"description": "Not Modified (conditional request)"},
+    400: {"description": "Invalid folder path"},
+    404: {"description": "No images found"}
+})
 async def root(
     request: Request,
     folder_path: str,
     api: Optional[str] = Query(None, description="API mode - 'random-image' for image endpoint"),
-    width: Optional[int] = Query(None, description="Target width in pixels (max 8192)", ge=1, le=8192),
-    height: Optional[int] = Query(None, description="Target height in pixels (max 8192)", ge=1, le=8192),
+    width: Optional[int] = Query(None, description=f"Target width in pixels (max {MAX_IMAGE_DIMENSION})", ge=1, le=MAX_IMAGE_DIMENSION),
+    height: Optional[int] = Query(None, description=f"Target height in pixels (max {MAX_IMAGE_DIMENSION})", ge=1, le=MAX_IMAGE_DIMENSION),
     preserve_aspect: bool = Query(True, description="Preserve aspect ratio when resizing"),
     mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode - 'fit' or 'crop'"),
     pad_color: str = Query("black", description="Letterbox padding color (CSS: name, hex, rgb())"),
     eink: bool = Query(False, description="Apply Spectra-6 E-Ink color mapping"),
     format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None, description="Output format (defaults to original format)"),
-    saturation: float = Query(2.5, description="E-Ink saturation multiplier (default: 2.5)", ge=0.0, le=10.0),
-    contrast: float = Query(1.2, description="E-Ink contrast multiplier (default: 1.2)", ge=0.0, le=5.0),
-    brightness: float = Query(1.1, description="E-Ink brightness multiplier (default: 1.1)", ge=0.0, le=5.0),
-    sharpen: bool = Query(True, description="Apply sharpening for E-Ink preprocessing (default: true)"),
+    saturation: Optional[float] = Query(None, description=f"E-Ink saturation multiplier (default: {EINK_SATURATION})", ge=0.0, le=10.0),
+    contrast: Optional[float] = Query(None, description=f"E-Ink contrast multiplier (default: {EINK_CONTRAST})", ge=0.0, le=5.0),
+    brightness: Optional[float] = Query(None, description=f"E-Ink brightness multiplier (default: {EINK_BRIGHTNESS})", ge=0.0, le=5.0),
+    sharpen: Optional[bool] = Query(None, description=f"Apply sharpening for E-Ink preprocessing (default: {EINK_SHARPEN})"),
     recursive: bool = Query(False, description="Recursively search subfolders (default: false)"),
     folders: Optional[str] = Query(None, description="Comma-separated list of folder paths (alternative to path)"),
     also: Optional[str] = Query(None, description="Comma-separated list of additional folders (use with path)")
@@ -406,16 +501,16 @@ async def root(
 
     Query Parameters:
     - api: Set to 'random-image' for API mode
-    - width: Target width for resizing (optional)
-    - height: Target height for resizing (optional)
+    - width: Target width for resizing (optional, max from MAX_IMAGE_DIMENSION env)
+    - height: Target height for resizing (optional, max from MAX_IMAGE_DIMENSION env)
     - preserve_aspect: Whether to preserve aspect ratio (default: true)
     - mode: Resize mode - 'fit' (letterbox) or 'crop' (fill, default: fit)
     - eink: Apply Spectra-6 dithering for E-Ink displays (default: false)
     - format: Output format - 'jpeg', 'png', 'webp', 'bmp', 'gif' (defaults to original)
-    - saturation: E-Ink saturation multiplier 0.0-10.0 (default: 2.5)
-    - contrast: E-Ink contrast multiplier 0.0-5.0 (default: 1.2)
-    - brightness: E-Ink brightness multiplier 0.0-5.0 (default: 1.1)
-    - sharpen: Apply sharpening for E-Ink (default: true)
+    - saturation: E-Ink saturation multiplier 0.0-10.0 (default from EINK_SATURATION env)
+    - contrast: E-Ink contrast multiplier 0.0-5.0 (default from EINK_CONTRAST env)
+    - brightness: E-Ink brightness multiplier 0.0-5.0 (default from EINK_BRIGHTNESS env)
+    - sharpen: Apply sharpening for E-Ink (default from EINK_SHARPEN env)
     - recursive: Recursively search subfolders (default: false)
     - folders: Comma-separated folder paths (e.g., folders=earth,space)
     - also: Additional folders when using path (e.g., /earth?also=space,family)
@@ -451,6 +546,12 @@ async def root(
     # API mode - return random image
     if api == "random-image":
         try:
+            # Use ENV defaults for E-Ink params if not provided
+            actual_saturation = saturation if saturation is not None else EINK_SATURATION
+            actual_contrast = contrast if contrast is not None else EINK_CONTRAST
+            actual_brightness = brightness if brightness is not None else EINK_BRIGHTNESS
+            actual_sharpen = sharpen if sharpen is not None else EINK_SHARPEN
+
             # Run CPU-intensive image processing in thread pool to avoid blocking event loop
             result = await asyncio.get_event_loop().run_in_executor(
                 None,  # Use default ThreadPoolExecutor
@@ -462,10 +563,10 @@ async def root(
                 pad_color,
                 eink,
                 format,
-                saturation,
-                contrast,
-                brightness,
-                sharpen,
+                actual_saturation,
+                actual_contrast,
+                actual_brightness,
+                actual_sharpen,
                 final_folder_paths,
                 recursive
             )
@@ -500,6 +601,7 @@ async def root(
         # Check for conditional request (304 Not Modified)
         if_none_match = request.headers.get("If-None-Match")
         if if_none_match and if_none_match.strip('"') == etag:
+            buffer.close()
             return Response(status_code=304)
 
         headers = {
@@ -514,12 +616,13 @@ async def root(
             "Vary": "Accept",  # Response varies based on Accept header
         }
 
-        # HEAD request - return headers only, no body
+        # HEAD request - return headers only, no body (close buffer)
         if request.method == "HEAD":
+            buffer.close()
             return Response(status_code=200, headers=headers, media_type=content_type)
 
         return StreamingResponse(
-            buffer,
+            iter_buffer_with_cleanup(buffer),
             media_type=content_type,
             headers=headers
         )
