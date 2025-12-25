@@ -312,6 +312,11 @@ async def serve_processed_image(
             # Save to buffer
             buffer = BytesIO()
             img.save(buffer, format=output_format.upper(), quality=95, optimize=True)
+
+            # Get buffer content for ETag and length (single read)
+            content = buffer.getvalue()
+            content_length = len(content)
+            etag = hashlib.md5(content).hexdigest()
             buffer.seek(0)
 
             content_type = f"image/{output_format}"
@@ -320,20 +325,11 @@ async def serve_processed_image(
             # Get file mtime for Last-Modified header
             mtime = full_path.stat().st_mtime
 
-            return buffer, content_type, filename_out, mtime
+            return buffer, content_type, filename_out, mtime, content_length, etag
 
-        buffer, content_type, filename_out, mtime = await asyncio.get_event_loop().run_in_executor(
+        buffer, content_type, filename_out, mtime, content_length, etag = await asyncio.get_event_loop().run_in_executor(
             None, process
         )
-
-        # Get content length
-        buffer.seek(0, 2)
-        content_length = buffer.tell()
-        buffer.seek(0)
-
-        # Generate ETag from content hash
-        etag = hashlib.md5(buffer.read()).hexdigest()
-        buffer.seek(0)
 
         # Build Content-Location URI for this specific image
         # RFC 7231: indicates a URI that can be used as an identifier for this resource
@@ -355,6 +351,7 @@ async def serve_processed_image(
             "Content-Location": content_location,
             "ETag": f'"{etag}"',
             "Last-Modified": last_modified,
+            "Vary": "Accept",  # Response varies based on Accept header
         }
 
         # HEAD request - return headers only, no body
@@ -487,13 +484,10 @@ async def root(
 
         buffer, content_type, filename, relative_path, mtime = result
 
-        # Get buffer size for Content-Length header
-        buffer.seek(0, 2)  # Seek to end
-        content_length = buffer.tell()
-        buffer.seek(0)  # Seek back to beginning
-
-        # Generate ETag from content hash
-        etag = hashlib.md5(buffer.read()).hexdigest()
+        # Get buffer content for ETag and length (single read, more efficient)
+        content = buffer.getvalue()
+        content_length = len(content)
+        etag = hashlib.md5(content).hexdigest()
         buffer.seek(0)
 
         # Build Content-Location URI for re-requesting this specific image
@@ -517,6 +511,7 @@ async def root(
             "Content-Location": content_location,
             "ETag": f'"{etag}"',
             "Last-Modified": last_modified,
+            "Vary": "Accept",  # Response varies based on Accept header
         }
 
         # HEAD request - return headers only, no body
