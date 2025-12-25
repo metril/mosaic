@@ -292,7 +292,7 @@ services:
 
 **Features:**
 - **Health Check**: Built-in Docker HEALTHCHECK monitors `/health` endpoint every 30 seconds
-- **GZip Compression**: Automatic response compression (60-80% reduction on JSON/HTML)
+- **Smart Compression**: GZip/Brotli/ZStd for JSON/HTML only (images excluded automatically)
 - **Resource Limits**: Memory capped at 2GB, CPU limited to 2 cores
 - **Log Rotation**: Logs capped at 100MB with 3 file rotation
 - **Non-root User**: Container runs as unprivileged `appuser` (UID 1000)

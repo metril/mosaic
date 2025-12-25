@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.gzip import GZipMiddleware
+from starlette_compress import CompressMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
 from pathlib import Path
@@ -81,8 +81,8 @@ app = FastAPI(
 # Add security headers first (outermost layer)
 app.add_middleware(SecurityHeadersMiddleware)
 
-# Add GZip compression (wraps all responses)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+# Add compression (only compresses text-based content types, not images)
+app.add_middleware(CompressMiddleware, minimum_size=1000)
 
 # Add CORS middleware (allow_credentials=False when allow_origins=["*"])
 app.add_middleware(
