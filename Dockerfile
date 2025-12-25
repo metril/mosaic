@@ -19,12 +19,12 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY app/ ./app/
-COPY templates/ ./templates/
-
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser
+
+# Copy application code and set ownership
+COPY --chown=appuser:appuser app/ ./app/
+COPY --chown=appuser:appuser templates/ ./templates/
 
 # Create directory for images (will be mounted as volume)
 RUN mkdir -p /www/images && chown appuser:appuser /www/images
