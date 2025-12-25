@@ -20,6 +20,7 @@ from starlette.requests import Request
 
 from app.services.image_service import ImageService
 from app.exceptions import PathSecurityError, NoImagesFoundError
+from app.utils.path_security import validate_folder_path, resolve_image_path
 
 
 router = APIRouter()
@@ -120,21 +121,8 @@ async def get_thumbnail(image_path: str):
         # Decode URL-encoded characters (handles Cyrillic, Chinese, emoji, etc.)
         image_path = unquote(image_path)
 
-        # Validate the path using security checks
-        from app.utils.path_security import validate_folder_path
-
-        # Split into folder and filename
-        path_parts = Path(image_path).parts
-        if len(path_parts) > 1:
-            # Has folder component
-            folder_path = str(Path(*path_parts[:-1]))
-            filename = path_parts[-1]
-            validated_folder = validate_folder_path(folder_path, image_service.image_dir)
-            full_path = validated_folder / filename
-        else:
-            # Just filename in root
-            filename = path_parts[0]
-            full_path = image_service.image_dir / filename
+        # Validate path using centralized security function
+        full_path = resolve_image_path(image_path, image_service.image_dir)
 
         # Security check: ensure file exists and is not a symlink
         if not full_path.exists() or full_path.is_symlink():
@@ -222,19 +210,8 @@ async def get_image_metadata(
         # Decode URL-encoded characters (handles Cyrillic, Chinese, emoji, etc.)
         image_path = unquote(image_path)
 
-        # Validate the path using security checks
-        from app.utils.path_security import validate_folder_path
-
-        # Split into folder and filename
-        path_parts = Path(image_path).parts
-        if len(path_parts) > 1:
-            folder_path = str(Path(*path_parts[:-1]))
-            filename = path_parts[-1]
-            validated_folder = validate_folder_path(folder_path, image_service.image_dir)
-            full_path = validated_folder / filename
-        else:
-            filename = path_parts[0]
-            full_path = image_service.image_dir / filename
+        # Validate path using centralized security function
+        full_path = resolve_image_path(image_path, image_service.image_dir)
 
         # Check if file exists
         if not full_path.exists() or not full_path.is_file():
@@ -267,8 +244,8 @@ async def get_image_metadata(
 async def serve_processed_image(
     request: Request,
     image_path: str,
-    width: Optional[int] = Query(None, description="Target width in pixels", ge=1),
-    height: Optional[int] = Query(None, description="Target height in pixels", ge=1),
+    width: Optional[int] = Query(None, description="Target width in pixels (max 8192)", ge=1, le=8192),
+    height: Optional[int] = Query(None, description="Target height in pixels (max 8192)", ge=1, le=8192),
     preserve_aspect: bool = Query(True, description="Preserve aspect ratio"),
     mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode"),
     pad_color: str = Query("black", description="Letterbox padding color (CSS: name, hex, rgb())"),
@@ -294,18 +271,8 @@ async def serve_processed_image(
         # Decode URL-encoded path
         image_path = unquote(image_path)
 
-        # Validate path security
-        from app.utils.path_security import validate_folder_path
-
-        path_parts = Path(image_path).parts
-        if len(path_parts) > 1:
-            folder_path = str(Path(*path_parts[:-1]))
-            filename = path_parts[-1]
-            validated_folder = validate_folder_path(folder_path, image_service.image_dir)
-            full_path = validated_folder / filename
-        else:
-            filename = path_parts[0]
-            full_path = image_service.image_dir / filename
+        # Validate path using centralized security function
+        full_path = resolve_image_path(image_path, image_service.image_dir)
 
         # Check file exists
         if not full_path.exists() or not full_path.is_file():
@@ -417,8 +384,8 @@ async def root(
     request: Request,
     folder_path: str,
     api: Optional[str] = Query(None, description="API mode - 'random-image' for image endpoint"),
-    width: Optional[int] = Query(None, description="Target width in pixels", ge=1),
-    height: Optional[int] = Query(None, description="Target height in pixels", ge=1),
+    width: Optional[int] = Query(None, description="Target width in pixels (max 8192)", ge=1, le=8192),
+    height: Optional[int] = Query(None, description="Target height in pixels (max 8192)", ge=1, le=8192),
     preserve_aspect: bool = Query(True, description="Preserve aspect ratio when resizing"),
     mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode - 'fit' or 'crop'"),
     pad_color: str = Query("black", description="Letterbox padding color (CSS: name, hex, rgb())"),

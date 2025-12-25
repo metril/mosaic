@@ -127,3 +127,34 @@ def validate_folder_paths(folder_paths: list[str], base_dir: Path) -> list[Path]
         validated_path = validate_folder_path(folder_path, base_dir)
         validated_paths.append(validated_path)
     return validated_paths
+
+
+def resolve_image_path(image_path: str, image_dir: Path) -> Path:
+    """
+    Resolve and validate an image path with security checks.
+
+    Handles both folder/filename and root-level filename patterns.
+    This consolidates the duplicate path resolution logic from multiple endpoints.
+
+    Args:
+        image_path: User-provided relative image path (e.g., "earth/photo.jpg" or "photo.jpg")
+        image_dir: Base image directory
+
+    Returns:
+        Validated absolute Path to the image file
+
+    Raises:
+        PathSecurityError: If path fails validation (traversal, invalid chars, etc.)
+    """
+    path_parts = Path(image_path).parts
+
+    if len(path_parts) > 1:
+        # Has folder component - validate the folder path
+        folder_path = str(Path(*path_parts[:-1]))
+        filename = path_parts[-1]
+        validated_folder = validate_folder_path(folder_path, image_dir)
+        return validated_folder / filename
+    else:
+        # Just filename in root directory
+        filename = path_parts[0] if path_parts else image_path
+        return image_dir / filename
