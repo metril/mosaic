@@ -23,8 +23,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY templates/ ./templates/
 
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser
+
 # Create directory for images (will be mounted as volume)
-RUN mkdir -p /www/images
+RUN mkdir -p /www/images && chown appuser:appuser /www/images
+
+# Switch to non-root user
+USER appuser
 
 # Expose port 80
 EXPOSE 80
