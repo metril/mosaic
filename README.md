@@ -10,6 +10,7 @@ A modern image screensaver service built with Python/FastAPI, featuring image pr
 - **Web Interface**: Auto-rotating image slideshow (30-second intervals)
 - **Docker-based**: Easy deployment with Docker Compose
 - **Modern Stack**: Python 3.11 + FastAPI + Pillow
+- **Security Hardened**: Non-root container, security headers, path traversal protection
 
 ## Tech Stack
 
@@ -294,6 +295,8 @@ services:
 - **GZip Compression**: Automatic response compression (60-80% reduction on JSON/HTML)
 - **Resource Limits**: Memory capped at 2GB, CPU limited to 2 cores
 - **Log Rotation**: Logs capped at 100MB with 3 file rotation
+- **Non-root User**: Container runs as unprivileged `appuser` (UID 1000)
+- **Security Headers**: X-Content-Type-Options, X-Frame-Options, X-XSS-Protection
 
 **Customization:**
 - Change port mapping: `ports: - "8080:80"` (host:container)
@@ -317,7 +320,9 @@ screensaver/
 │   │   └── image_service.py    # Image processing logic
 │   └── utils/
 │       ├── __init__.py
-│       └── color_mapping.py    # Spectra-6 dithering
+│       ├── color_mapping.py    # Spectra-6 dithering
+│       ├── path_security.py    # Path validation & traversal protection
+│       └── logging.py          # Structured logging configuration
 ├── templates/
 │   └── index.html              # Web interface template
 ├── static/                     # Static files (if any)
@@ -382,6 +387,34 @@ docker compose down
 # Rebuild and restart
 docker compose build && docker compose up -d
 ```
+
+## Security
+
+The application implements multiple layers of security:
+
+### Path Security
+- **Path Traversal Protection**: Blocks `..`, absolute paths, and null bytes
+- **Symlink Detection**: Rejects symbolic links to prevent file system escapes
+- **Filename Validation**: Blocks hidden files (dotfiles) and invalid characters
+- **Depth Limiting**: Configurable maximum path depth (default: 10 levels)
+- **Length Limiting**: Configurable maximum path length (default: 255 characters)
+
+### HTTP Security Headers
+All responses include security headers:
+- `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
+- `X-Frame-Options: DENY` - Prevents clickjacking
+- `X-XSS-Protection: 1; mode=block` - XSS protection for legacy browsers
+
+### Container Security
+- **Non-root User**: Application runs as `appuser` (UID 1000), not root
+- **Read-only Volumes**: Image directory mounted as read-only (`:ro`)
+- **Resource Limits**: Memory and CPU constraints prevent resource exhaustion
+- **No Privileged Mode**: Container runs with minimal capabilities
+
+### Input Validation
+- **Dimension Limits**: Width/height capped at 8192px to prevent memory exhaustion
+- **Image Validation**: Verifies image dimensions are non-zero before processing
+- **CORS Configuration**: Properly configured without credentials for wildcard origins
 
 ## Performance Considerations
 
