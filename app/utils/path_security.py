@@ -100,10 +100,11 @@ def validate_folder_path(folder_path: str, base_dir: Path) -> Path:
 
     # Check for symlinks in the path
     # We need to check each component of the path for symlinks
+    # Note: is_symlink() works even for broken symlinks, no need for exists() check
     current_path = base_dir
     for part in path_parts:
         current_path = current_path / part
-        if current_path.exists() and current_path.is_symlink():
+        if current_path.is_symlink():
             raise SymlinkError("Symlinks are not allowed in folder paths")
 
     return resolved_path
@@ -130,6 +131,35 @@ def validate_folder_paths(folder_paths: list[str], base_dir: Path) -> list[Path]
     return validated_paths
 
 
+def _validate_filename(filename: str) -> None:
+    """
+    Validate a filename for security issues.
+
+    Args:
+        filename: The filename to validate
+
+    Raises:
+        InvalidPathError: If filename fails validation
+    """
+    if not filename:
+        raise InvalidPathError("Empty filename")
+
+    if '\0' in filename:
+        raise InvalidPathError("Filename contains null bytes")
+
+    if filename.startswith('.'):
+        raise InvalidPathError("Hidden files (starting with .) are not allowed")
+
+    if '..' in filename:
+        raise PathTraversalError("Path traversal not allowed in filename")
+
+    # Extract name without extension for pattern check
+    # Allow dots in filename (e.g., "photo.backup.jpg") but validate the base pattern
+    # We only check that the filename doesn't contain path separators or dangerous chars
+    if '/' in filename or '\\' in filename:
+        raise InvalidPathError("Filename contains path separators")
+
+
 def resolve_image_path(image_path: str, image_dir: Path) -> Path:
     """
     Resolve and validate an image path with security checks.
@@ -153,9 +183,11 @@ def resolve_image_path(image_path: str, image_dir: Path) -> Path:
         # Has folder component - validate the folder path
         folder_path = str(Path(*path_parts[:-1]))
         filename = path_parts[-1]
+        _validate_filename(filename)
         validated_folder = validate_folder_path(folder_path, image_dir)
         return validated_folder / filename
     else:
-        # Just filename in root directory
+        # Just filename in root directory - still validate the filename
         filename = path_parts[0] if path_parts else image_path
+        _validate_filename(filename)
         return image_dir / filename

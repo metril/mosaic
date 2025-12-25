@@ -57,17 +57,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware (optional, for web API access)
+# Middleware is applied in REVERSE order of addition
+# Add GZip first so it's the outermost layer (compresses all responses)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Add CORS middleware (allow_credentials=False when allow_origins=["*"])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Add GZip compression for responses (60-80% reduction on JSON/HTML)
-app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Mount static files directory for images
 if images_path.exists():

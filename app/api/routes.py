@@ -21,6 +21,7 @@ from starlette.requests import Request
 from app.services.image_service import ImageService
 from app.exceptions import PathSecurityError, NoImagesFoundError
 from app.utils.path_security import resolve_image_path
+from app.utils.logging import logger
 
 
 # Configuration from environment variables
@@ -313,9 +314,10 @@ async def get_image_metadata(
             content={"error": "Invalid image path"}
         )
     except Exception as e:
+        logger.error(f"Failed to extract metadata for {image_path}: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"error": f"Failed to extract metadata: {str(e)}"}
+            content={"error": "Failed to extract metadata"}
         )
 
 
@@ -358,8 +360,8 @@ async def serve_processed_image(
         # Validate path using centralized security function
         full_path = resolve_image_path(image_path, image_service.image_dir)
 
-        # Check file exists
-        if not full_path.exists() or not full_path.is_file():
+        # Check file exists and is not a symlink
+        if not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
             return JSONResponse(
                 status_code=404,
                 content={"error": "Image not found"}
@@ -459,9 +461,10 @@ async def serve_processed_image(
             content={"error": "Invalid image path"}
         )
     except Exception as e:
+        logger.error(f"Failed to process image {image_path}: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"error": f"Failed to process image: {str(e)}"}
+            content={"error": "Failed to process image"}
         )
 
 
