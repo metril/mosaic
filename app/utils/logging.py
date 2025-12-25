@@ -26,18 +26,22 @@ def setup_logging(name: str = 'screensaver') -> logging.Logger:
     log_level_str = os.environ.get('LOG_LEVEL', 'INFO').upper()
 
     # Map string to logging level, default to INFO if invalid
-    log_level = getattr(logging, log_level_str, logging.INFO)
+    log_level = getattr(logging, log_level_str, None)
+    if log_level is None:
+        # Invalid log level - warn and use INFO
+        log_level = logging.INFO
+        print(f"Warning: Invalid LOG_LEVEL '{log_level_str}', using INFO", file=sys.stderr)
 
-    # Configure root logger
+    # Configure root logger (force=True ensures config applies even if called multiple times)
     logging.basicConfig(
         level=log_level,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler(sys.stdout)]
+        handlers=[logging.StreamHandler(sys.stdout)],
+        force=True
     )
 
     # Get logger for this application
     logger = logging.getLogger(name)
-    logger.setLevel(log_level)
 
     return logger
 

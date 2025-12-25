@@ -10,12 +10,27 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.gzip import GZipMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import os
 from pathlib import Path
 
 from app.api.routes import router
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        # Prevent MIME type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+        # Enable XSS protection in older browsers
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
 
 
 # Image directory (used in lifespan and static mount)
@@ -28,25 +43,30 @@ async def lifespan(app: FastAPI):
     Application lifespan context manager.
     Handles startup and shutdown events (modern FastAPI pattern).
     """
-    # Startup
-    logger.info("=" * 60)
-    logger.info("Screensaver Application Starting")
-    logger.info("=" * 60)
-    logger.info(f"Image Directory: {images_path}")
-    logger.info(f"Images Exist: {images_path.exists()}")
+    try:
+        # Startup
+        logger.info("=" * 60)
+        logger.info("Screensaver Application Starting")
+        logger.info("=" * 60)
+        logger.info(f"Image Directory: {images_path}")
+        logger.info(f"Images Exist: {images_path.exists()}")
 
-    if images_path.exists():
-        image_count = len(list(images_path.glob("*")))
-        logger.info(f"Total Files: {image_count}")
+        if images_path.exists():
+            image_count = len(list(images_path.glob("*")))
+            logger.info(f"Total Files: {image_count}")
 
-    base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
-    logger.info(f"Base URL: {base_url}")
-    logger.info("=" * 60)
+        base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
+        logger.info(f"Base URL: {base_url}")
+        logger.info("=" * 60)
 
-    yield  # Application runs here
+        yield  # Application runs here
 
-    # Shutdown
-    logger.info("Screensaver Application Shutting Down")
+    except Exception as e:
+        logger.error(f"Lifespan error: {e}", exc_info=True)
+        raise
+    finally:
+        # Shutdown
+        logger.info("Screensaver Application Shutting Down")
 
 
 # Create FastAPI application with lifespan
@@ -58,7 +78,10 @@ app = FastAPI(
 )
 
 # Middleware is applied in REVERSE order of addition
-# Add GZip first so it's the outermost layer (compresses all responses)
+# Add security headers first (outermost layer)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Add GZip compression (wraps all responses)
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Add CORS middleware (allow_credentials=False when allow_origins=["*"])
