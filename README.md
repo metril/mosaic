@@ -77,7 +77,15 @@ Returns a random image with optional processing.
 | `height` | integer | - | Target height in pixels |
 | `preserve_aspect` | boolean | `true` | Preserve aspect ratio when resizing |
 | `mode` | string | `fit` | Resize mode: `fit` (letterbox) or `crop` (fill) |
+| `pad_color` | string | `black` | Letterbox padding color (CSS: name, hex, rgb()) |
 | `eink` | boolean | `false` | Apply Spectra-6 color mapping for E-Ink displays |
+| `format` | string | - | Output format: `jpeg`, `png`, `webp`, `bmp`, `gif` |
+| `saturation` | float | `2.5` | E-Ink saturation multiplier (0.0-10.0) |
+| `contrast` | float | `1.2` | E-Ink contrast multiplier (0.0-5.0) |
+| `brightness` | float | `1.1` | E-Ink brightness multiplier (0.0-5.0) |
+| `sharpen` | boolean | `true` | Apply sharpening for E-Ink |
+| `recursive` | boolean | `false` | Recursively search subfolders |
+| `folders` | string | - | Comma-separated folder paths (alternative to path)
 
 **Examples:**
 
@@ -107,9 +115,47 @@ curl "http://localhost/?api=random-image&width=800&height=600&eink=true" -o imag
 ```
 Content-Type: image/jpeg | image/png | image/bmp | image/gif | image/webp | image/tiff
 Content-Disposition: inline; filename="<filename>"
+Content-Location: /api/image/<path>
+Content-Length: <size in bytes>
+ETag: "<content hash>"
+Last-Modified: <RFC 7231 date>
 Cache-Control: no-cache, no-store, must-revalidate
-Pragma: no-cache
-Expires: 0
+```
+
+**HEAD Requests:**
+
+Both endpoints support HEAD method for metadata-only requests (no body).
+
+**Conditional Requests (304 Not Modified):**
+
+Send `If-None-Match: "<etag>"` header to check if content changed:
+```bash
+# First request - get ETag
+curl -I "http://localhost/?api=random-image" | grep ETag
+# ETag: "abc123..."
+
+# Subsequent request - returns 304 if unchanged
+curl -H 'If-None-Match: "abc123..."' "http://localhost/api/image/photo.jpg"
+```
+
+### Direct Image Access
+
+**GET /api/image/{path}**
+
+Serves a specific image with optional processing. Supports HEAD requests.
+
+**Path Parameter:**
+- `path`: Relative path to image from image directory
+
+**Query Parameters:** Same as Random Image API
+
+**Example:**
+```bash
+# Get a specific image
+curl "http://localhost/api/image/photos/sunset.jpg"
+
+# With processing
+curl "http://localhost/api/image/photos/sunset.jpg?width=800&height=600&eink=true"
 ```
 
 ### Health Check
@@ -133,13 +179,29 @@ Returns application health status and image count.
 
 #### Fit Mode (default)
 - Resizes image to fit within specified dimensions
-- Preserves aspect ratio
-- May result in smaller dimensions than specified
+- Preserves aspect ratio by default
+- When both width and height specified with `preserve_aspect=true`: adds letterbox padding
+- Padding color configurable via `pad_color` parameter (default: black)
 
 #### Crop Mode
 - Resizes and crops image to exact dimensions
 - Centers the crop area
 - May cut off parts of the image
+
+### Padding Color Formats
+
+The `pad_color` parameter accepts CSS-style color values for letterbox padding:
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| Named colors | `black`, `white`, `coral` | ~40 CSS color names |
+| Hex 6-digit | `ff0000` or `#ff0000` | Full RGB hex |
+| Hex 3-digit | `f00` or `#f00` | Shorthand (expands to `ff0000`) |
+| RGB function | `rgb(255,0,0)` | Decimal RGB values 0-255 |
+| RGBA function | `rgba(255,0,0,128)` | Alpha value ignored |
+
+**Supported Named Colors:**
+`black`, `white`, `red`, `green`, `blue`, `yellow`, `cyan`, `magenta`, `gray`/`grey`, `navy`, `maroon`, `olive`, `purple`, `teal`, `silver`, `lime`, `aqua`, `fuchsia`, `orange`, `pink`, `brown`, `coral`, `gold`, `indigo`, `ivory`, `khaki`, `lavender`, `beige`, `tan`, `crimson`, `salmon`, `tomato`, `skyblue`, `steelblue`, `slategray`/`slategrey`, `darkgray`/`darkgrey`, `lightgray`/`lightgrey`, `darkblue`, `darkgreen`, `darkred`
 
 ### Spectra-6 E-Ink Color Mapping
 
