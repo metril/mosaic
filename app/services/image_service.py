@@ -25,6 +25,9 @@ SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp', '.tiff', 
 # Image directory (configurable via environment variable)
 IMAGE_DIR = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 
+# Pre-compiled regex for CSS rgb()/rgba() color parsing (avoids recompilation on each call)
+_RGB_PATTERN = re.compile(r'rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)')
+
 # CSS named colors (basic + extended)
 CSS_COLORS = {
     # Basic colors
@@ -217,8 +220,8 @@ class ImageService:
                 int(color[2] * 2, 16)
             )
 
-        # Try rgb() or rgba() function
-        rgb_match = re.match(r'rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)', color)
+        # Try rgb() or rgba() function (uses pre-compiled pattern)
+        rgb_match = _RGB_PATTERN.match(color)
         if rgb_match:
             r = min(255, max(0, int(rgb_match.group(1))))
             g = min(255, max(0, int(rgb_match.group(2))))
@@ -561,7 +564,7 @@ class ImageService:
                 if isinstance(value, bytes):
                     try:
                         value = value.decode('utf-8', errors='ignore')
-                    except:
+                    except (UnicodeDecodeError, AttributeError, TypeError):
                         value = str(value)
 
                 # Handle GPS info separately

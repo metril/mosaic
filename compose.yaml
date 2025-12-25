@@ -18,3 +18,13 @@ services:
       - .env
     environment:
       - BASE_URL=${BASE_URL:-}
+    # Resource limits for stability
+    mem_limit: 2g
+    mem_reservation: 1g
+    cpus: 2
+    # Log rotation to prevent disk fill
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"

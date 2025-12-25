@@ -10,18 +10,17 @@ import json
 import hashlib
 from email.utils import formatdate
 from io import BytesIO
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional, Literal
 from urllib.parse import unquote
 from fastapi import APIRouter, Query, HTTPException, Path as PathParam
-from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, FileResponse, Response
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from app.services.image_service import ImageService
 from app.exceptions import PathSecurityError, NoImagesFoundError
-from app.utils.path_security import validate_folder_path, resolve_image_path
+from app.utils.path_security import resolve_image_path
 
 
 # Configuration from environment variables

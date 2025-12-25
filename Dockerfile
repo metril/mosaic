@@ -4,12 +4,13 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for Pillow
+# Install system dependencies for Pillow and curl (for healthcheck)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     libjpeg-dev \
     zlib1g-dev \
     libpng-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -30,6 +31,10 @@ EXPOSE 80
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+
+# Health check - verify application is responding
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost/health || exit 1
 
 # Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]

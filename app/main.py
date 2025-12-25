@@ -4,10 +4,12 @@ Screensaver Application - FastAPI Main Entry Point
 A modern image screensaver service with resizing and E-Ink color mapping capabilities.
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.gzip import GZipMiddleware
 import os
 from pathlib import Path
 
@@ -16,11 +18,43 @@ from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException
 
 
-# Create FastAPI application
+# Image directory (used in lifespan and static mount)
+images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan context manager.
+    Handles startup and shutdown events (modern FastAPI pattern).
+    """
+    # Startup
+    logger.info("=" * 60)
+    logger.info("Screensaver Application Starting")
+    logger.info("=" * 60)
+    logger.info(f"Image Directory: {images_path}")
+    logger.info(f"Images Exist: {images_path.exists()}")
+
+    if images_path.exists():
+        image_count = len(list(images_path.glob("*")))
+        logger.info(f"Total Files: {image_count}")
+
+    base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
+    logger.info(f"Base URL: {base_url}")
+    logger.info("=" * 60)
+
+    yield  # Application runs here
+
+    # Shutdown
+    logger.info("Screensaver Application Shutting Down")
+
+
+# Create FastAPI application with lifespan
 app = FastAPI(
     title="Screensaver API",
     description="Modern screensaver service with image processing capabilities",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Add CORS middleware (optional, for web API access)
@@ -32,8 +66,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files directory for images (configurable via IMAGE_DIR env var)
-images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
+# Add GZip compression for responses (60-80% reduction on JSON/HTML)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Mount static files directory for images
 if images_path.exists():
     app.mount("/images", StaticFiles(directory=str(images_path)), name="images")
 
@@ -80,34 +116,6 @@ async def generic_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"error": "Internal server error"}
     )
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    Application startup event handler.
-    """
-    logger.info("=" * 60)
-    logger.info("Screensaver Application Starting")
-    logger.info("=" * 60)
-    logger.info(f"Image Directory: {images_path}")
-    logger.info(f"Images Exist: {images_path.exists()}")
-
-    if images_path.exists():
-        image_count = len(list(images_path.glob("*")))
-        logger.info(f"Total Files: {image_count}")
-
-    base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
-    logger.info(f"Base URL: {base_url}")
-    logger.info("=" * 60)
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """
-    Application shutdown event handler.
-    """
-    logger.info("Screensaver Application Shutting Down")
 
 
 if __name__ == "__main__":

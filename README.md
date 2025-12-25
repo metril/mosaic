@@ -277,12 +277,28 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    # Resource limits for stability
+    mem_limit: 2g
+    mem_reservation: 1g
+    cpus: 2
+    # Log rotation to prevent disk fill
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"
 ```
+
+**Features:**
+- **Health Check**: Built-in Docker HEALTHCHECK monitors `/health` endpoint every 30 seconds
+- **GZip Compression**: Automatic response compression (60-80% reduction on JSON/HTML)
+- **Resource Limits**: Memory capped at 2GB, CPU limited to 2 cores
+- **Log Rotation**: Logs capped at 100MB with 3 file rotation
 
 **Customization:**
 - Change port mapping: `ports: - "8080:80"` (host:container)
 - Change image directory: Update volume mount path
-- Add resource limits: See Docker Compose documentation
+- Adjust resource limits: Modify `mem_limit` and `cpus` values
 
 ## Development
 
