@@ -17,6 +17,7 @@ from io import BytesIO
 from app.utils.color_mapping import apply_spectra_6
 from app.utils.path_security import validate_folder_paths
 from app.exceptions import NoImagesFoundError
+from app.utils.logging import logger
 
 
 # Supported image formats
@@ -178,8 +179,17 @@ class ImageService:
 
         Returns:
             PIL Image object
+
+        Raises:
+            ValueError: If image has invalid dimensions (0 width or height)
         """
-        return Image.open(image_path)
+        img = Image.open(image_path)
+
+        # Validate dimensions to prevent division by zero in aspect ratio calculations
+        if img.width == 0 or img.height == 0:
+            raise ValueError(f"Invalid image dimensions: {img.width}x{img.height}")
+
+        return img
 
     def _parse_css_color(self, color: str) -> Tuple[int, int, int]:
         """
@@ -622,6 +632,7 @@ class ImageService:
             return parsed
 
         except Exception as e:
+            logger.warning(f"Failed to extract EXIF data: {e}")
             return {"error": f"Failed to extract EXIF: {str(e)}"}
 
     def get_image_metadata(self, file_path: Path, include_exif: bool = False) -> Dict[str, Any]:
@@ -661,7 +672,8 @@ class ImageService:
                     # Extract EXIF data if requested
                     if include_exif:
                         exif_data = self._extract_exif(img)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Failed to read image dimensions for {file_path}: {e}")
                 dimensions = "Unknown"
                 width, height = None, None
                 format_name = None
@@ -693,6 +705,7 @@ class ImageService:
             return metadata
         except Exception as e:
             # Return basic info if metadata extraction fails
+            logger.warning(f"Failed to extract metadata for {file_path}: {e}")
             return {
                 "name": file_path.name,
                 "path": str(file_path.name),
@@ -842,8 +855,9 @@ class ImageService:
                         folder_data["file_count"] += 1
 
             except PermissionError:
-                pass  # Skip directories we can't read
+                logger.debug(f"Permission denied reading directory: {directory}")
             except Exception as e:
+                logger.warning(f"Error scanning directory {directory}: {e}")
                 folder_data["error"] = str(e)
 
             # Calculate folder statistics recursively (include all descendant files)
