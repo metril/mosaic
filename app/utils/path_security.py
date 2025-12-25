@@ -5,6 +5,7 @@ Prevents path traversal attacks, symlink exploits, and other security vulnerabil
 when handling user-provided folder paths.
 """
 
+import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -12,9 +13,9 @@ from typing import Optional
 from app.exceptions import PathSecurityError, PathTraversalError, InvalidPathError, SymlinkError
 
 
-# Security constants
-MAX_PATH_DEPTH = 10  # Maximum number of directory levels
-MAX_PATH_LENGTH = 255  # Maximum path length in characters
+# Security constants (configurable via environment variables)
+MAX_PATH_DEPTH = int(os.environ.get('MAX_PATH_DEPTH', '10'))
+MAX_PATH_LENGTH = int(os.environ.get('MAX_PATH_LENGTH', '255'))
 ALLOWED_PATH_PATTERN = re.compile(r'^[a-zA-Z0-9_\-/]*$')  # Whitelist: alphanumeric, dash, underscore, slash
 
 

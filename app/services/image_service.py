@@ -22,8 +22,8 @@ from app.exceptions import NoImagesFoundError
 # Supported image formats
 SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp', '.tiff', '.tif'}
 
-# Default image directory
-IMAGE_DIR = Path('/www/images')
+# Image directory (configurable via environment variable)
+IMAGE_DIR = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 
 # CSS named colors (basic + extended)
 CSS_COLORS = {

@@ -29,8 +29,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files directory for images
-images_path = Path("/www/images")
+# Mount static files directory for images (configurable via IMAGE_DIR env var)
+images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 if images_path.exists():
     app.mount("/images", StaticFiles(directory=str(images_path)), name="images")
 
@@ -69,11 +69,12 @@ async def shutdown_event():
 if __name__ == "__main__":
     import uvicorn
 
-    # Run the application
+    # Run the application with configurable log level
+    log_level = os.environ.get('LOG_LEVEL', 'info').lower()
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
         port=80,
-        log_level="info",
+        log_level=log_level,
         access_log=True
     )
