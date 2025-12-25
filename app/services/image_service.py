@@ -5,6 +5,7 @@ Handles image selection, loading, resizing, and color mapping operations.
 """
 
 import os
+import re
 import random
 from pathlib import Path
 from typing import Optional, Tuple, Literal, Dict, List, Any
@@ -23,6 +24,56 @@ SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp', '.tiff', 
 
 # Default image directory
 IMAGE_DIR = Path('/www/images')
+
+# CSS named colors (basic + extended)
+CSS_COLORS = {
+    # Basic colors
+    'black': (0, 0, 0),
+    'white': (255, 255, 255),
+    'red': (255, 0, 0),
+    'green': (0, 128, 0),
+    'blue': (0, 0, 255),
+    'yellow': (255, 255, 0),
+    'cyan': (0, 255, 255),
+    'magenta': (255, 0, 255),
+    'gray': (128, 128, 128),
+    'grey': (128, 128, 128),
+    # Extended colors
+    'navy': (0, 0, 128),
+    'maroon': (128, 0, 0),
+    'olive': (128, 128, 0),
+    'purple': (128, 0, 128),
+    'teal': (0, 128, 128),
+    'silver': (192, 192, 192),
+    'lime': (0, 255, 0),
+    'aqua': (0, 255, 255),
+    'fuchsia': (255, 0, 255),
+    'orange': (255, 165, 0),
+    'pink': (255, 192, 203),
+    'brown': (165, 42, 42),
+    'coral': (255, 127, 80),
+    'gold': (255, 215, 0),
+    'indigo': (75, 0, 130),
+    'ivory': (255, 255, 240),
+    'khaki': (240, 230, 140),
+    'lavender': (230, 230, 250),
+    'beige': (245, 245, 220),
+    'tan': (210, 180, 140),
+    'crimson': (220, 20, 60),
+    'salmon': (250, 128, 114),
+    'tomato': (255, 99, 71),
+    'skyblue': (135, 206, 235),
+    'steelblue': (70, 130, 180),
+    'slategray': (112, 128, 144),
+    'slategrey': (112, 128, 144),
+    'darkgray': (169, 169, 169),
+    'darkgrey': (169, 169, 169),
+    'lightgray': (211, 211, 211),
+    'lightgrey': (211, 211, 211),
+    'darkblue': (0, 0, 139),
+    'darkgreen': (0, 100, 0),
+    'darkred': (139, 0, 0),
+}
 
 
 class ImageService:
@@ -127,27 +178,55 @@ class ImageService:
         """
         return Image.open(image_path)
 
-    def _parse_hex_color(self, hex_color: str) -> Tuple[int, int, int]:
+    def _parse_css_color(self, color: str) -> Tuple[int, int, int]:
         """
-        Parse hex color string to RGB tuple.
+        Parse CSS-style color string to RGB tuple.
 
-        Args:
-            hex_color: Hex color string (e.g., 'ff0000' or '#ff0000')
+        Supports:
+        - Named colors: 'black', 'white', 'red', etc.
+        - Hex 6-digit: '#ff0000' or 'ff0000'
+        - Hex 3-digit: '#f00' or 'f00'
+        - RGB: 'rgb(255,0,0)'
+        - RGBA: 'rgba(255,0,0,128)' (alpha ignored)
 
-        Returns:
-            Tuple of (R, G, B) values 0-255
+        Returns (0, 0, 0) black on invalid input.
         """
-        hex_color = hex_color.lstrip('#')
-        if len(hex_color) != 6:
-            return (0, 0, 0)  # Default to black on invalid input
-        try:
+        color = color.strip().lower()
+
+        # Check named colors first
+        if color in CSS_COLORS:
+            return CSS_COLORS[color]
+
+        # Strip leading # if present
+        if color.startswith('#'):
+            color = color[1:]
+
+        # Try 6-digit hex
+        if len(color) == 6 and all(c in '0123456789abcdef' for c in color):
             return (
-                int(hex_color[0:2], 16),
-                int(hex_color[2:4], 16),
-                int(hex_color[4:6], 16)
+                int(color[0:2], 16),
+                int(color[2:4], 16),
+                int(color[4:6], 16)
             )
-        except ValueError:
-            return (0, 0, 0)  # Default to black on invalid input
+
+        # Try 3-digit hex (expand to 6-digit)
+        if len(color) == 3 and all(c in '0123456789abcdef' for c in color):
+            return (
+                int(color[0] * 2, 16),
+                int(color[1] * 2, 16),
+                int(color[2] * 2, 16)
+            )
+
+        # Try rgb() or rgba() function
+        rgb_match = re.match(r'rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)', color)
+        if rgb_match:
+            r = min(255, max(0, int(rgb_match.group(1))))
+            g = min(255, max(0, int(rgb_match.group(2))))
+            b = min(255, max(0, int(rgb_match.group(3))))
+            return (r, g, b)
+
+        # Default to black on invalid input
+        return (0, 0, 0)
 
     def resize_image(
         self,
@@ -189,7 +268,7 @@ class ImageService:
                 # If both dimensions specified, add letterbox padding
                 if width is not None and height is not None:
                     # Parse padding color
-                    rgb = self._parse_hex_color(pad_color)
+                    rgb = self._parse_css_color(pad_color)
 
                     # Create canvas matching image mode
                     if image.mode == 'RGBA':
