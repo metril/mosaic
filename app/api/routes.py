@@ -491,7 +491,8 @@ async def root(
     sharpen: Optional[bool] = Query(None, description=f"Apply sharpening for E-Ink preprocessing (default: {EINK_SHARPEN})"),
     recursive: bool = Query(False, description="Recursively search subfolders (default: false)"),
     folders: Optional[str] = Query(None, description="Comma-separated list of folder paths (alternative to path)"),
-    also: Optional[str] = Query(None, description="Comma-separated list of additional folders (use with path)")
+    also: Optional[str] = Query(None, description="Comma-separated list of additional folders (use with path)"),
+    refresh: Optional[int] = Query(None, ge=5, le=3600, description="Auto-refresh interval in seconds (5-3600) for cycling through images")
 ):
     """
     Main endpoint - serves either the web interface or random image API.
@@ -516,6 +517,7 @@ async def root(
     - recursive: Recursively search subfolders (default: false)
     - folders: Comma-separated folder paths (e.g., folders=earth,space)
     - also: Additional folders when using path (e.g., /earth?also=space,family)
+    - refresh: Auto-refresh interval in seconds (5-3600) for auto-cycling mode
 
     Examples:
     - GET / - Web interface (all images)
@@ -527,6 +529,8 @@ async def root(
     - GET /?folders=earth,space&api=random-image - Random from earth or space
     - GET /earth?also=space,family&api=random-image - Random from earth, space, or family
     - GET /earth?api=random-image&eink=true&format=png - E-Ink from earth folder
+    - GET /earth?refresh=30 - Auto-cycle through earth folder every 30 seconds
+    - GET /earth?refresh=30&eink=true&width=800 - Auto-cycle with processing
     """
     # Parse folder paths from URL path and query parameters
     folder_paths_list = []
@@ -632,26 +636,72 @@ async def root(
     # Default mode - serve web interface
     else:
         try:
-            # Get list of images for the JavaScript array (with folder filtering if specified)
-            image_files = image_service.get_image_files(final_folder_paths, recursive)
-
             # Get base URL from environment or use request host
             base_url = os.environ.get('BASE_URL', '')
             if not base_url:
                 # Construct from request
                 base_url = f"{request.url.scheme}://{request.url.netloc}"
 
-            # Build image URLs
-            image_urls = [f"{base_url}/images/{file.name}" for file in image_files]
+            if refresh:
+                # Refresh mode: single random image with processing support
+                image_path = image_service.get_random_image_path(final_folder_paths, recursive)
+                if not image_path:
+                    raise HTTPException(status_code=404, detail="No images found")
 
-            return templates.TemplateResponse(
-                "index.html",
-                {
-                    "request": request,
-                    "image_urls": image_urls,
-                    "image_count": len(image_urls)
-                }
-            )
+                # Build API URL with all processing params
+                relative_path = image_path.relative_to(image_service.image_dir)
+                params = []
+                if width:
+                    params.append(f"width={width}")
+                if height:
+                    params.append(f"height={height}")
+                if not preserve_aspect:
+                    params.append("preserve_aspect=false")
+                if mode != 'fit':
+                    params.append(f"mode={mode}")
+                if pad_color != "black":
+                    params.append(f"pad_color={pad_color}")
+                if eink:
+                    params.append("eink=true")
+                if format:
+                    params.append(f"format={format}")
+                if saturation is not None:
+                    params.append(f"saturation={saturation}")
+                if contrast is not None:
+                    params.append(f"contrast={contrast}")
+                if brightness is not None:
+                    params.append(f"brightness={brightness}")
+                if sharpen is not None:
+                    params.append(f"sharpen={str(sharpen).lower()}")
+
+                query_string = "&".join(params) if params else ""
+                image_url = f"{base_url}/api/image/{relative_path}"
+                if query_string:
+                    image_url += f"?{query_string}"
+
+                return templates.TemplateResponse(
+                    "index.html",
+                    {
+                        "request": request,
+                        "image_url": image_url,
+                        "refresh": refresh
+                    }
+                )
+            else:
+                # Original slideshow mode: all images for JavaScript rotation
+                image_files = image_service.get_image_files(final_folder_paths, recursive)
+
+                # Build image URLs
+                image_urls = [f"{base_url}/images/{file.name}" for file in image_files]
+
+                return templates.TemplateResponse(
+                    "index.html",
+                    {
+                        "request": request,
+                        "image_urls": image_urls,
+                        "image_count": len(image_urls)
+                    }
+                )
         except PathSecurityError as e:
             # Security violation - return 400 Bad Request
             raise HTTPException(status_code=400, detail="Invalid folder path")

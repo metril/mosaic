@@ -59,10 +59,49 @@ docker compose up -d
 
 Serves the web interface with auto-rotating images.
 
+**Default Mode (slideshow):**
 - Displays images in a 30-second rotation cycle
 - Starts with a random image
 - Full-screen black background
 - Auto-refresh every 5 minutes
+
+**Auto-Refresh Mode** (with `refresh` parameter):
+- Shows a single random image per page load
+- Page auto-reloads at specified interval
+- Supports all image processing parameters (eink, resize, etc.)
+- Better for large image collections (1000s of images)
+
+**Query Parameters for Web Interface:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `refresh` | integer | Auto-refresh interval in seconds (5-3600). Enables auto-refresh mode |
+| `folders` | string | Comma-separated folder paths to search |
+| `also` | string | Additional folders (combine with path) |
+| `recursive` | boolean | Search subfolders recursively |
+| `width` | integer | Target width (requires `refresh` mode) |
+| `height` | integer | Target height (requires `refresh` mode) |
+| `eink` | boolean | Apply E-Ink color mapping (requires `refresh` mode) |
+| `mode` | string | Resize mode: `fit` or `crop` (requires `refresh` mode) |
+
+**Web Interface Examples:**
+
+```bash
+# Default slideshow mode
+http://localhost/
+
+# Auto-refresh every 30 seconds from earth folder
+http://localhost/earth?refresh=30
+
+# Auto-refresh with E-Ink processing
+http://localhost/earth?refresh=30&eink=true
+
+# Auto-refresh with resize and E-Ink
+http://localhost/earth?refresh=30&width=800&height=600&eink=true
+
+# Multiple folders with auto-refresh
+http://localhost/?folders=earth,space&refresh=30&recursive=true
+```
 
 ### Random Image API
 
