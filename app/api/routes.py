@@ -692,7 +692,7 @@ async def root(
                 image_files = image_service.get_image_files(final_folder_paths, recursive)
 
                 # Build image URLs
-                image_urls = [f"{base_url}/images/{file.name}" for file in image_files]
+                image_urls = [f"{base_url}/images/{file.relative_to(image_service.image_dir)}" for file in image_files]
 
                 return templates.TemplateResponse(
                     "index.html",
