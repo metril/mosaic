@@ -12,13 +12,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette_compress import CompressMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.sessions import SessionMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import os
 from pathlib import Path
 
 from app.api.routes import router, image_service
+from app.auth.routes import router as auth_router
+from app.auth.oidc import get_oidc_config
 from app.services.sync_manager import SyncManager
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException
+
+# Rate limiter for API endpoints
+limiter = Limiter(key_func=get_remote_address)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -32,6 +41,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         # Enable XSS protection in older browsers
         response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Content Security Policy (S6) - restrict script/style sources
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' wss: ws:; "
+            "frame-ancestors 'none'"
+        )
         return response
 
 
@@ -40,13 +58,26 @@ images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 
 
 async def periodic_cleanup(sync_manager: SyncManager, interval: int = 30):
-    """Periodically clean up stale browser connections."""
+    """Periodically clean up stale browser connections with resilience (#27)."""
+    consecutive_failures = 0
+    max_failures = 5
+    backoff_delay = interval
+
     while True:
-        await asyncio.sleep(interval)
+        await asyncio.sleep(backoff_delay)
         try:
             await sync_manager.cleanup_stale_browsers(timeout_seconds=60)
+            # Reset on success
+            consecutive_failures = 0
+            backoff_delay = interval
         except Exception as e:
-            logger.error(f"Cleanup error: {e}")
+            consecutive_failures += 1
+            logger.error(f"Cleanup error (attempt {consecutive_failures}): {e}")
+
+            if consecutive_failures >= max_failures:
+                # Exponential backoff after repeated failures
+                backoff_delay = min(interval * (2 ** (consecutive_failures - max_failures)), 300)
+                logger.warning(f"Cleanup failing repeatedly, backing off to {backoff_delay}s")
 
 
 @asynccontextmanager
@@ -105,6 +136,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Attach rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Middleware is applied in REVERSE order of addition
 # Add security headers first (outermost layer)
 app.add_middleware(SecurityHeadersMiddleware)
@@ -112,11 +147,23 @@ app.add_middleware(SecurityHeadersMiddleware)
 # Add compression (only compresses text-based content types, not images)
 app.add_middleware(CompressMiddleware, minimum_size=1000)
 
-# Add CORS middleware (allow_credentials=False when allow_origins=["*"])
+# Add session middleware for OIDC authentication
+oidc_config = get_oidc_config()
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=oidc_config.session_secret,
+    session_cookie="screensaver_session",
+    max_age=3600,  # 1 hour session
+    same_site="lax",
+    https_only=os.environ.get("HTTPS_ONLY", "false").lower() == "true",
+)
+
+# Add CORS middleware (allow_credentials=True for session cookies)
+allowed_origins = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -124,6 +171,9 @@ app.add_middleware(
 # Mount static files directory for images
 if images_path.exists():
     app.mount("/images", StaticFiles(directory=str(images_path)), name="images")
+
+# Include auth routes
+app.include_router(auth_router)
 
 # Include API routes
 app.include_router(router)

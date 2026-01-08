@@ -13,17 +13,25 @@ from io import BytesIO
 from pathlib import Path
 from typing import Optional, Literal, Dict, Any
 from urllib.parse import unquote
-from fastapi import APIRouter, Query, HTTPException, Path as PathParam, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
+from fastapi import APIRouter, Query, HTTPException, Path as PathParam, WebSocket, WebSocketDisconnect, Depends
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.services.image_service import ImageService
 from app.services.sync_manager import SyncManager, SyncGroupSettings
+from app.auth.dependencies import get_current_user, get_optional_user, User
+from app.auth.oidc import get_oidc_config
 from app.exceptions import PathSecurityError, NoImagesFoundError
 from app.utils.path_security import resolve_image_path
 from app.utils.logging import logger
+
+# Allowed WebSocket origins (comma-separated in env, empty = allow all)
+ALLOWED_WS_ORIGINS = os.environ.get("ALLOWED_WS_ORIGINS", "").split(",")
+ALLOWED_WS_ORIGINS = [o.strip() for o in ALLOWED_WS_ORIGINS if o.strip()]
 
 
 # Configuration from environment variables
@@ -476,15 +484,33 @@ async def serve_processed_image(
 
 class SyncGroupCreateRequest(BaseModel):
     """Request body for creating a sync group"""
-    group_id: str = Field(..., min_length=1, max_length=64, description="Unique identifier for the group")
+    # Alphanumeric, dash, underscore only (#17)
+    group_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-zA-Z0-9_\-]+$",
+        description="Unique identifier for the group (alphanumeric, dash, underscore)"
+    )
     duration: int = Field(30, ge=5, le=3600, description="Cycle duration in seconds (5-3600)")
-    folders: Optional[str] = Field(None, description="Comma-separated folder paths")
+    # Limit length to prevent DoS (#9)
+    folders: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Comma-separated folder paths (max 500 chars)"
+    )
     recursive: bool = Field(False, description="Search subfolders recursively")
     width: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_DIMENSION, description="Target width")
     height: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_DIMENSION, description="Target height")
     preserve_aspect: bool = Field(True, description="Preserve aspect ratio")
     mode: Literal['fit', 'crop'] = Field('fit', description="Resize mode")
-    pad_color: str = Field("black", description="Letterbox padding color")
+    # Validate color format (#16)
+    pad_color: str = Field(
+        "black",
+        max_length=50,
+        pattern=r"^([a-zA-Z]+|#[0-9a-fA-F]{3,6}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\))$",
+        description="Letterbox padding color (name, hex, or rgb())"
+    )
     eink: bool = Field(False, description="Apply E-Ink color mapping")
     format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Field(None, description="Output format")
     saturation: float = Field(EINK_SATURATION, ge=0.0, le=10.0, description="E-Ink saturation")
@@ -496,13 +522,24 @@ class SyncGroupCreateRequest(BaseModel):
 class SyncGroupUpdateRequest(BaseModel):
     """Request body for updating a sync group (all fields optional)"""
     duration: Optional[int] = Field(None, ge=5, le=3600, description="Cycle duration in seconds")
-    folders: Optional[str] = Field(None, description="Comma-separated folder paths")
+    # Limit length to prevent DoS (#9)
+    folders: Optional[str] = Field(
+        None,
+        max_length=500,
+        description="Comma-separated folder paths (max 500 chars)"
+    )
     recursive: Optional[bool] = Field(None, description="Search subfolders recursively")
     width: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_DIMENSION, description="Target width")
     height: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_DIMENSION, description="Target height")
     preserve_aspect: Optional[bool] = Field(None, description="Preserve aspect ratio")
     mode: Optional[Literal['fit', 'crop']] = Field(None, description="Resize mode")
-    pad_color: Optional[str] = Field(None, description="Letterbox padding color")
+    # Validate color format (#16)
+    pad_color: Optional[str] = Field(
+        None,
+        max_length=50,
+        pattern=r"^([a-zA-Z]+|#[0-9a-fA-F]{3,6}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\))$",
+        description="Letterbox padding color (name, hex, or rgb())"
+    )
     eink: Optional[bool] = Field(None, description="Apply E-Ink color mapping")
     format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Field(None, description="Output format")
     saturation: Optional[float] = Field(None, ge=0.0, le=10.0, description="E-Ink saturation")
@@ -521,7 +558,7 @@ def get_sync_manager(request: Request) -> SyncManager:
 
 
 @router.get("/sync/admin", include_in_schema=False)
-async def sync_admin_page(request: Request):
+async def sync_admin_page(request: Request, user: Optional[User] = Depends(get_optional_user)):
     """
     Serve the admin dashboard for managing sync groups.
 
@@ -530,10 +567,21 @@ async def sync_admin_page(request: Request):
     - Create new sync groups with settings
     - Update group settings (duration, image processing params)
     - Delete groups (disconnects all browsers)
+
+    Requires authentication if OIDC is configured.
     """
+    config = get_oidc_config()
+
+    # If OIDC enabled but user not authenticated, redirect to login
+    if config.enabled and user is None:
+        return RedirectResponse(url="/auth/login?redirect=/sync/admin")
+
     return templates.TemplateResponse(
         "sync_admin.html",
-        {"request": request}
+        {
+            "request": request,
+            "user": user,
+        }
     )
 
 
@@ -551,11 +599,14 @@ async def sync_admin_page(request: Request):
                 }]
             }
         }
-    }
+    },
+    401: {"description": "Not authenticated"}
 })
-async def list_sync_groups(request: Request):
+async def list_sync_groups(request: Request, user: User = Depends(get_current_user)):
     """
     List all active sync groups with their settings and connected browser count.
+
+    Requires authentication.
 
     Returns:
         List of sync groups with their configuration and status.
@@ -567,11 +618,18 @@ async def list_sync_groups(request: Request):
 
 @router.post("/sync/admin/groups", responses={
     201: {"description": "Sync group created successfully"},
-    400: {"description": "Group already exists or invalid parameters"}
+    400: {"description": "Group already exists or invalid parameters"},
+    401: {"description": "Not authenticated"}
 })
-async def create_sync_group(request: Request, body: SyncGroupCreateRequest):
+async def create_sync_group(
+    request: Request,
+    body: SyncGroupCreateRequest,
+    user: User = Depends(get_current_user)
+):
     """
     Create a new sync group with the specified settings.
+
+    Requires authentication.
 
     All image processing parameters are configurable:
     - duration: How often images cycle (5-3600 seconds)
@@ -582,6 +640,7 @@ async def create_sync_group(request: Request, body: SyncGroupCreateRequest):
         The created sync group configuration.
     """
     sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} creating sync group: {body.group_id}")
 
     # Build settings from request body
     settings = SyncGroupSettings(
@@ -613,15 +672,19 @@ async def create_sync_group(request: Request, body: SyncGroupCreateRequest):
 
 @router.patch("/sync/admin/groups/{group_id}", responses={
     200: {"description": "Sync group updated successfully"},
+    401: {"description": "Not authenticated"},
     404: {"description": "Group not found"}
 })
 async def update_sync_group(
     request: Request,
     group_id: str,
-    body: SyncGroupUpdateRequest
+    body: SyncGroupUpdateRequest,
+    user: User = Depends(get_current_user)
 ):
     """
     Update settings for an existing sync group.
+
+    Requires authentication.
 
     Any setting can be updated - only provided fields will be changed.
     All connected browsers will receive a SETTINGS_CHANGED message
@@ -631,6 +694,7 @@ async def update_sync_group(
         The updated sync group configuration.
     """
     sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} updating sync group: {group_id}")
 
     # Build updates dict from non-None fields
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -647,11 +711,18 @@ async def update_sync_group(
 
 @router.delete("/sync/admin/groups/{group_id}", responses={
     200: {"description": "Sync group deleted"},
+    401: {"description": "Not authenticated"},
     404: {"description": "Group not found"}
 })
-async def delete_sync_group(request: Request, group_id: str):
+async def delete_sync_group(
+    request: Request,
+    group_id: str,
+    user: User = Depends(get_current_user)
+):
     """
     Delete a sync group.
+
+    Requires authentication.
 
     All connected browsers will receive a DISCONNECT message
     and their WebSocket connections will be closed.
@@ -660,6 +731,7 @@ async def delete_sync_group(request: Request, group_id: str):
         Confirmation of deletion.
     """
     sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} deleting sync group: {group_id}")
     deleted = await sync_manager.delete_group(group_id)
 
     if not deleted:
@@ -726,6 +798,15 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
         - SWITCH_COMPLETE: transition done
     """
     sync_manager = websocket.app.state.sync_manager
+    browser = None  # Track for cleanup
+
+    # Origin validation (S2) - only if ALLOWED_WS_ORIGINS is configured
+    if ALLOWED_WS_ORIGINS:
+        origin = websocket.headers.get("origin", "")
+        if origin not in ALLOWED_WS_ORIGINS:
+            logger.warning(f"WebSocket connection rejected: origin '{origin}' not in allowed list")
+            await websocket.close(code=4003, reason="Forbidden origin")
+            return
 
     # Set base URL from first request
     if not sync_manager._base_url:
@@ -736,21 +817,29 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
             base_url = f"{scheme}://{host}"
         sync_manager.set_base_url(base_url)
 
-    # Check if group exists
+    # Check if group exists BEFORE accepting (#4)
     group = await sync_manager.get_group(group_id)
     if not group:
+        # Close without accepting - client receives close frame
         await websocket.close(code=4004, reason=f"Group '{group_id}' not found")
         return
 
+    # Accept the connection
     await websocket.accept()
 
-    # Add browser to group
-    browser = await sync_manager.add_browser(group_id, websocket)
-    if not browser:
-        await websocket.close(code=4004, reason="Failed to join group")
-        return
-
     try:
+        # Add browser to group (may fail if group deleted between check and add)
+        browser = await sync_manager.add_browser(group_id, websocket)
+        if not browser:
+            await websocket.close(code=4004, reason="Failed to join group")
+            return
+
+        # Refresh group reference after adding browser
+        group = await sync_manager.get_group(group_id)
+        if not group:
+            await websocket.close(code=4004, reason="Group no longer exists")
+            return
+
         # Send welcome message
         await websocket.send_json({
             "type": "WELCOME",
@@ -784,10 +873,25 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
                 )
             except WebSocketDisconnect:
                 break
+            except json.JSONDecodeError as e:
+                # Handle malformed JSON gracefully (#7)
+                logger.warning(f"Invalid JSON from browser {browser.browser_id}: {e}")
+            except RuntimeError as e:
+                # Handle connection state errors (#7)
+                logger.warning(f"WebSocket error for {browser.browser_id}: {e}")
+                break
+            except Exception as e:
+                # Log unexpected errors but keep connection alive (#7)
+                logger.error(f"Unexpected error handling message: {e}", exc_info=True)
 
     finally:
-        await sync_manager.remove_browser(group_id, browser.browser_id)
-        logger.info(f"Browser {browser.browser_id} disconnected from {group_id}")
+        # Clean up browser state
+        if browser:
+            try:
+                await sync_manager.remove_browser(group_id, browser.browser_id)
+                logger.info(f"Browser {browser.browser_id} disconnected from {group_id}")
+            except Exception as e:
+                logger.error(f"Error during browser cleanup: {e}")
 
 
 # =============================================================================
