@@ -10,7 +10,7 @@ import asyncio
 import random
 import uuid
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any
@@ -18,6 +18,10 @@ from fastapi import WebSocket
 
 from app.services.image_service import ImageService
 from app.utils.logging import logger
+
+# Constants
+PRELOAD_LEAD_TIME_SECONDS = 5  # Time before switch to send preload command (P9)
+MAX_CYCLE_COUNT = 2**31  # Wrap cycle counter to prevent overflow (S14)
 
 
 class BrowserStatus(str, Enum):
@@ -61,6 +65,11 @@ class SyncGroupSettings:
         return cls(**filtered_data)
 
 
+def _utc_now() -> datetime:
+    """Return current UTC time as timezone-aware datetime (P3)."""
+    return datetime.now(timezone.utc)
+
+
 @dataclass
 class BrowserState:
     """State of a connected browser in a sync group"""
@@ -69,8 +78,8 @@ class BrowserState:
     current_image: Optional[str] = None
     next_image: Optional[str] = None
     status: BrowserStatus = BrowserStatus.CONNECTING
-    connected_at: datetime = field(default_factory=datetime.utcnow)
-    last_heartbeat: datetime = field(default_factory=datetime.utcnow)
+    connected_at: datetime = field(default_factory=_utc_now)  # Timezone-aware (P3)
+    last_heartbeat: datetime = field(default_factory=_utc_now)  # Timezone-aware (P3)
 
 
 class ImagePool:
@@ -83,8 +92,10 @@ class ImagePool:
         self.image_service = image_service
         self.settings = settings
         self._all_images: List[Path] = []
+        self._all_paths_cache: Optional[List[str]] = None  # Cached string paths (#26)
         self._shown_images: Set[str] = set()  # Images shown this complete cycle
         self._assigned_images: Dict[str, str] = {}  # browser_id -> image path
+        self._lock = asyncio.Lock()  # Lock for atomic assignment (#1)
         self._refresh_images()
 
     def _refresh_images(self) -> None:
@@ -97,14 +108,18 @@ class ImagePool:
             folder_paths=folder_paths,
             recursive=self.settings.recursive
         )
+        # Invalidate cache when images change (#26)
+        self._all_paths_cache = None
         logger.info(f"ImagePool refreshed: {len(self._all_images)} images available")
 
     def get_all_image_paths(self) -> List[str]:
-        """Get all image paths as strings relative to image_dir"""
-        return [
-            str(img.relative_to(self.image_service.image_dir))
-            for img in self._all_images
-        ]
+        """Get all image paths as strings relative to image_dir (cached for performance #26)"""
+        if self._all_paths_cache is None:
+            self._all_paths_cache = [
+                str(img.relative_to(self.image_service.image_dir))
+                for img in self._all_images
+            ]
+        return self._all_paths_cache
 
     def assign_unique_image(self, browser_id: str) -> Optional[str]:
         """
@@ -115,11 +130,23 @@ class ImagePool:
         2. Not shown in the current complete cycle (if possible)
 
         If all images have been shown, resets the cycle.
+
+        IMPORTANT: Caller must hold the ImagePool._lock or SyncGroup._lock
+        to ensure atomic assignment and prevent duplicate images (#1).
         """
+        # Handle empty image pool (#28)
         if not self._all_images:
             self._refresh_images()
             if not self._all_images:
+                logger.warning("No images available in pool")
                 return None
+
+        all_paths = self.get_all_image_paths()
+
+        # Early return if no paths at all (#28)
+        if not all_paths:
+            logger.warning("No image paths available")
+            return None
 
         # Get currently assigned images (excluding this browser's current)
         currently_assigned = set(self._assigned_images.values())
@@ -127,7 +154,6 @@ class ImagePool:
             currently_assigned.discard(self._assigned_images[browser_id])
 
         # Get available images (not assigned and not shown this cycle)
-        all_paths = self.get_all_image_paths()
         available = [
             img for img in all_paths
             if img not in currently_assigned and img not in self._shown_images
@@ -143,12 +169,10 @@ class ImagePool:
         if not available:
             available = [img for img in all_paths if img not in currently_assigned]
 
-        # If still nothing available, return any image
+        # If still nothing available, return any image (more browsers than images)
         if not available:
+            logger.warning(f"More browsers than images, reusing images")
             available = all_paths
-
-        if not available:
-            return None
 
         # Select random image from available
         selected = random.choice(available)
@@ -173,7 +197,10 @@ class ImagePool:
 
         if settings.folders != old_folders or settings.recursive != old_recursive:
             self._refresh_images()
-            # Don't clear assignments - they'll naturally update on next cycle
+            # Clear assignments when folders change to prevent stale references (#14)
+            self._assigned_images.clear()
+            self._shown_images.clear()
+            logger.info("Cleared image assignments due to folder change")
 
 
 @dataclass
@@ -183,7 +210,7 @@ class SyncGroup:
     settings: SyncGroupSettings
     image_pool: ImagePool
     browsers: Dict[str, BrowserState] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=_utc_now)
     current_cycle: int = 0
     next_switch_time: Optional[datetime] = None
     _cycle_task: Optional[asyncio.Task] = field(default=None, repr=False)
@@ -319,32 +346,41 @@ class SyncManager:
         websocket: WebSocket
     ) -> Optional[BrowserState]:
         """Add a browser to a sync group"""
-        group = self.groups.get(group_id)
-        if not group:
-            return None
+        # Use main lock to prevent race with delete_group (#5, #13)
+        async with self._lock:
+            group = self.groups.get(group_id)
+            if not group:
+                return None
 
-        browser_id = str(uuid.uuid4())[:8]
-        browser = BrowserState(
-            browser_id=browser_id,
-            websocket=websocket
-        )
+            browser_id = uuid.uuid4().hex[:16]  # 64-bit uniqueness (P4)
+            browser = BrowserState(
+                browser_id=browser_id,
+                websocket=websocket
+            )
 
-        async with group._lock:
-            group.browsers[browser_id] = browser
+            async with group._lock:
+                group.browsers[browser_id] = browser
 
-            # Assign initial image
-            image_path = group.image_pool.assign_unique_image(browser_id)
-            if image_path:
-                browser.current_image = image_path
+                # Assign initial image (lock held for atomicity #1)
+                image_path = group.image_pool.assign_unique_image(browser_id)
+                if image_path:
+                    browser.current_image = image_path
 
-            # Start cycle task if this is the first browser
-            if len(group.browsers) == 1:
-                group._cycle_task = asyncio.create_task(
-                    self._run_cycle_loop(group)
+                # Start cycle task if needed (#2, #11)
+                # Check both: first browser OR crashed task
+                should_start_task = (
+                    len(group.browsers) == 1 or
+                    (group._cycle_task is not None and group._cycle_task.done())
                 )
+                if should_start_task:
+                    if group._cycle_task and group._cycle_task.done():
+                        logger.warning(f"Restarting crashed cycle task for {group_id}")
+                    group._cycle_task = asyncio.create_task(
+                        self._run_cycle_loop(group)
+                    )
 
-        logger.info(f"Browser {browser_id} joined group {group_id}")
-        return browser
+            logger.info(f"Browser {browser_id} joined group {group_id}")
+            return browser
 
     async def remove_browser(self, group_id: str, browser_id: str) -> None:
         """Remove a browser from a sync group"""
@@ -378,30 +414,32 @@ class SyncManager:
         if not group:
             return
 
-        browser = group.browsers.get(browser_id)
-        if not browser:
-            return
+        # Acquire lock to prevent race with cleanup_stale_browsers (#8)
+        async with group._lock:
+            browser = group.browsers.get(browser_id)
+            if not browser:
+                return
 
-        msg_type = message.get("type", "")
+            msg_type = message.get("type", "")
 
-        if msg_type == "READY":
-            browser.status = BrowserStatus.READY
-            logger.debug(f"Browser {browser_id} ready")
+            if msg_type == "READY":
+                browser.status = BrowserStatus.READY
+                logger.debug(f"Browser {browser_id} ready")
 
-        elif msg_type == "PRELOAD_READY":
-            browser.status = BrowserStatus.PRELOAD_READY
-            logger.debug(f"Browser {browser_id} preload ready")
+            elif msg_type == "PRELOAD_READY":
+                browser.status = BrowserStatus.PRELOAD_READY
+                logger.debug(f"Browser {browser_id} preload ready")
 
-        elif msg_type == "SWITCH_COMPLETE":
-            browser.status = BrowserStatus.READY
-            # Move next_image to current_image
-            if browser.next_image:
-                browser.current_image = browser.next_image
-                browser.next_image = None
-            logger.debug(f"Browser {browser_id} switch complete")
+            elif msg_type == "SWITCH_COMPLETE":
+                browser.status = BrowserStatus.READY
+                # Move next_image to current_image
+                if browser.next_image:
+                    browser.current_image = browser.next_image
+                    browser.next_image = None
+                logger.debug(f"Browser {browser_id} switch complete")
 
-        elif msg_type == "HEARTBEAT":
-            browser.last_heartbeat = datetime.utcnow()
+            elif msg_type == "HEARTBEAT":
+                browser.last_heartbeat = _utc_now()
 
     def build_image_url(self, image_path: str, settings: SyncGroupSettings) -> str:
         """Build a full image URL with processing parameters"""
@@ -436,19 +474,56 @@ class SyncManager:
             url += "?" + "&".join(params)
         return url
 
+    async def _send_to_browser(
+        self,
+        browser_id: str,
+        browser: BrowserState,
+        message: Dict[str, Any],
+        timeout: float = 5.0
+    ) -> Optional[str]:
+        """Send message to a single browser, return browser_id if failed."""
+        try:
+            await asyncio.wait_for(
+                browser.websocket.send_json(message),
+                timeout=timeout
+            )
+            return None  # Success
+        except asyncio.TimeoutError:
+            logger.warning(f"Send timeout to browser {browser_id}")
+            return browser_id
+        except Exception as e:
+            logger.warning(f"Failed to send to browser {browser_id}: {e}")
+            return browser_id
+
     async def _broadcast_to_group(
         self,
         group: SyncGroup,
         message: Dict[str, Any]
     ) -> None:
-        """Send a message to all browsers in a group"""
-        disconnected = []
-        for browser_id, browser in group.browsers.items():
-            try:
-                await browser.websocket.send_json(message)
-            except Exception as e:
-                logger.warning(f"Failed to send to browser {browser_id}: {e}")
-                disconnected.append(browser_id)
+        """Send a message to all browsers in a group (A2 - parallel sends)."""
+        # Take snapshot of browsers to avoid concurrent modification (#10)
+        async with group._lock:
+            browsers_snapshot = list(group.browsers.items())
+
+        if not browsers_snapshot:
+            return
+
+        # Send to all browsers in parallel (A2)
+        results = await asyncio.gather(
+            *[
+                self._send_to_browser(browser_id, browser, message)
+                for browser_id, browser in browsers_snapshot
+            ],
+            return_exceptions=True
+        )
+
+        # Collect disconnected browsers
+        disconnected = [
+            browser_id for browser_id, result in zip(
+                [b[0] for b in browsers_snapshot], results
+            )
+            if result is not None and not isinstance(result, Exception)
+        ]
 
         # Clean up disconnected browsers
         for browser_id in disconnected:
@@ -460,65 +535,90 @@ class SyncManager:
 
         try:
             while True:
-                duration = group.settings.duration
+                try:
+                    duration = group.settings.duration
 
-                # Calculate next switch time
-                now = datetime.utcnow()
-                group.next_switch_time = datetime.utcnow()
+                    # Calculate next switch time
+                    group.next_switch_time = _utc_now()
 
-                # Wait until 5 seconds before switch to send preload
-                preload_delay = max(0, duration - 5)
-                await asyncio.sleep(preload_delay)
+                    # Wait until PRELOAD_LEAD_TIME_SECONDS before switch (P9)
+                    preload_delay = max(0, duration - PRELOAD_LEAD_TIME_SECONDS)
+                    await asyncio.sleep(preload_delay)
 
-                # Prepare next images for all browsers
-                async with group._lock:
-                    for browser in group.browsers.values():
-                        next_image = group.image_pool.assign_unique_image(browser.browser_id)
+                    # Prepare next images for all browsers
+                    switch_at = _utc_now().timestamp() * 1000 + (PRELOAD_LEAD_TIME_SECONDS * 1000)
+                    async with group._lock:
+                        # Take snapshot for iteration and cache settings (#25)
+                        browsers_to_update = list(group.browsers.values())
+                        settings = group.settings
+
+                    for browser in browsers_to_update:
+                        async with group._lock:
+                            # Assign under lock for atomicity (#1)
+                            next_image = group.image_pool.assign_unique_image(browser.browser_id)
+                            if next_image:
+                                browser.next_image = next_image
+                                browser.status = BrowserStatus.PRELOADING
+
                         if next_image:
-                            browser.next_image = next_image
-                            browser.status = BrowserStatus.PRELOADING
-
-                            # Send preload message
-                            switch_at = datetime.utcnow().timestamp() * 1000 + 5000
+                            # Build URL once per image (#25 - partially, each browser gets unique image)
+                            image_url = self.build_image_url(next_image, settings)
                             try:
-                                await browser.websocket.send_json({
-                                    "type": "PRELOAD",
-                                    "image_url": self.build_image_url(next_image, group.settings),
-                                    "image_id": next_image,
-                                    "switch_at": switch_at
-                                })
+                                await asyncio.wait_for(
+                                    browser.websocket.send_json({
+                                        "type": "PRELOAD",
+                                        "image_url": image_url,
+                                        "image_id": next_image,
+                                        "switch_at": switch_at
+                                    }),
+                                    timeout=5.0
+                                )
+                            except asyncio.TimeoutError:
+                                logger.warning(f"Preload send timeout for {browser.browser_id}")
                             except Exception as e:
                                 logger.warning(f"Failed to send preload: {e}")
 
-                # Wait remaining time until switch
-                remaining = 5 if preload_delay > 0 else duration
-                await asyncio.sleep(remaining)
+                    # Wait remaining time until switch
+                    remaining = PRELOAD_LEAD_TIME_SECONDS if preload_delay > 0 else duration
+                    await asyncio.sleep(remaining)
 
-                # Send synchronized switch command
-                group.current_cycle += 1
-                switch_timestamp = datetime.utcnow().timestamp() * 1000
+                    # Send synchronized switch command (S14 - wrap to prevent overflow)
+                    group.current_cycle = (group.current_cycle + 1) % MAX_CYCLE_COUNT
+                    switch_timestamp = _utc_now().timestamp() * 1000
 
-                await self._broadcast_to_group(group, {
-                    "type": "SWITCH",
-                    "timestamp": switch_timestamp,
-                    "cycle": group.current_cycle
-                })
+                    await self._broadcast_to_group(group, {
+                        "type": "SWITCH",
+                        "timestamp": switch_timestamp,
+                        "cycle": group.current_cycle
+                    })
 
-                logger.debug(f"Group {group.group_id} cycle {group.current_cycle} switch")
+                    logger.debug(f"Group {group.group_id} cycle {group.current_cycle} switch")
+
+                except asyncio.CancelledError:
+                    raise  # Re-raise cancellation
+                except Exception as e:
+                    # Catch all other exceptions and continue (#3)
+                    logger.error(f"Error in cycle loop for {group.group_id}: {e}", exc_info=True)
+                    await asyncio.sleep(1)  # Brief pause before retry
 
         except asyncio.CancelledError:
             logger.info(f"Cycle loop cancelled for group {group.group_id}")
             raise
 
     async def cleanup_stale_browsers(self, timeout_seconds: int = 60) -> None:
-        """Remove browsers that haven't sent a heartbeat within timeout"""
-        now = datetime.utcnow()
-        for group in self.groups.values():
+        """Remove browsers that haven't sent a heartbeat within timeout (A7)."""
+        now = _utc_now()
+        # Take snapshot of groups to avoid modification during iteration
+        groups_snapshot = list(self.groups.values())
+
+        for group in groups_snapshot:
             stale = []
-            for browser_id, browser in group.browsers.items():
-                elapsed = (now - browser.last_heartbeat).total_seconds()
-                if elapsed > timeout_seconds:
-                    stale.append(browser_id)
+            # Acquire lock before iterating browsers (A7)
+            async with group._lock:
+                for browser_id, browser in group.browsers.items():
+                    elapsed = (now - browser.last_heartbeat).total_seconds()
+                    if elapsed > timeout_seconds:
+                        stale.append(browser_id)
 
             for browser_id in stale:
                 logger.info(f"Removing stale browser {browser_id}")
