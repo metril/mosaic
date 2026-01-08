@@ -59,6 +59,11 @@
                 border-radius: 50%;
                 background-color: #888;
                 z-index: 1000;
+                transition: opacity 0.5s ease-out;
+            }
+            .status-indicator.hidden {
+                opacity: 0;
+                pointer-events: none;
             }
             .status-indicator.connected {
                 background-color: #4caf50;
@@ -149,7 +154,8 @@
                     reconnect: null,
                     switch: null,
                     switchAnimation: null,
-                    debugUpdate: null
+                    debugUpdate: null,
+                    statusHide: null
                 };
 
                 // State
@@ -201,8 +207,24 @@
 
                 // Status indicator
                 function setStatus(status) {
+                    // Clear any pending hide timer
+                    if (timers.statusHide) {
+                        clearTimeout(timers.statusHide);
+                        timers.statusHide = null;
+                    }
+
+                    // Show indicator and set status
+                    statusIndicator.classList.remove('hidden');
                     statusIndicator.className = 'status-indicator ' + status;
                     updateDebug('Status', status);
+
+                    // Auto-hide after 3 seconds when connected
+                    if (status === 'connected') {
+                        timers.statusHide = setTimeout(function() {
+                            statusIndicator.classList.add('hidden');
+                            timers.statusHide = null;
+                        }, 3000);
+                    }
                 }
 
                 // Reset state on reconnect (#29)
