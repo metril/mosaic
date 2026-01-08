@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="icon" type="image/x-icon" href="/favicon.ico">
+        <title>Sync - {{ group_id }}</title>
+        <style type="text/css">
+            * {
+                margin: 0;
+                padding: 0;
+                box-sizing: border-box;
+            }
+            body {
+                background-color: rgb(0, 0, 0);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                overflow: hidden;
+            }
+            .image-container {
+                position: relative;
+                width: 100vw;
+                height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .screensaver-image {
+                border: none;
+                max-height: 100vh;
+                max-width: 100vw;
+                height: 100%;
+                width: 100%;
+                object-fit: contain;
+                position: absolute;
+                top: 0;
+                left: 0;
+            }
+            .hidden {
+                opacity: 0;
+                pointer-events: none;
+            }
+            .visible {
+                opacity: 1;
+            }
+            /* Smooth transition for image swaps */
+            .fade-transition {
+                transition: opacity 0.3s ease-in-out;
+            }
+            /* Connection status indicator */
+            .status-indicator {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                width: 12px;
+                height: 12px;
+                border-radius: 50%;
+                background-color: #888;
+                z-index: 1000;
+            }
+            .status-indicator.connected {
+                background-color: #4caf50;
+            }
+            .status-indicator.disconnected {
+                background-color: #f44336;
+            }
+            .status-indicator.connecting {
+                background-color: #ff9800;
+                animation: pulse 1s infinite;
+            }
+            @keyframes pulse {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0.5; }
+            }
+            /* Debug overlay */
+            .debug-overlay {
+                position: fixed;
+                bottom: 10px;
+                left: 10px;
+                background: rgba(0, 0, 0, 0.8);
+                color: #0f0;
+                font-family: monospace;
+                font-size: 12px;
+                padding: 10px;
+                border-radius: 5px;
+                z-index: 1000;
+                max-width: 400px;
+                display: none;
+            }
+            .debug-overlay.visible {
+                display: block;
+            }
+            .debug-overlay dt {
+                color: #888;
+                float: left;
+                clear: left;
+                width: 100px;
+            }
+            .debug-overlay dd {
+                margin-left: 110px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="status-indicator connecting" id="statusIndicator"></div>
+
+        <div class="image-container">
+            <!-- Current image -->
+            <img id="currentImage" class="screensaver-image visible" src="" alt="Screensaver">
+            <!-- Preload image (hidden) -->
+            <img id="preloadImage" class="screensaver-image hidden" src="" alt="Preload">
+        </div>
+
+        <div class="debug-overlay" id="debugOverlay">
+            <dl>
+                <dt>Browser ID:</dt>
+                <dd id="debugBrowserId">-</dd>
+                <dt>Group:</dt>
+                <dd id="debugGroup">{{ group_id }}</dd>
+                <dt>Status:</dt>
+                <dd id="debugStatus">connecting</dd>
+                <dt>Cycle:</dt>
+                <dd id="debugCycle">0</dd>
+                <dt>Next switch:</dt>
+                <dd id="debugNextSwitch">-</dd>
+                <dt>Current:</dt>
+                <dd id="debugCurrentImage">-</dd>
+                <dt>Preload:</dt>
+                <dd id="debugPreloadImage">-</dd>
+                <dt>Browsers:</dt>
+                <dd id="debugBrowserCount">0</dd>
+            </dl>
+        </div>
+
+        <script type="text/javascript">
+            (function() {
+                // Configuration
+                const WS_URL = "{{ ws_url }}";
+                const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+                const RECONNECT_BASE_DELAY = 1000;
+                const RECONNECT_MAX_DELAY = 30000;
+
+                // State
+                let ws = null;
+                let browserId = null;
+                let currentCycle = 0;
+                let heartbeatTimer = null;
+                let reconnectAttempts = 0;
+                let debugVisible = false;
+                let nextSwitchTime = null;
+                let switchTimer = null;
+
+                // DOM elements
+                const statusIndicator = document.getElementById('statusIndicator');
+                const currentImage = document.getElementById('currentImage');
+                const preloadImage = document.getElementById('preloadImage');
+                const debugOverlay = document.getElementById('debugOverlay');
+
+                // Debug functions
+                function updateDebug(field, value) {
+                    const el = document.getElementById('debug' + field);
+                    if (el) el.textContent = value;
+                }
+
+                function toggleDebug() {
+                    debugVisible = !debugVisible;
+                    debugOverlay.classList.toggle('visible', debugVisible);
+                }
+
+                // Keyboard handler for debug toggle
+                document.addEventListener('keydown', function(e) {
+                    if (e.key === 'd' || e.key === 'D') {
+                        toggleDebug();
+                    }
+                });
+
+                // Status indicator
+                function setStatus(status) {
+                    statusIndicator.className = 'status-indicator ' + status;
+                    updateDebug('Status', status);
+                }
+
+                // WebSocket connection
+                function connect() {
+                    setStatus('connecting');
+                    console.log('Connecting to', WS_URL);
+
+                    try {
+                        ws = new WebSocket(WS_URL);
+                    } catch (e) {
+                        console.error('WebSocket creation failed:', e);
+                        scheduleReconnect();
+                        return;
+                    }
+
+                    ws.onopen = function() {
+                        console.log('WebSocket connected');
+                        setStatus('connected');
+                        reconnectAttempts = 0;
+                        startHeartbeat();
+                    };
+
+                    ws.onclose = function(event) {
+                        console.log('WebSocket closed:', event.code, event.reason);
+                        setStatus('disconnected');
+                        stopHeartbeat();
+
+                        if (event.code === 4004) {
+                            // Group not found - don't reconnect
+                            alert('Sync group not found. Please create it via /sync/admin first.');
+                        } else {
+                            scheduleReconnect();
+                        }
+                    };
+
+                    ws.onerror = function(error) {
+                        console.error('WebSocket error:', error);
+                    };
+
+                    ws.onmessage = function(event) {
+                        try {
+                            const msg = JSON.parse(event.data);
+                            handleMessage(msg);
+                        } catch (e) {
+                            console.error('Failed to parse message:', e);
+                        }
+                    };
+                }
+
+                function scheduleReconnect() {
+                    reconnectAttempts++;
+                    const delay = Math.min(
+                        RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1),
+                        RECONNECT_MAX_DELAY
+                    );
+                    console.log('Reconnecting in', delay, 'ms (attempt', reconnectAttempts + ')');
+                    setTimeout(connect, delay);
+                }
+
+                function startHeartbeat() {
+                    stopHeartbeat();
+                    heartbeatTimer = setInterval(function() {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'HEARTBEAT' }));
+                        }
+                    }, HEARTBEAT_INTERVAL);
+                }
+
+                function stopHeartbeat() {
+                    if (heartbeatTimer) {
+                        clearInterval(heartbeatTimer);
+                        heartbeatTimer = null;
+                    }
+                }
+
+                // Message handlers
+                function handleMessage(msg) {
+                    console.log('Received:', msg.type, msg);
+
+                    switch (msg.type) {
+                        case 'WELCOME':
+                            handleWelcome(msg);
+                            break;
+                        case 'ASSIGN':
+                            handleAssign(msg);
+                            break;
+                        case 'PRELOAD':
+                            handlePreload(msg);
+                            break;
+                        case 'SWITCH':
+                            handleSwitch(msg);
+                            break;
+                        case 'SETTINGS_CHANGED':
+                            handleSettingsChanged(msg);
+                            break;
+                        case 'DISCONNECT':
+                            handleDisconnect(msg);
+                            break;
+                    }
+                }
+
+                function handleWelcome(msg) {
+                    browserId = msg.browser_id;
+                    updateDebug('BrowserId', browserId);
+                    updateDebug('BrowserCount', msg.browser_count);
+                    console.log('Joined as browser', browserId);
+                }
+
+                function handleAssign(msg) {
+                    console.log('Assigned image:', msg.image_id);
+                    currentCycle = msg.cycle;
+                    updateDebug('Cycle', currentCycle);
+                    updateDebug('CurrentImage', msg.image_id);
+
+                    // Load the assigned image
+                    loadImage(currentImage, msg.image_url, function() {
+                        sendReady();
+                    });
+                }
+
+                function handlePreload(msg) {
+                    console.log('Preloading:', msg.image_id, 'switch at', msg.switch_at);
+                    nextSwitchTime = msg.switch_at;
+                    updateDebug('PreloadImage', msg.image_id);
+
+                    // Calculate time until switch
+                    const now = Date.now();
+                    const timeUntilSwitch = Math.max(0, msg.switch_at - now);
+                    updateDebug('NextSwitch', Math.round(timeUntilSwitch / 1000) + 's');
+
+                    // Preload the image
+                    loadImage(preloadImage, msg.image_url, function() {
+                        sendPreloadReady();
+                    });
+                }
+
+                function handleSwitch(msg) {
+                    console.log('Switch command, cycle:', msg.cycle);
+
+                    // Calculate precise switch timing
+                    const now = Date.now();
+                    const switchDelay = nextSwitchTime ? Math.max(0, nextSwitchTime - now) : 0;
+
+                    // Clear any existing switch timer
+                    if (switchTimer) {
+                        clearTimeout(switchTimer);
+                    }
+
+                    // Schedule the switch at the exact time
+                    if (switchDelay > 0) {
+                        switchTimer = setTimeout(performSwitch, switchDelay);
+                    } else {
+                        performSwitch();
+                    }
+                }
+
+                function performSwitch() {
+                    // Swap images with smooth transition
+                    currentImage.classList.add('fade-transition');
+                    preloadImage.classList.add('fade-transition');
+
+                    // Swap visibility
+                    currentImage.classList.remove('visible');
+                    currentImage.classList.add('hidden');
+                    preloadImage.classList.remove('hidden');
+                    preloadImage.classList.add('visible');
+
+                    // After transition, swap the elements' roles
+                    setTimeout(function() {
+                        // Swap src attributes
+                        const tempSrc = currentImage.src;
+                        currentImage.src = preloadImage.src;
+
+                        // Reset classes
+                        currentImage.classList.remove('fade-transition', 'hidden');
+                        currentImage.classList.add('visible');
+                        preloadImage.classList.remove('fade-transition', 'visible');
+                        preloadImage.classList.add('hidden');
+                        preloadImage.src = '';
+
+                        // Update debug
+                        updateDebug('CurrentImage', currentImage.src.split('/').pop().split('?')[0]);
+                        updateDebug('PreloadImage', '-');
+                        updateDebug('NextSwitch', '-');
+
+                        // Notify server
+                        sendSwitchComplete();
+                    }, 350);
+                }
+
+                function handleSettingsChanged(msg) {
+                    console.log('Settings changed:', msg.settings);
+                    // Settings are applied server-side, just log for now
+                }
+
+                function handleDisconnect(msg) {
+                    console.log('Disconnect requested:', msg.reason);
+                    if (ws) {
+                        ws.close();
+                    }
+                    alert('Disconnected: ' + (msg.reason || 'Group deleted'));
+                }
+
+                // Image loading
+                function loadImage(imgElement, url, callback) {
+                    imgElement.onload = function() {
+                        console.log('Image loaded:', url.split('/').pop());
+                        if (callback) callback();
+                    };
+                    imgElement.onerror = function() {
+                        console.error('Failed to load image:', url);
+                        // Retry after a short delay
+                        setTimeout(function() {
+                            imgElement.src = url + '&retry=' + Date.now();
+                        }, 1000);
+                    };
+                    imgElement.src = url;
+                }
+
+                // Send messages to server
+                function sendReady() {
+                    send({ type: 'READY' });
+                }
+
+                function sendPreloadReady() {
+                    send({ type: 'PRELOAD_READY' });
+                }
+
+                function sendSwitchComplete() {
+                    send({ type: 'SWITCH_COMPLETE' });
+                }
+
+                function send(msg) {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify(msg));
+                    }
+                }
+
+                // Update next switch countdown
+                setInterval(function() {
+                    if (nextSwitchTime) {
+                        const remaining = Math.max(0, nextSwitchTime - Date.now());
+                        if (remaining > 0) {
+                            updateDebug('NextSwitch', (remaining / 1000).toFixed(1) + 's');
+                        }
+                    }
+                }, 100);
+
+                // Start connection
+                connect();
+            })();
+        </script>
+    </body>
+</html>

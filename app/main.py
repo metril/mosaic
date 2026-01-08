@@ -4,6 +4,7 @@ Screensaver Application - FastAPI Main Entry Point
 A modern image screensaver service with resizing and E-Ink color mapping capabilities.
 """
 
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
@@ -14,7 +15,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import os
 from pathlib import Path
 
-from app.api.routes import router
+from app.api.routes import router, image_service
+from app.services.sync_manager import SyncManager
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException
 
@@ -37,12 +39,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 
 
+async def periodic_cleanup(sync_manager: SyncManager, interval: int = 30):
+    """Periodically clean up stale browser connections."""
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await sync_manager.cleanup_stale_browsers(timeout_seconds=60)
+        except Exception as e:
+            logger.error(f"Cleanup error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Application lifespan context manager.
     Handles startup and shutdown events (modern FastAPI pattern).
     """
+    cleanup_task = None
     try:
         # Startup
         logger.info("=" * 60)
@@ -57,6 +70,15 @@ async def lifespan(app: FastAPI):
 
         base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
         logger.info(f"Base URL: {base_url}")
+
+        # Initialize SyncManager for synchronized multi-browser display
+        app.state.sync_manager = SyncManager(image_service)
+        logger.info("SyncManager initialized")
+
+        # Start cleanup task for stale browser connections
+        cleanup_task = asyncio.create_task(periodic_cleanup(app.state.sync_manager))
+        logger.info("Cleanup task started")
+
         logger.info("=" * 60)
 
         yield  # Application runs here
@@ -66,6 +88,12 @@ async def lifespan(app: FastAPI):
         raise
     finally:
         # Shutdown
+        if cleanup_task:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
         logger.info("Screensaver Application Shutting Down")
 
 

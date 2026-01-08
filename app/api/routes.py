@@ -11,14 +11,16 @@ import hashlib
 from email.utils import formatdate
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Literal
+from typing import Optional, Literal, Dict, Any
 from urllib.parse import unquote
-from fastapi import APIRouter, Query, HTTPException, Path as PathParam
+from fastapi import APIRouter, Query, HTTPException, Path as PathParam, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
+from pydantic import BaseModel, Field
 
 from app.services.image_service import ImageService
+from app.services.sync_manager import SyncManager, SyncGroupSettings
 from app.exceptions import PathSecurityError, NoImagesFoundError
 from app.utils.path_security import resolve_image_path
 from app.utils.logging import logger
@@ -467,6 +469,330 @@ async def serve_processed_image(
             content={"error": "Failed to process image"}
         )
 
+
+# =============================================================================
+# Sync Group API - Pydantic Models
+# =============================================================================
+
+class SyncGroupCreateRequest(BaseModel):
+    """Request body for creating a sync group"""
+    group_id: str = Field(..., min_length=1, max_length=64, description="Unique identifier for the group")
+    duration: int = Field(30, ge=5, le=3600, description="Cycle duration in seconds (5-3600)")
+    folders: Optional[str] = Field(None, description="Comma-separated folder paths")
+    recursive: bool = Field(False, description="Search subfolders recursively")
+    width: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_DIMENSION, description="Target width")
+    height: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_DIMENSION, description="Target height")
+    preserve_aspect: bool = Field(True, description="Preserve aspect ratio")
+    mode: Literal['fit', 'crop'] = Field('fit', description="Resize mode")
+    pad_color: str = Field("black", description="Letterbox padding color")
+    eink: bool = Field(False, description="Apply E-Ink color mapping")
+    format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Field(None, description="Output format")
+    saturation: float = Field(EINK_SATURATION, ge=0.0, le=10.0, description="E-Ink saturation")
+    contrast: float = Field(EINK_CONTRAST, ge=0.0, le=5.0, description="E-Ink contrast")
+    brightness: float = Field(EINK_BRIGHTNESS, ge=0.0, le=5.0, description="E-Ink brightness")
+    sharpen: bool = Field(EINK_SHARPEN, description="Apply sharpening")
+
+
+class SyncGroupUpdateRequest(BaseModel):
+    """Request body for updating a sync group (all fields optional)"""
+    duration: Optional[int] = Field(None, ge=5, le=3600, description="Cycle duration in seconds")
+    folders: Optional[str] = Field(None, description="Comma-separated folder paths")
+    recursive: Optional[bool] = Field(None, description="Search subfolders recursively")
+    width: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_DIMENSION, description="Target width")
+    height: Optional[int] = Field(None, ge=1, le=MAX_IMAGE_DIMENSION, description="Target height")
+    preserve_aspect: Optional[bool] = Field(None, description="Preserve aspect ratio")
+    mode: Optional[Literal['fit', 'crop']] = Field(None, description="Resize mode")
+    pad_color: Optional[str] = Field(None, description="Letterbox padding color")
+    eink: Optional[bool] = Field(None, description="Apply E-Ink color mapping")
+    format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Field(None, description="Output format")
+    saturation: Optional[float] = Field(None, ge=0.0, le=10.0, description="E-Ink saturation")
+    contrast: Optional[float] = Field(None, ge=0.0, le=5.0, description="E-Ink contrast")
+    brightness: Optional[float] = Field(None, ge=0.0, le=5.0, description="E-Ink brightness")
+    sharpen: Optional[bool] = Field(None, description="Apply sharpening")
+
+
+# =============================================================================
+# Sync Group API - Endpoints
+# =============================================================================
+
+def get_sync_manager(request: Request) -> SyncManager:
+    """Get the SyncManager from app state"""
+    return request.app.state.sync_manager
+
+
+@router.get("/sync/admin", include_in_schema=False)
+async def sync_admin_page(request: Request):
+    """
+    Serve the admin dashboard for managing sync groups.
+
+    This HTML page allows administrators to:
+    - View all active sync groups
+    - Create new sync groups with settings
+    - Update group settings (duration, image processing params)
+    - Delete groups (disconnects all browsers)
+    """
+    return templates.TemplateResponse(
+        "sync_admin.html",
+        {"request": request}
+    )
+
+
+@router.get("/sync/admin/groups", responses={
+    200: {
+        "description": "List of all active sync groups",
+        "content": {
+            "application/json": {
+                "example": [{
+                    "group_id": "living-room",
+                    "browser_count": 5,
+                    "current_cycle": 12,
+                    "created_at": "2024-01-07T12:00:00Z",
+                    "settings": {"duration": 30, "folders": "earth,space"}
+                }]
+            }
+        }
+    }
+})
+async def list_sync_groups(request: Request):
+    """
+    List all active sync groups with their settings and connected browser count.
+
+    Returns:
+        List of sync groups with their configuration and status.
+    """
+    sync_manager = get_sync_manager(request)
+    groups = await sync_manager.list_groups()
+    return JSONResponse(content=groups)
+
+
+@router.post("/sync/admin/groups", responses={
+    201: {"description": "Sync group created successfully"},
+    400: {"description": "Group already exists or invalid parameters"}
+})
+async def create_sync_group(request: Request, body: SyncGroupCreateRequest):
+    """
+    Create a new sync group with the specified settings.
+
+    All image processing parameters are configurable:
+    - duration: How often images cycle (5-3600 seconds)
+    - folders: Which folders to pull images from
+    - Image processing: width, height, mode, eink, etc.
+
+    Returns:
+        The created sync group configuration.
+    """
+    sync_manager = get_sync_manager(request)
+
+    # Build settings from request body
+    settings = SyncGroupSettings(
+        duration=body.duration,
+        folders=body.folders,
+        recursive=body.recursive,
+        width=body.width,
+        height=body.height,
+        preserve_aspect=body.preserve_aspect,
+        mode=body.mode,
+        pad_color=body.pad_color,
+        eink=body.eink,
+        format=body.format,
+        saturation=body.saturation,
+        contrast=body.contrast,
+        brightness=body.brightness,
+        sharpen=body.sharpen
+    )
+
+    try:
+        group = await sync_manager.create_group(body.group_id, settings)
+        return JSONResponse(
+            status_code=201,
+            content=group.to_dict()
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/sync/admin/groups/{group_id}", responses={
+    200: {"description": "Sync group updated successfully"},
+    404: {"description": "Group not found"}
+})
+async def update_sync_group(
+    request: Request,
+    group_id: str,
+    body: SyncGroupUpdateRequest
+):
+    """
+    Update settings for an existing sync group.
+
+    Any setting can be updated - only provided fields will be changed.
+    All connected browsers will receive a SETTINGS_CHANGED message
+    and adjust their behavior accordingly.
+
+    Returns:
+        The updated sync group configuration.
+    """
+    sync_manager = get_sync_manager(request)
+
+    # Build updates dict from non-None fields
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates provided")
+
+    group = await sync_manager.update_group_settings(group_id, updates)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    return JSONResponse(content=group.to_dict())
+
+
+@router.delete("/sync/admin/groups/{group_id}", responses={
+    200: {"description": "Sync group deleted"},
+    404: {"description": "Group not found"}
+})
+async def delete_sync_group(request: Request, group_id: str):
+    """
+    Delete a sync group.
+
+    All connected browsers will receive a DISCONNECT message
+    and their WebSocket connections will be closed.
+
+    Returns:
+        Confirmation of deletion.
+    """
+    sync_manager = get_sync_manager(request)
+    deleted = await sync_manager.delete_group(group_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    return JSONResponse(content={"deleted": group_id})
+
+
+@router.get("/sync", include_in_schema=False)
+async def sync_page(
+    request: Request,
+    sync: str = Query(..., description="Sync group ID to join")
+):
+    """
+    Serve the sync display page for a browser to join a sync group.
+
+    The browser connects via WebSocket to the specified sync group
+    and displays images synchronized with other browsers in the group.
+
+    Query Parameters:
+        sync: The group ID to join (must exist, created via admin API)
+    """
+    sync_manager = get_sync_manager(request)
+    group = await sync_manager.get_group(sync)
+
+    if not group:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Sync group '{sync}' not found. Create it via /sync/admin first."
+        )
+
+    # Get WebSocket URL
+    ws_scheme = "wss" if request.url.scheme == "https" else "ws"
+    ws_url = f"{ws_scheme}://{request.url.netloc}/ws/sync/{sync}"
+
+    return templates.TemplateResponse(
+        "sync.html",
+        {
+            "request": request,
+            "group_id": sync,
+            "ws_url": ws_url
+        }
+    )
+
+
+@router.websocket("/ws/sync/{group_id}")
+async def websocket_sync(websocket: WebSocket, group_id: str):
+    """
+    WebSocket endpoint for synchronized image display.
+
+    Protocol:
+        Server -> Client:
+        - WELCOME: browser_id, group_id, browser_count
+        - ASSIGN: image_url, image_id, cycle
+        - PRELOAD: image_url, switch_at (timestamp ms)
+        - SWITCH: timestamp, cycle
+        - SETTINGS_CHANGED: settings updated
+        - DISCONNECT: group deleted
+
+        Client -> Server:
+        - READY: image loaded
+        - PRELOAD_READY: next image preloaded
+        - HEARTBEAT: keep-alive
+        - SWITCH_COMPLETE: transition done
+    """
+    sync_manager = websocket.app.state.sync_manager
+
+    # Set base URL from first request
+    if not sync_manager._base_url:
+        base_url = os.environ.get('BASE_URL', '')
+        if not base_url:
+            scheme = "https" if websocket.url.scheme == "wss" else "http"
+            host = websocket.headers.get("host", "localhost")
+            base_url = f"{scheme}://{host}"
+        sync_manager.set_base_url(base_url)
+
+    # Check if group exists
+    group = await sync_manager.get_group(group_id)
+    if not group:
+        await websocket.close(code=4004, reason=f"Group '{group_id}' not found")
+        return
+
+    await websocket.accept()
+
+    # Add browser to group
+    browser = await sync_manager.add_browser(group_id, websocket)
+    if not browser:
+        await websocket.close(code=4004, reason="Failed to join group")
+        return
+
+    try:
+        # Send welcome message
+        await websocket.send_json({
+            "type": "WELCOME",
+            "browser_id": browser.browser_id,
+            "group_id": group_id,
+            "browser_count": len(group.browsers),
+            "settings": group.settings.to_dict()
+        })
+
+        # Send initial image assignment
+        if browser.current_image:
+            image_url = sync_manager.build_image_url(
+                browser.current_image,
+                group.settings
+            )
+            await websocket.send_json({
+                "type": "ASSIGN",
+                "image_url": image_url,
+                "image_id": browser.current_image,
+                "cycle": group.current_cycle
+            })
+
+        # Handle incoming messages
+        while True:
+            try:
+                data = await websocket.receive_json()
+                await sync_manager.handle_browser_message(
+                    group_id,
+                    browser.browser_id,
+                    data
+                )
+            except WebSocketDisconnect:
+                break
+
+    finally:
+        await sync_manager.remove_browser(group_id, browser.browser_id)
+        logger.info(f"Browser {browser.browser_id} disconnected from {group_id}")
+
+
+# =============================================================================
+# Catch-all route (MUST be last)
+# =============================================================================
 
 @router.api_route("/{folder_path:path}", methods=["GET", "HEAD"], responses={
     200: {"description": "Random image or web interface"},

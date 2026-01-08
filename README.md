@@ -103,6 +103,77 @@ http://localhost/earth?refresh=30&width=800&height=600&eink=true
 http://localhost/?folders=earth,space&refresh=30&recursive=true
 ```
 
+### Synchronized Multi-Browser Display
+
+Display images across multiple browsers (20+) in sync, with each browser showing a different image that cycles at exactly the same time.
+
+**Admin Dashboard:** `http://localhost/sync/admin`
+
+Create and manage sync groups with all image processing options.
+
+**Browser Display:** `http://localhost/sync?sync={group_id}`
+
+Browsers connect via WebSocket for sub-second synchronization.
+
+**Features:**
+- Each browser displays a unique image (no duplicates)
+- All browsers switch at exactly the same moment
+- No image repeats until all have been shown
+- All image processing options (eink, resize, etc.) available per group
+- Admin dashboard for real-time group management
+
+**Workflow:**
+1. Create a sync group via admin dashboard or API
+2. Open browser tabs with the sync URL
+3. All browsers display synchronized, unique images
+4. Press 'd' to toggle debug overlay (shows timing info)
+
+**Admin API:**
+
+```bash
+# List all sync groups
+GET /sync/admin/groups
+
+# Create a sync group
+POST /sync/admin/groups
+{
+    "group_id": "living-room",
+    "duration": 30,
+    "folders": "earth,space",
+    "recursive": true,
+    "eink": true,
+    "width": 800,
+    "height": 600
+}
+
+# Update group settings (broadcasts to all browsers)
+PATCH /sync/admin/groups/living-room
+{"duration": 60}
+
+# Delete group (disconnects all browsers)
+DELETE /sync/admin/groups/living-room
+```
+
+**Sync Group Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `group_id` | string | required | Unique identifier |
+| `duration` | int | 30 | Cycle duration (5-3600 seconds) |
+| `folders` | string | null | Comma-separated folder paths |
+| `recursive` | bool | false | Search subfolders |
+| `width` | int | null | Target width |
+| `height` | int | null | Target height |
+| `preserve_aspect` | bool | true | Preserve aspect ratio |
+| `mode` | string | "fit" | "fit" or "crop" |
+| `pad_color` | string | "black" | Letterbox color |
+| `eink` | bool | false | E-Ink color mapping |
+| `format` | string | null | Output format |
+| `saturation` | float | 2.5 | E-Ink saturation |
+| `contrast` | float | 1.2 | E-Ink contrast |
+| `brightness` | float | 1.1 | E-Ink brightness |
+| `sharpen` | bool | true | E-Ink sharpening |
+
 ### Random Image API
 
 **GET /?api=random-image**
