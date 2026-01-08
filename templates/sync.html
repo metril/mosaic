@@ -163,8 +163,8 @@
 
                 // DOM elements
                 const statusIndicator = document.getElementById('statusIndicator');
-                const currentImage = document.getElementById('currentImage');
-                const preloadImage = document.getElementById('preloadImage');
+                let currentImage = document.getElementById('currentImage');
+                let preloadImage = document.getElementById('preloadImage');
                 const debugOverlay = document.getElementById('debugOverlay');
 
                 // Clear all timers (#19-21)
@@ -414,15 +414,18 @@
                     timers.switchAnimation = setTimeout(function() {
                         timers.switchAnimation = null;
 
-                        // Swap src attributes
-                        currentImage.src = preloadImage.src;
+                        // Remove transition classes
+                        currentImage.classList.remove('fade-transition');
+                        preloadImage.classList.remove('fade-transition');
 
-                        // Reset classes
-                        currentImage.classList.remove('fade-transition', 'hidden');
-                        currentImage.classList.add('visible');
-                        preloadImage.classList.remove('fade-transition', 'visible');
-                        preloadImage.classList.add('hidden');
-                        preloadImage.src = '';
+                        // Swap element references - preload becomes current, current becomes preload
+                        const temp = currentImage;
+                        currentImage = preloadImage;
+                        preloadImage = temp;
+
+                        // Clear handlers on the now-preload element (was current, now hidden)
+                        preloadImage.onload = null;
+                        preloadImage.onerror = null;
 
                         // Update debug
                         updateDebug('CurrentImage', currentImage.src.split('/').pop().split('?')[0]);
