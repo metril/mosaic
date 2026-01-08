@@ -374,6 +374,131 @@
                 color: #888;
             }
 
+            /* Input with button */
+            .input-with-button {
+                display: flex;
+                gap: 8px;
+            }
+            .input-with-button input {
+                flex: 1;
+            }
+            .input-with-button .btn {
+                flex-shrink: 0;
+            }
+
+            /* Modal */
+            .modal {
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.6);
+                display: none;
+                justify-content: center;
+                align-items: center;
+                z-index: 1001;
+            }
+            .modal.visible {
+                display: flex;
+            }
+            .modal-content {
+                background: #16213e;
+                border-radius: 10px;
+                max-width: 500px;
+                width: 90%;
+                max-height: 80vh;
+                display: flex;
+                flex-direction: column;
+            }
+            .modal-content.modal-lg {
+                max-width: 600px;
+            }
+            .modal-header {
+                padding: 16px 20px;
+                border-bottom: 1px solid #0f3460;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .modal-header .modal-title {
+                font-size: 18px;
+                font-weight: 600;
+            }
+            .modal-close {
+                background: none;
+                border: none;
+                color: #888;
+                font-size: 24px;
+                cursor: pointer;
+                padding: 4px;
+                line-height: 1;
+            }
+            .modal-close:hover {
+                color: #eee;
+            }
+            .modal-body {
+                padding: 20px;
+                overflow-y: auto;
+                flex: 1;
+            }
+            .modal-footer {
+                padding: 16px 20px;
+                border-top: 1px solid #0f3460;
+                display: flex;
+                justify-content: flex-end;
+                gap: 12px;
+            }
+
+            /* Folder tree */
+            .folder-stats {
+                padding: 12px;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+                margin-bottom: 16px;
+                font-size: 13px;
+                color: #aaa;
+            }
+            .folder-tree {
+                font-size: 14px;
+            }
+            .folder-item {
+                padding: 4px 0;
+            }
+            .folder-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 8px;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            .folder-row:hover {
+                background: rgba(255, 255, 255, 0.05);
+            }
+            .folder-row input[type="checkbox"] {
+                width: 16px;
+                height: 16px;
+                accent-color: #e94560;
+            }
+            .folder-toggle {
+                width: 16px;
+                text-align: center;
+                color: #888;
+                font-size: 10px;
+                user-select: none;
+            }
+            .folder-name {
+                flex: 1;
+                color: #eee;
+            }
+            .folder-count {
+                color: #666;
+                font-size: 12px;
+            }
+            .folder-children {
+                margin-left: 24px;
+                border-left: 1px solid #0f3460;
+                padding-left: 8px;
+            }
+
             /* Responsive */
             @media (max-width: 500px) {
                 .panel {
@@ -438,8 +563,11 @@
                             </div>
                             <div class="form-row">
                                 <label for="folders">Folders</label>
-                                <input type="text" id="folders" name="folders" placeholder="Leave empty for all images">
-                                <small>Comma-separated folder names to filter images</small>
+                                <div class="input-with-button">
+                                    <input type="text" id="folders" name="folders" placeholder="All images">
+                                    <button type="button" class="btn btn-secondary" onclick="openFolderBrowser()">Browse</button>
+                                </div>
+                                <small>Click Browse to select folders, or type comma-separated paths</small>
                             </div>
                             <div class="checkbox-row">
                                 <input type="checkbox" id="recursive" name="recursive">
@@ -527,11 +655,31 @@
             </div>
         </div>
 
+        <!-- Folder browser modal -->
+        <div class="modal" id="folderModal">
+            <div class="modal-content modal-lg">
+                <div class="modal-header">
+                    <span class="modal-title">Select Folders</span>
+                    <button class="modal-close" onclick="closeFolderModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="folder-stats" id="folderStats">Loading...</div>
+                    <div class="folder-tree" id="folderTree"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-ghost" onclick="closeFolderModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="applyFolderSelection()">Apply Selection</button>
+                </div>
+            </div>
+        </div>
+
         <script type="text/javascript">
             const API_BASE = '/sync/admin/groups';
             const CSRF_TOKEN = '{{ csrf_token }}';
             let editingGroupId = null;
             let groupSettingsCache = {};
+            let folderTreeData = null;
+            let selectedFolders = new Set();
 
             // Show message
             function showMessage(text, type) {
@@ -782,9 +930,105 @@
                 }
             }
 
+            // Folder browser
+            async function openFolderBrowser() {
+                document.getElementById('folderModal').classList.add('visible');
+
+                // Parse current selection from input
+                const currentFolders = document.getElementById('folders').value;
+                selectedFolders = new Set(
+                    currentFolders ? currentFolders.split(',').map(f => f.trim()).filter(f => f) : []
+                );
+
+                // Fetch folder tree if not cached
+                if (!folderTreeData) {
+                    document.getElementById('folderTree').innerHTML = '<div class="loading">Loading folders...</div>';
+                    try {
+                        const response = await fetch('/browse?format=json');
+                        if (!response.ok) throw new Error('Failed to load folders');
+                        folderTreeData = await response.json();
+                    } catch (e) {
+                        document.getElementById('folderTree').innerHTML =
+                            '<div class="empty-state">Failed to load: ' + escapeHtml(e.message) + '</div>';
+                        return;
+                    }
+                }
+
+                renderFolderTree();
+            }
+
+            function renderFolderTree() {
+                const stats = document.getElementById('folderStats');
+                stats.innerHTML = folderTreeData.total_folders + ' folders &bull; ' + folderTreeData.total_files + ' images';
+
+                const container = document.getElementById('folderTree');
+                container.innerHTML = renderFolderNode(folderTreeData.tree, true);
+            }
+
+            function renderFolderNode(node, isRoot) {
+                if (node.type !== 'folder') return '';
+
+                // Filter to only show folders
+                const childFolders = (node.children || []).filter(c => c.type === 'folder');
+                const fileCount = (node.children || []).filter(c => c.type === 'file').length;
+                const hasChildren = childFolders.length > 0;
+
+                // Skip root folder itself but show its children
+                if (isRoot) {
+                    if (childFolders.length === 0) {
+                        return '<div class="empty-state">No folders found</div>';
+                    }
+                    return childFolders.map(child => renderFolderNode(child, false)).join('');
+                }
+
+                const isChecked = selectedFolders.has(node.path);
+                const totalFiles = node.file_count || fileCount;
+                const pathAttr = escapeHtml(node.path);
+
+                return '<div class="folder-item">' +
+                    '<div class="folder-row">' +
+                        (hasChildren ? '<span class="folder-toggle" onclick="toggleFolderExpand(this)">▶</span>' : '<span class="folder-toggle"></span>') +
+                        '<input type="checkbox" data-path="' + pathAttr + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleFolderSelection(this)">' +
+                        '<span class="folder-name">' + escapeHtml(node.name) + '</span>' +
+                        '<span class="folder-count">' + totalFiles + '</span>' +
+                    '</div>' +
+                    (hasChildren ? '<div class="folder-children" style="display:none">' + childFolders.map(child => renderFolderNode(child, false)).join('') + '</div>' : '') +
+                '</div>';
+            }
+
+            function toggleFolderExpand(toggle) {
+                const item = toggle.closest('.folder-item');
+                const children = item.querySelector('.folder-children');
+                if (children) {
+                    const isHidden = children.style.display === 'none';
+                    children.style.display = isHidden ? 'block' : 'none';
+                    toggle.textContent = isHidden ? '▼' : '▶';
+                }
+            }
+
+            function toggleFolderSelection(checkbox) {
+                const path = checkbox.dataset.path;
+                if (checkbox.checked) {
+                    selectedFolders.add(path);
+                } else {
+                    selectedFolders.delete(path);
+                }
+            }
+
+            function applyFolderSelection() {
+                const folders = Array.from(selectedFolders).join(',');
+                document.getElementById('folders').value = folders;
+                closeFolderModal();
+            }
+
+            function closeFolderModal() {
+                document.getElementById('folderModal').classList.remove('visible');
+            }
+
             // Keyboard shortcuts
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape') {
+                    closeFolderModal();
                     closePanel();
                 }
             });
