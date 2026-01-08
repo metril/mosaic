@@ -399,6 +399,7 @@
 
         <script type="text/javascript">
             const API_BASE = '/sync/admin/groups';
+            const CSRF_TOKEN = '{{ csrf_token }}';  // CSRF token from server (S5)
             let editingGroupId = null;
 
             // Show message
@@ -408,34 +409,53 @@
                 setTimeout(() => el.innerHTML = '', 5000);
             }
 
-            // Load groups
+            // Load groups (#24 - check response.ok before parsing JSON)
             async function loadGroups() {
                 try {
                     const response = await fetch(API_BASE);
+                    if (!response.ok) {
+                        throw new Error('Server returned ' + response.status);
+                    }
                     const groups = await response.json();
                     renderGroups(groups);
                 } catch (e) {
                     document.getElementById('groupsList').innerHTML =
-                        '<div class="empty-state">Failed to load groups</div>';
+                        '<div class="empty-state">Failed to load groups: ' + escapeHtml(e.message) + '</div>';
                 }
             }
 
-            // Render groups list
+            // Escape HTML to prevent XSS (#23)
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            // Store group settings for edit modal (#23)
+            let groupSettingsCache = {};
+
+            // Render groups list (#23 - use data attributes instead of inline onclick)
             function renderGroups(groups) {
                 const container = document.getElementById('groupsList');
+                groupSettingsCache = {}; // Clear cache
 
                 if (!groups || groups.length === 0) {
                     container.innerHTML = '<div class="empty-state">No sync groups. Create one below.</div>';
                     return;
                 }
 
+                groups.forEach(group => {
+                    groupSettingsCache[group.group_id] = group.settings;
+                });
+
                 container.innerHTML = groups.map(group => {
                     const s = group.settings;
-                    const syncUrl = window.location.origin + '/sync?sync=' + group.group_id;
+                    const groupIdSafe = escapeHtml(group.group_id);
+                    const syncUrl = window.location.origin + '/sync?sync=' + encodeURIComponent(group.group_id);
                     return `
                         <div class="group-card">
                             <div class="group-header">
-                                <span class="group-id">${group.group_id}</span>
+                                <span class="group-id">${groupIdSafe}</span>
                                 <div class="group-stats">
                                     <span class="stat">Browsers: <span class="stat-value">${group.browser_count}</span></span>
                                     <span class="stat">Cycle: <span class="stat-value">${group.current_cycle}</span></span>
@@ -443,22 +463,39 @@
                             </div>
                             <div class="group-settings">
                                 <div class="setting"><span class="setting-label">Duration:</span> <span class="setting-value">${s.duration}s</span></div>
-                                <div class="setting"><span class="setting-label">Folders:</span> <span class="setting-value">${s.folders || 'All'}</span></div>
+                                <div class="setting"><span class="setting-label">Folders:</span> <span class="setting-value">${escapeHtml(s.folders || 'All')}</span></div>
                                 <div class="setting"><span class="setting-label">Recursive:</span> <span class="setting-value">${s.recursive ? 'Yes' : 'No'}</span></div>
                                 ${s.width ? `<div class="setting"><span class="setting-label">Width:</span> <span class="setting-value">${s.width}px</span></div>` : ''}
                                 ${s.height ? `<div class="setting"><span class="setting-label">Height:</span> <span class="setting-value">${s.height}px</span></div>` : ''}
-                                <div class="setting"><span class="setting-label">Mode:</span> <span class="setting-value">${s.mode}</span></div>
+                                <div class="setting"><span class="setting-label">Mode:</span> <span class="setting-value">${escapeHtml(s.mode)}</span></div>
                                 <div class="setting"><span class="setting-label">E-Ink:</span> <span class="setting-value">${s.eink ? 'Yes' : 'No'}</span></div>
                             </div>
                             <a href="${syncUrl}" target="_blank" class="group-link">Open sync display &rarr;</a>
                             <div class="group-actions">
-                                <button class="btn-secondary btn-small" onclick="openEditModal('${group.group_id}', ${JSON.stringify(s).replace(/"/g, '&quot;')})">Edit</button>
-                                <button class="btn-danger btn-small" onclick="deleteGroup('${group.group_id}')">Delete</button>
+                                <button class="btn-secondary btn-small btn-edit" data-group-id="${groupIdSafe}">Edit</button>
+                                <button class="btn-danger btn-small btn-delete" data-group-id="${groupIdSafe}">Delete</button>
                             </div>
                         </div>
                     `;
                 }).join('');
             }
+
+            // Event delegation for edit/delete buttons (#23)
+            document.getElementById('groupsList').addEventListener('click', function(e) {
+                const editBtn = e.target.closest('.btn-edit');
+                const deleteBtn = e.target.closest('.btn-delete');
+
+                if (editBtn) {
+                    const groupId = editBtn.dataset.groupId;
+                    const settings = groupSettingsCache[groupId];
+                    if (settings) {
+                        openEditModal(groupId, settings);
+                    }
+                } else if (deleteBtn) {
+                    const groupId = deleteBtn.dataset.groupId;
+                    deleteGroup(groupId);
+                }
+            });
 
             // Create group
             document.getElementById('createForm').addEventListener('submit', async (e) => {
@@ -484,7 +521,10 @@
                 try {
                     const response = await fetch(API_BASE, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN  // CSRF protection (S5)
+                        },
                         body: JSON.stringify(data)
                     });
 
@@ -553,7 +593,10 @@
                 try {
                     const response = await fetch(API_BASE + '/' + editingGroupId, {
                         method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN  // CSRF protection (S5)
+                        },
                         body: JSON.stringify(data)
                     });
 
@@ -578,7 +621,10 @@
 
                 try {
                     const response = await fetch(API_BASE + '/' + groupId, {
-                        method: 'DELETE'
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRF-Token': CSRF_TOKEN  // CSRF protection (S5)
+                        }
                     });
 
                     if (response.ok) {

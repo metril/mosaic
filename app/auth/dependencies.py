@@ -1,14 +1,19 @@
 """
-FastAPI dependencies for authentication.
+FastAPI dependencies for authentication and CSRF protection.
 
 Provides dependency injection for route protection.
 """
 
+import secrets
 from typing import Optional
-from fastapi import Request, HTTPException, status
+from fastapi import Request, HTTPException, status, Header
 
 from app.auth.oidc import get_oidc_config
 from app.utils.logging import logger
+
+# CSRF token settings
+CSRF_TOKEN_LENGTH = 32
+CSRF_HEADER_NAME = "X-CSRF-Token"
 
 
 class User:
@@ -67,3 +72,46 @@ async def get_optional_user(request: Request) -> Optional[User]:
         return None
 
     return User(user_info)
+
+
+def get_csrf_token(request: Request) -> str:
+    """
+    Get or generate a CSRF token for the current session.
+
+    The token is stored in the session and must be included in
+    X-CSRF-Token header for all state-changing requests.
+    """
+    if "csrf_token" not in request.session:
+        request.session["csrf_token"] = secrets.token_hex(CSRF_TOKEN_LENGTH)
+    return request.session["csrf_token"]
+
+
+async def verify_csrf_token(
+    request: Request,
+    x_csrf_token: Optional[str] = Header(None, alias=CSRF_HEADER_NAME)
+) -> None:
+    """
+    Verify CSRF token from header matches session token (S5).
+
+    Raises 403 Forbidden if tokens don't match.
+    """
+    config = get_oidc_config()
+
+    # Skip CSRF check if OIDC not configured (development mode)
+    if not config.enabled:
+        return
+
+    session_token = request.session.get("csrf_token")
+
+    if not session_token or not x_csrf_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF token missing"
+        )
+
+    if not secrets.compare_digest(session_token, x_csrf_token):
+        logger.warning("CSRF token mismatch")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="CSRF token invalid"
+        )

@@ -141,22 +141,45 @@
                 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
                 const RECONNECT_BASE_DELAY = 1000;
                 const RECONNECT_MAX_DELAY = 30000;
+                const IMAGE_RETRY_MAX = 3; // Max image load retries (#12)
+
+                // Centralized timer tracking (#19-21)
+                const timers = {
+                    heartbeat: null,
+                    reconnect: null,
+                    switch: null,
+                    switchAnimation: null,
+                    debugUpdate: null
+                };
 
                 // State
                 let ws = null;
                 let browserId = null;
                 let currentCycle = 0;
-                let heartbeatTimer = null;
                 let reconnectAttempts = 0;
                 let debugVisible = false;
                 let nextSwitchTime = null;
-                let switchTimer = null;
+                let imageRetryCount = 0; // Track retries per image (#12)
 
                 // DOM elements
                 const statusIndicator = document.getElementById('statusIndicator');
                 const currentImage = document.getElementById('currentImage');
                 const preloadImage = document.getElementById('preloadImage');
                 const debugOverlay = document.getElementById('debugOverlay');
+
+                // Clear all timers (#19-21)
+                function clearAllTimers() {
+                    Object.keys(timers).forEach(function(key) {
+                        if (timers[key]) {
+                            if (key === 'heartbeat' || key === 'debugUpdate') {
+                                clearInterval(timers[key]);
+                            } else {
+                                clearTimeout(timers[key]);
+                            }
+                            timers[key] = null;
+                        }
+                    });
+                }
 
                 // Debug functions
                 function updateDebug(field, value) {
@@ -182,8 +205,32 @@
                     updateDebug('Status', status);
                 }
 
+                // Reset state on reconnect (#29)
+                function resetState() {
+                    browserId = null;
+                    currentCycle = 0;
+                    nextSwitchTime = null;
+                    imageRetryCount = 0;
+                    updateDebug('BrowserId', '-');
+                    updateDebug('Cycle', '0');
+                    updateDebug('NextSwitch', '-');
+                    updateDebug('CurrentImage', '-');
+                    updateDebug('PreloadImage', '-');
+                }
+
                 // WebSocket connection
                 function connect() {
+                    // Cancel any pending reconnect (#6, #15)
+                    if (timers.reconnect) {
+                        clearTimeout(timers.reconnect);
+                        timers.reconnect = null;
+                    }
+
+                    // Close existing connection if any
+                    if (ws && ws.readyState !== WebSocket.CLOSED) {
+                        ws.close();
+                    }
+
                     setStatus('connecting');
                     console.log('Connecting to', WS_URL);
 
@@ -230,18 +277,23 @@
                 }
 
                 function scheduleReconnect() {
+                    // Clear any existing reconnect timer (#6, #15)
+                    if (timers.reconnect) {
+                        clearTimeout(timers.reconnect);
+                    }
+
                     reconnectAttempts++;
                     const delay = Math.min(
                         RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1),
                         RECONNECT_MAX_DELAY
                     );
                     console.log('Reconnecting in', delay, 'ms (attempt', reconnectAttempts + ')');
-                    setTimeout(connect, delay);
+                    timers.reconnect = setTimeout(connect, delay);
                 }
 
                 function startHeartbeat() {
                     stopHeartbeat();
-                    heartbeatTimer = setInterval(function() {
+                    timers.heartbeat = setInterval(function() {
                         if (ws && ws.readyState === WebSocket.OPEN) {
                             ws.send(JSON.stringify({ type: 'HEARTBEAT' }));
                         }
@@ -249,9 +301,9 @@
                 }
 
                 function stopHeartbeat() {
-                    if (heartbeatTimer) {
-                        clearInterval(heartbeatTimer);
-                        heartbeatTimer = null;
+                    if (timers.heartbeat) {
+                        clearInterval(timers.heartbeat);
+                        timers.heartbeat = null;
                     }
                 }
 
@@ -282,6 +334,8 @@
                 }
 
                 function handleWelcome(msg) {
+                    // Reset state on new connection (#29)
+                    resetState();
                     browserId = msg.browser_id;
                     updateDebug('BrowserId', browserId);
                     updateDebug('BrowserCount', msg.browser_count);
@@ -291,6 +345,7 @@
                 function handleAssign(msg) {
                     console.log('Assigned image:', msg.image_id);
                     currentCycle = msg.cycle;
+                    imageRetryCount = 0; // Reset retry count for new image
                     updateDebug('Cycle', currentCycle);
                     updateDebug('CurrentImage', msg.image_id);
 
@@ -303,6 +358,7 @@
                 function handlePreload(msg) {
                     console.log('Preloading:', msg.image_id, 'switch at', msg.switch_at);
                     nextSwitchTime = msg.switch_at;
+                    imageRetryCount = 0; // Reset retry count for new image
                     updateDebug('PreloadImage', msg.image_id);
 
                     // Calculate time until switch
@@ -323,20 +379,27 @@
                     const now = Date.now();
                     const switchDelay = nextSwitchTime ? Math.max(0, nextSwitchTime - now) : 0;
 
-                    // Clear any existing switch timer
-                    if (switchTimer) {
-                        clearTimeout(switchTimer);
+                    // Clear any existing switch timer (#20)
+                    if (timers.switch) {
+                        clearTimeout(timers.switch);
+                        timers.switch = null;
+                    }
+                    if (timers.switchAnimation) {
+                        clearTimeout(timers.switchAnimation);
+                        timers.switchAnimation = null;
                     }
 
                     // Schedule the switch at the exact time
                     if (switchDelay > 0) {
-                        switchTimer = setTimeout(performSwitch, switchDelay);
+                        timers.switch = setTimeout(performSwitch, switchDelay);
                     } else {
                         performSwitch();
                     }
                 }
 
                 function performSwitch() {
+                    timers.switch = null; // Clear reference
+
                     // Swap images with smooth transition
                     currentImage.classList.add('fade-transition');
                     preloadImage.classList.add('fade-transition');
@@ -347,10 +410,11 @@
                     preloadImage.classList.remove('hidden');
                     preloadImage.classList.add('visible');
 
-                    // After transition, swap the elements' roles
-                    setTimeout(function() {
+                    // After transition, swap the elements' roles (#20 - track timer)
+                    timers.switchAnimation = setTimeout(function() {
+                        timers.switchAnimation = null;
+
                         // Swap src attributes
-                        const tempSrc = currentImage.src;
                         currentImage.src = preloadImage.src;
 
                         // Reset classes
@@ -377,25 +441,48 @@
 
                 function handleDisconnect(msg) {
                     console.log('Disconnect requested:', msg.reason);
+                    // Stop reconnection attempts
+                    if (timers.reconnect) {
+                        clearTimeout(timers.reconnect);
+                        timers.reconnect = null;
+                    }
+                    reconnectAttempts = Infinity; // Prevent further reconnects
                     if (ws) {
                         ws.close();
                     }
                     alert('Disconnected: ' + (msg.reason || 'Group deleted'));
                 }
 
-                // Image loading
+                // Image loading with exponential backoff (#12, #22)
                 function loadImage(imgElement, url, callback) {
+                    // Clear previous handlers to prevent stacking (#22)
+                    imgElement.onload = null;
+                    imgElement.onerror = null;
+
                     imgElement.onload = function() {
                         console.log('Image loaded:', url.split('/').pop());
+                        imageRetryCount = 0; // Reset on success
                         if (callback) callback();
                     };
+
                     imgElement.onerror = function() {
-                        console.error('Failed to load image:', url);
-                        // Retry after a short delay
-                        setTimeout(function() {
-                            imgElement.src = url + '&retry=' + Date.now();
-                        }, 1000);
+                        imageRetryCount++;
+                        console.error('Failed to load image:', url, '(attempt', imageRetryCount + ')');
+
+                        if (imageRetryCount < IMAGE_RETRY_MAX) {
+                            // Exponential backoff: 1s, 2s, 4s (#12)
+                            const delay = 1000 * Math.pow(2, imageRetryCount - 1);
+                            console.log('Retrying in', delay, 'ms');
+                            setTimeout(function() {
+                                imgElement.src = url + (url.includes('?') ? '&' : '?') + 'retry=' + Date.now();
+                            }, delay);
+                        } else {
+                            console.error('Max retries exceeded for image:', url);
+                            // Callback anyway to not block sync
+                            if (callback) callback();
+                        }
                     };
+
                     imgElement.src = url;
                 }
 
@@ -418,8 +505,8 @@
                     }
                 }
 
-                // Update next switch countdown
-                setInterval(function() {
+                // Update next switch countdown (#21 - store timer reference)
+                timers.debugUpdate = setInterval(function() {
                     if (nextSwitchTime) {
                         const remaining = Math.max(0, nextSwitchTime - Date.now());
                         if (remaining > 0) {
@@ -427,6 +514,14 @@
                         }
                     }
                 }, 100);
+
+                // Cleanup on page unload (#21)
+                window.addEventListener('beforeunload', function() {
+                    clearAllTimers();
+                    if (ws) {
+                        ws.close();
+                    }
+                });
 
                 // Start connection
                 connect();

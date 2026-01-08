@@ -23,7 +23,7 @@ from slowapi.util import get_remote_address
 
 from app.services.image_service import ImageService
 from app.services.sync_manager import SyncManager, SyncGroupSettings
-from app.auth.dependencies import get_current_user, get_optional_user, User
+from app.auth.dependencies import get_current_user, get_optional_user, User, get_csrf_token, verify_csrf_token
 from app.auth.oidc import get_oidc_config
 from app.exceptions import PathSecurityError, NoImagesFoundError
 from app.utils.path_security import resolve_image_path
@@ -576,11 +576,15 @@ async def sync_admin_page(request: Request, user: Optional[User] = Depends(get_o
     if config.enabled and user is None:
         return RedirectResponse(url="/auth/login?redirect=/sync/admin")
 
+    # Generate CSRF token for the page
+    csrf_token = get_csrf_token(request)
+
     return templates.TemplateResponse(
         "sync_admin.html",
         {
             "request": request,
             "user": user,
+            "csrf_token": csrf_token,
         }
     )
 
@@ -619,12 +623,14 @@ async def list_sync_groups(request: Request, user: User = Depends(get_current_us
 @router.post("/sync/admin/groups", responses={
     201: {"description": "Sync group created successfully"},
     400: {"description": "Group already exists or invalid parameters"},
-    401: {"description": "Not authenticated"}
+    401: {"description": "Not authenticated"},
+    403: {"description": "CSRF token invalid"}
 })
 async def create_sync_group(
     request: Request,
     body: SyncGroupCreateRequest,
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """
     Create a new sync group with the specified settings.
@@ -673,13 +679,15 @@ async def create_sync_group(
 @router.patch("/sync/admin/groups/{group_id}", responses={
     200: {"description": "Sync group updated successfully"},
     401: {"description": "Not authenticated"},
+    403: {"description": "CSRF token invalid"},
     404: {"description": "Group not found"}
 })
 async def update_sync_group(
     request: Request,
     group_id: str,
     body: SyncGroupUpdateRequest,
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """
     Update settings for an existing sync group.
@@ -712,12 +720,14 @@ async def update_sync_group(
 @router.delete("/sync/admin/groups/{group_id}", responses={
     200: {"description": "Sync group deleted"},
     401: {"description": "Not authenticated"},
+    403: {"description": "CSRF token invalid"},
     404: {"description": "Group not found"}
 })
 async def delete_sync_group(
     request: Request,
     group_id: str,
-    user: User = Depends(get_current_user)
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """
     Delete a sync group.
