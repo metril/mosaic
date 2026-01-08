@@ -15,108 +15,116 @@
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
                 background-color: #1a1a2e;
                 color: #eee;
-                padding: 20px;
                 min-height: 100vh;
             }
-            h1 {
-                margin-bottom: 20px;
-                color: #fff;
-            }
-            h2 {
-                margin: 20px 0 10px;
-                color: #aaa;
-                font-size: 14px;
-                text-transform: uppercase;
-                letter-spacing: 1px;
-            }
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-            }
-            /* Groups list */
-            .groups-list {
-                display: grid;
-                gap: 15px;
-                margin-bottom: 30px;
-            }
-            .group-card {
-                background: #16213e;
-                border-radius: 8px;
-                padding: 20px;
-                border: 1px solid #0f3460;
-            }
-            .group-header {
+
+            /* Header */
+            .header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 15px;
+                padding: 20px 24px;
+                border-bottom: 1px solid #0f3460;
+                background: #16213e;
             }
-            .group-id {
-                font-size: 20px;
-                font-weight: bold;
-                color: #e94560;
+            .header h1 {
+                font-size: 24px;
+                font-weight: 600;
             }
-            .group-stats {
-                display: flex;
-                gap: 20px;
-                color: #888;
-                font-size: 14px;
+
+            /* Main content */
+            .main {
+                padding: 24px;
+                max-width: 1400px;
+                margin: 0 auto;
             }
-            .stat {
+
+            /* Section headers */
+            .section-header {
                 display: flex;
                 align-items: center;
-                gap: 5px;
+                gap: 12px;
+                margin-bottom: 16px;
             }
-            .stat-value {
-                color: #fff;
-                font-weight: bold;
+            .section-title {
+                font-size: 14px;
+                font-weight: 500;
+                color: #888;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
             }
-            .group-settings {
+            .section-count {
+                background: #0f3460;
+                color: #aaa;
+                padding: 2px 8px;
+                border-radius: 10px;
+                font-size: 12px;
+            }
+
+            /* Groups grid */
+            .groups-grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-                gap: 10px;
-                margin: 15px 0;
-                padding: 15px;
-                background: rgba(0, 0, 0, 0.2);
-                border-radius: 5px;
+                grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+                gap: 16px;
             }
-            .setting {
+
+            /* Group card */
+            .group-card {
+                background: #16213e;
+                border: 1px solid #0f3460;
+                border-radius: 10px;
+                padding: 20px;
+                transition: border-color 0.2s;
+            }
+            .group-card:hover {
+                border-color: #1a4a7a;
+            }
+            .group-name {
+                font-size: 18px;
+                font-weight: 600;
+                color: #e94560;
+                margin-bottom: 4px;
+            }
+            .group-meta {
                 font-size: 13px;
+                color: #888;
+                margin-bottom: 12px;
             }
-            .setting-label {
-                color: #666;
-            }
-            .setting-value {
-                color: #4caf50;
+            .group-summary {
+                font-size: 13px;
+                color: #aaa;
+                padding: 10px 12px;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+                margin-bottom: 16px;
+                line-height: 1.5;
             }
             .group-actions {
                 display: flex;
-                gap: 10px;
-                margin-top: 15px;
+                gap: 8px;
+                flex-wrap: wrap;
             }
-            .group-link {
-                color: #4caf50;
-                text-decoration: none;
-                font-size: 13px;
-            }
-            .group-link:hover {
-                text-decoration: underline;
-            }
+
             /* Buttons */
-            button {
-                padding: 8px 16px;
+            .btn {
+                padding: 8px 14px;
                 border: none;
-                border-radius: 5px;
+                border-radius: 6px;
                 cursor: pointer;
-                font-size: 14px;
-                transition: background 0.2s;
+                font-size: 13px;
+                font-weight: 500;
+                transition: all 0.2s;
+                text-decoration: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
             }
             .btn-primary {
                 background: #e94560;
                 color: white;
             }
             .btn-primary:hover {
-                background: #c73e54;
+                background: #d13a54;
             }
             .btn-secondary {
                 background: #0f3460;
@@ -125,291 +133,546 @@
             .btn-secondary:hover {
                 background: #1a4a7a;
             }
+            .btn-ghost {
+                background: transparent;
+                color: #888;
+                border: 1px solid #0f3460;
+            }
+            .btn-ghost:hover {
+                background: rgba(255, 255, 255, 0.05);
+                color: #eee;
+            }
             .btn-danger {
-                background: #b71c1c;
-                color: white;
+                background: transparent;
+                color: #e94560;
+                border: 1px solid #e94560;
             }
             .btn-danger:hover {
-                background: #8b1515;
+                background: #e94560;
+                color: white;
             }
-            .btn-small {
-                padding: 5px 10px;
-                font-size: 12px;
+            .btn-link {
+                background: none;
+                color: #4caf50;
+                padding: 8px 0;
             }
-            /* Create form */
-            .create-form {
-                background: #16213e;
+            .btn-link:hover {
+                text-decoration: underline;
+            }
+
+            /* Empty state */
+            .empty-state {
+                text-align: center;
+                padding: 60px 20px;
+                color: #666;
+            }
+            .empty-state-icon {
+                font-size: 48px;
+                margin-bottom: 16px;
+                opacity: 0.5;
+            }
+            .empty-state p {
+                margin-bottom: 20px;
+            }
+
+            /* Messages */
+            .message {
+                padding: 12px 16px;
                 border-radius: 8px;
-                padding: 20px;
-                border: 1px solid #0f3460;
-            }
-            .form-grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                gap: 15px;
-            }
-            .form-group {
-                display: flex;
-                flex-direction: column;
-                gap: 5px;
-            }
-            .form-group.full-width {
-                grid-column: 1 / -1;
-            }
-            label {
-                font-size: 13px;
-                color: #888;
-            }
-            input, select {
-                padding: 8px 12px;
-                border: 1px solid #0f3460;
-                border-radius: 5px;
-                background: #1a1a2e;
-                color: #eee;
+                margin-bottom: 20px;
                 font-size: 14px;
             }
-            input:focus, select:focus {
-                outline: none;
-                border-color: #e94560;
+            .message.success {
+                background: rgba(76, 175, 80, 0.15);
+                border: 1px solid rgba(76, 175, 80, 0.3);
+                color: #4caf50;
             }
-            input[type="checkbox"] {
-                width: 18px;
-                height: 18px;
+            .message.error {
+                background: rgba(244, 67, 54, 0.15);
+                border: 1px solid rgba(244, 67, 54, 0.3);
+                color: #f44336;
             }
-            .checkbox-group {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                padding-top: 20px;
+
+            /* Panel overlay */
+            .panel-overlay {
+                position: fixed;
+                inset: 0;
+                background: rgba(0, 0, 0, 0.6);
+                opacity: 0;
+                visibility: hidden;
+                transition: opacity 0.3s ease;
+                z-index: 999;
             }
-            .form-actions {
-                margin-top: 20px;
-                display: flex;
-                gap: 10px;
+            .panel-overlay.visible {
+                opacity: 1;
+                visibility: visible;
             }
-            /* Edit modal */
-            .modal {
-                display: none;
+
+            /* Slide-in panel */
+            .panel {
                 position: fixed;
                 top: 0;
-                left: 0;
-                width: 100%;
+                right: 0;
+                width: 450px;
+                max-width: 100%;
                 height: 100%;
-                background: rgba(0, 0, 0, 0.8);
-                justify-content: center;
-                align-items: center;
-                z-index: 1000;
-            }
-            .modal.visible {
-                display: flex;
-            }
-            .modal-content {
                 background: #16213e;
-                border-radius: 8px;
-                padding: 20px;
-                max-width: 600px;
-                width: 90%;
-                max-height: 80vh;
-                overflow-y: auto;
+                transform: translateX(100%);
+                transition: transform 0.3s ease;
+                z-index: 1000;
+                display: flex;
+                flex-direction: column;
+                box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
             }
-            .modal-header {
+            .panel.open {
+                transform: translateX(0);
+            }
+            .panel-header {
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 20px;
+                padding: 20px 24px;
+                border-bottom: 1px solid #0f3460;
+                flex-shrink: 0;
             }
-            .modal-title {
+            .panel-title {
                 font-size: 18px;
-                color: #fff;
+                font-weight: 600;
             }
-            .modal-close {
+            .panel-close {
                 background: none;
                 border: none;
                 color: #888;
                 font-size: 24px;
                 cursor: pointer;
+                padding: 4px;
+                line-height: 1;
             }
-            /* Messages */
-            .message {
-                padding: 10px 15px;
-                border-radius: 5px;
-                margin-bottom: 15px;
+            .panel-close:hover {
+                color: #eee;
             }
-            .message.success {
-                background: rgba(76, 175, 80, 0.2);
-                border: 1px solid #4caf50;
-                color: #4caf50;
+            .panel-body {
+                flex: 1;
+                overflow-y: auto;
+                padding: 24px;
             }
-            .message.error {
-                background: rgba(244, 67, 54, 0.2);
-                border: 1px solid #f44336;
-                color: #f44336;
+            .panel-footer {
+                padding: 16px 24px;
+                border-top: 1px solid #0f3460;
+                display: flex;
+                gap: 12px;
+                flex-shrink: 0;
             }
-            /* Empty state */
-            .empty-state {
-                text-align: center;
-                padding: 40px;
+            .panel-footer .btn {
+                flex: 1;
+            }
+
+            /* Form elements */
+            .form-row {
+                margin-bottom: 20px;
+            }
+            .form-row label {
+                display: block;
+                font-size: 13px;
+                font-weight: 500;
+                color: #999;
+                margin-bottom: 8px;
+            }
+            .form-row input,
+            .form-row select {
+                width: 100%;
+                padding: 10px 12px;
+                border: 1px solid #0f3460;
+                border-radius: 6px;
+                background: #1a1a2e;
+                color: #eee;
+                font-size: 14px;
+                transition: border-color 0.2s;
+            }
+            .form-row input:focus,
+            .form-row select:focus {
+                outline: none;
+                border-color: #e94560;
+            }
+            .form-row input::placeholder {
+                color: #555;
+            }
+            .form-row-inline {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+            .form-row small {
+                display: block;
+                margin-top: 4px;
                 color: #666;
+                font-size: 12px;
             }
-            /* Loading */
+
+            /* Checkbox styling */
+            .checkbox-row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 16px;
+            }
+            .checkbox-row input[type="checkbox"] {
+                width: 18px;
+                height: 18px;
+                accent-color: #e94560;
+            }
+            .checkbox-row label {
+                margin-bottom: 0;
+                cursor: pointer;
+            }
+
+            /* Collapsible sections */
+            .settings-section {
+                border: 1px solid #0f3460;
+                border-radius: 8px;
+                margin-bottom: 16px;
+                overflow: hidden;
+            }
+            .settings-section summary {
+                padding: 14px 16px;
+                cursor: pointer;
+                font-weight: 500;
+                font-size: 14px;
+                background: rgba(0, 0, 0, 0.2);
+                list-style: none;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .settings-section summary::-webkit-details-marker {
+                display: none;
+            }
+            .settings-section summary::before {
+                content: '';
+                width: 0;
+                height: 0;
+                border-left: 5px solid #888;
+                border-top: 4px solid transparent;
+                border-bottom: 4px solid transparent;
+                transition: transform 0.2s;
+            }
+            .settings-section[open] summary::before {
+                transform: rotate(90deg);
+            }
+            .settings-section summary:hover {
+                background: rgba(0, 0, 0, 0.3);
+            }
+            .section-content {
+                padding: 16px;
+                background: rgba(0, 0, 0, 0.1);
+            }
+
+            /* Loading state */
             .loading {
                 text-align: center;
-                padding: 20px;
+                padding: 40px;
                 color: #888;
+            }
+
+            /* Responsive */
+            @media (max-width: 500px) {
+                .panel {
+                    width: 100%;
+                }
+                .header {
+                    flex-direction: column;
+                    gap: 16px;
+                    text-align: center;
+                }
             }
         </style>
     </head>
     <body>
-        <div class="container">
-            <h1>Sync Group Admin</h1>
+        <header class="header">
+            <h1>Sync Admin</h1>
+            <button class="btn btn-primary" onclick="openPanel('create')">+ Create Group</button>
+        </header>
 
+        <main class="main">
             <div id="message"></div>
 
-            <h2>Active Groups</h2>
-            <div id="groupsList" class="groups-list">
-                <div class="loading">Loading...</div>
+            <div class="section-header">
+                <span class="section-title">Active Groups</span>
+                <span class="section-count" id="groupCount">0</span>
             </div>
 
-            <h2>Create New Group</h2>
-            <div class="create-form">
-                <form id="createForm">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="group_id">Group ID *</label>
-                            <input type="text" id="group_id" name="group_id" required
-                                   placeholder="e.g., living-room" pattern="[a-zA-Z0-9_-]+"
-                                   title="Letters, numbers, dashes, underscores only">
-                        </div>
-                        <div class="form-group">
-                            <label for="duration">Duration (seconds)</label>
-                            <input type="number" id="duration" name="duration" value="30" min="5" max="3600">
-                        </div>
-                        <div class="form-group">
-                            <label for="folders">Folders (comma-separated)</label>
-                            <input type="text" id="folders" name="folders" placeholder="e.g., earth,space">
-                        </div>
-                        <div class="form-group checkbox-group">
-                            <input type="checkbox" id="recursive" name="recursive">
-                            <label for="recursive">Recursive search</label>
-                        </div>
-                        <div class="form-group">
-                            <label for="width">Width (px)</label>
-                            <input type="number" id="width" name="width" placeholder="Auto" min="1" max="8192">
-                        </div>
-                        <div class="form-group">
-                            <label for="height">Height (px)</label>
-                            <input type="number" id="height" name="height" placeholder="Auto" min="1" max="8192">
-                        </div>
-                        <div class="form-group">
-                            <label for="mode">Resize Mode</label>
-                            <select id="mode" name="mode">
-                                <option value="fit">Fit (letterbox)</option>
-                                <option value="crop">Crop (fill)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="pad_color">Padding Color</label>
-                            <input type="text" id="pad_color" name="pad_color" value="black" placeholder="black">
-                        </div>
-                        <div class="form-group checkbox-group">
-                            <input type="checkbox" id="eink" name="eink">
-                            <label for="eink">E-Ink mode</label>
-                        </div>
-                        <div class="form-group">
-                            <label for="format">Output Format</label>
-                            <select id="format" name="format">
-                                <option value="">Auto</option>
-                                <option value="jpeg">JPEG</option>
-                                <option value="png">PNG</option>
-                                <option value="webp">WebP</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="saturation">E-Ink Saturation</label>
-                            <input type="number" id="saturation" name="saturation" value="2.5" min="0" max="10" step="0.1">
-                        </div>
-                        <div class="form-group">
-                            <label for="contrast">E-Ink Contrast</label>
-                            <input type="number" id="contrast" name="contrast" value="1.2" min="0" max="5" step="0.1">
-                        </div>
-                        <div class="form-group">
-                            <label for="brightness">E-Ink Brightness</label>
-                            <input type="number" id="brightness" name="brightness" value="1.1" min="0" max="5" step="0.1">
-                        </div>
-                        <div class="form-group checkbox-group">
-                            <input type="checkbox" id="sharpen" name="sharpen" checked>
-                            <label for="sharpen">E-Ink Sharpen</label>
-                        </div>
+            <div id="groupsList" class="groups-grid">
+                <div class="loading">Loading groups...</div>
+            </div>
+        </main>
+
+        <!-- Panel overlay -->
+        <div class="panel-overlay" id="panelOverlay" onclick="closePanel()"></div>
+
+        <!-- Slide-in panel -->
+        <div class="panel" id="panel">
+            <div class="panel-header">
+                <span class="panel-title" id="panelTitle">Create Group</span>
+                <button class="panel-close" onclick="closePanel()">&times;</button>
+            </div>
+            <div class="panel-body">
+                <form id="groupForm">
+                    <!-- Group ID (create only) -->
+                    <div class="form-row" id="groupIdRow">
+                        <label for="group_id">Group ID</label>
+                        <input type="text" id="group_id" name="group_id" required
+                               placeholder="e.g., living-room"
+                               pattern="[a-zA-Z0-9_-]+"
+                               title="Letters, numbers, dashes, underscores only">
+                        <small>Used in the sync URL</small>
                     </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn-primary">Create Group</button>
-                    </div>
+
+                    <!-- Basic Settings -->
+                    <details class="settings-section" open>
+                        <summary>Basic Settings</summary>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <label for="duration">Duration (seconds)</label>
+                                <input type="number" id="duration" name="duration" value="30" min="5" max="3600">
+                                <small>Time between image switches</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="folders">Folders</label>
+                                <input type="text" id="folders" name="folders" placeholder="Leave empty for all images">
+                                <small>Comma-separated folder names to filter images</small>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="recursive" name="recursive">
+                                <label for="recursive">Search subfolders recursively</label>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Image Processing -->
+                    <details class="settings-section">
+                        <summary>Image Processing</summary>
+                        <div class="section-content">
+                            <div class="form-row-inline">
+                                <div class="form-row">
+                                    <label for="width">Width (px)</label>
+                                    <input type="number" id="width" name="width" placeholder="Auto" min="1" max="8192">
+                                </div>
+                                <div class="form-row">
+                                    <label for="height">Height (px)</label>
+                                    <input type="number" id="height" name="height" placeholder="Auto" min="1" max="8192">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label for="mode">Resize Mode</label>
+                                <select id="mode" name="mode">
+                                    <option value="fit">Fit (letterbox)</option>
+                                    <option value="crop">Crop (fill)</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label for="pad_color">Padding Color</label>
+                                <input type="text" id="pad_color" name="pad_color" value="black" placeholder="black">
+                                <small>Color for letterbox padding (fit mode)</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="format">Output Format</label>
+                                <select id="format" name="format">
+                                    <option value="">Auto (original format)</option>
+                                    <option value="jpeg">JPEG</option>
+                                    <option value="png">PNG</option>
+                                    <option value="webp">WebP</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- E-Ink Settings -->
+                    <details class="settings-section">
+                        <summary>E-Ink Settings</summary>
+                        <div class="section-content">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="eink" name="eink">
+                                <label for="eink">Enable E-Ink mode (Spectra-6 dithering)</label>
+                            </div>
+                            <div class="form-row-inline">
+                                <div class="form-row">
+                                    <label for="saturation">Saturation</label>
+                                    <input type="number" id="saturation" name="saturation" value="2.5" min="0" max="10" step="0.1">
+                                </div>
+                                <div class="form-row">
+                                    <label for="contrast">Contrast</label>
+                                    <input type="number" id="contrast" name="contrast" value="1.2" min="0" max="5" step="0.1">
+                                </div>
+                            </div>
+                            <div class="form-row-inline">
+                                <div class="form-row">
+                                    <label for="brightness">Brightness</label>
+                                    <input type="number" id="brightness" name="brightness" value="1.1" min="0" max="5" step="0.1">
+                                </div>
+                                <div class="form-row">
+                                    <label>&nbsp;</label>
+                                    <div class="checkbox-row" style="margin-top: 8px;">
+                                        <input type="checkbox" id="sharpen" name="sharpen" checked>
+                                        <label for="sharpen">Sharpen</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                 </form>
             </div>
-        </div>
-
-        <!-- Edit Modal -->
-        <div id="editModal" class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <span class="modal-title">Edit Group: <span id="editGroupId"></span></span>
-                    <button class="modal-close" onclick="closeEditModal()">&times;</button>
-                </div>
-                <form id="editForm">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="edit_duration">Duration (seconds)</label>
-                            <input type="number" id="edit_duration" name="duration" min="5" max="3600">
-                        </div>
-                        <div class="form-group">
-                            <label for="edit_folders">Folders</label>
-                            <input type="text" id="edit_folders" name="folders">
-                        </div>
-                        <div class="form-group checkbox-group">
-                            <input type="checkbox" id="edit_recursive" name="recursive">
-                            <label for="edit_recursive">Recursive</label>
-                        </div>
-                        <div class="form-group">
-                            <label for="edit_width">Width</label>
-                            <input type="number" id="edit_width" name="width" min="1" max="8192">
-                        </div>
-                        <div class="form-group">
-                            <label for="edit_height">Height</label>
-                            <input type="number" id="edit_height" name="height" min="1" max="8192">
-                        </div>
-                        <div class="form-group">
-                            <label for="edit_mode">Mode</label>
-                            <select id="edit_mode" name="mode">
-                                <option value="fit">Fit</option>
-                                <option value="crop">Crop</option>
-                            </select>
-                        </div>
-                        <div class="form-group checkbox-group">
-                            <input type="checkbox" id="edit_eink" name="eink">
-                            <label for="edit_eink">E-Ink</label>
-                        </div>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn-primary">Save Changes</button>
-                        <button type="button" class="btn-secondary" onclick="closeEditModal()">Cancel</button>
-                    </div>
-                </form>
+            <div class="panel-footer">
+                <button type="button" class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+                <button type="submit" form="groupForm" class="btn btn-primary" id="submitBtn">Create Group</button>
             </div>
         </div>
 
         <script type="text/javascript">
             const API_BASE = '/sync/admin/groups';
-            const CSRF_TOKEN = '{{ csrf_token }}';  // CSRF token from server (S5)
+            const CSRF_TOKEN = '{{ csrf_token }}';
             let editingGroupId = null;
+            let groupSettingsCache = {};
 
             // Show message
             function showMessage(text, type) {
                 const el = document.getElementById('message');
-                el.innerHTML = '<div class="message ' + type + '">' + text + '</div>';
+                el.innerHTML = '<div class="message ' + type + '">' + escapeHtml(text) + '</div>';
                 setTimeout(() => el.innerHTML = '', 5000);
             }
 
-            // Load groups (#24 - check response.ok before parsing JSON)
+            // Escape HTML to prevent XSS
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            // Panel management
+            function openPanel(mode, groupId) {
+                editingGroupId = mode === 'edit' ? groupId : null;
+                const panel = document.getElementById('panel');
+                const overlay = document.getElementById('panelOverlay');
+                const title = document.getElementById('panelTitle');
+                const submitBtn = document.getElementById('submitBtn');
+                const groupIdRow = document.getElementById('groupIdRow');
+
+                if (mode === 'edit') {
+                    title.textContent = 'Edit: ' + groupId;
+                    submitBtn.textContent = 'Save Changes';
+                    groupIdRow.style.display = 'none';
+                    populateForm(groupSettingsCache[groupId]);
+                } else {
+                    title.textContent = 'Create Group';
+                    submitBtn.textContent = 'Create Group';
+                    groupIdRow.style.display = 'block';
+                    resetForm();
+                }
+
+                panel.classList.add('open');
+                overlay.classList.add('visible');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closePanel() {
+                document.getElementById('panel').classList.remove('open');
+                document.getElementById('panelOverlay').classList.remove('visible');
+                document.body.style.overflow = '';
+                editingGroupId = null;
+            }
+
+            // Form management
+            function resetForm() {
+                const form = document.getElementById('groupForm');
+                form.reset();
+                document.getElementById('duration').value = 30;
+                document.getElementById('pad_color').value = 'black';
+                document.getElementById('saturation').value = 2.5;
+                document.getElementById('contrast').value = 1.2;
+                document.getElementById('brightness').value = 1.1;
+                document.getElementById('sharpen').checked = true;
+            }
+
+            function populateForm(settings) {
+                if (!settings) return;
+                document.getElementById('duration').value = settings.duration || 30;
+                document.getElementById('folders').value = settings.folders || '';
+                document.getElementById('recursive').checked = settings.recursive || false;
+                document.getElementById('width').value = settings.width || '';
+                document.getElementById('height').value = settings.height || '';
+                document.getElementById('mode').value = settings.mode || 'fit';
+                document.getElementById('pad_color').value = settings.pad_color || 'black';
+                document.getElementById('format').value = settings.format || '';
+                document.getElementById('eink').checked = settings.eink || false;
+                document.getElementById('saturation').value = settings.saturation ?? 2.5;
+                document.getElementById('contrast').value = settings.contrast ?? 1.2;
+                document.getElementById('brightness').value = settings.brightness ?? 1.1;
+                document.getElementById('sharpen').checked = settings.sharpen ?? true;
+            }
+
+            function getFormData() {
+                const form = document.getElementById('groupForm');
+                const data = {};
+
+                if (!editingGroupId) {
+                    data.group_id = form.group_id.value;
+                }
+
+                const duration = parseInt(form.duration.value);
+                if (!isNaN(duration)) data.duration = duration;
+
+                const folders = form.folders.value.trim();
+                data.folders = folders || null;
+                data.recursive = form.recursive.checked;
+
+                const width = parseInt(form.width.value);
+                const height = parseInt(form.height.value);
+                if (!isNaN(width)) data.width = width;
+                if (!isNaN(height)) data.height = height;
+
+                data.mode = form.mode.value;
+                data.pad_color = form.pad_color.value || 'black';
+                data.format = form.format.value || null;
+                data.eink = form.eink.checked;
+                data.saturation = parseFloat(form.saturation.value) || 2.5;
+                data.contrast = parseFloat(form.contrast.value) || 1.2;
+                data.brightness = parseFloat(form.brightness.value) || 1.1;
+                data.sharpen = form.sharpen.checked;
+
+                return data;
+            }
+
+            // Form submission
+            document.getElementById('groupForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const data = getFormData();
+
+                try {
+                    const url = editingGroupId ? API_BASE + '/' + editingGroupId : API_BASE;
+                    const method = editingGroupId ? 'PATCH' : 'POST';
+
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    if (response.ok) {
+                        showMessage(editingGroupId ? 'Group updated' : 'Group created', 'success');
+                        closePanel();
+                        loadGroups();
+                    } else {
+                        const err = await response.json();
+                        showMessage(err.detail || 'Operation failed', 'error');
+                    }
+                } catch (e) {
+                    showMessage('Request failed: ' + e.message, 'error');
+                }
+            });
+
+            // Load groups
             async function loadGroups() {
                 try {
                     const response = await fetch(API_BASE);
@@ -420,27 +683,26 @@
                     renderGroups(groups);
                 } catch (e) {
                     document.getElementById('groupsList').innerHTML =
-                        '<div class="empty-state">Failed to load groups: ' + escapeHtml(e.message) + '</div>';
+                        '<div class="empty-state"><p>Failed to load groups</p><p style="color:#666">' + escapeHtml(e.message) + '</p></div>';
                 }
             }
 
-            // Escape HTML to prevent XSS (#23)
-            function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }
-
-            // Store group settings for edit modal (#23)
-            let groupSettingsCache = {};
-
-            // Render groups list (#23 - use data attributes instead of inline onclick)
+            // Render groups
             function renderGroups(groups) {
                 const container = document.getElementById('groupsList');
-                groupSettingsCache = {}; // Clear cache
+                const countEl = document.getElementById('groupCount');
+                groupSettingsCache = {};
+
+                countEl.textContent = groups.length;
 
                 if (!groups || groups.length === 0) {
-                    container.innerHTML = '<div class="empty-state">No sync groups. Create one below.</div>';
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">&#128247;</div>
+                            <p>No sync groups yet</p>
+                            <button class="btn btn-primary" onclick="openPanel('create')">Create your first group</button>
+                        </div>
+                    `;
                     return;
                 }
 
@@ -452,170 +714,51 @@
                     const s = group.settings;
                     const groupIdSafe = escapeHtml(group.group_id);
                     const syncUrl = window.location.origin + '/sync?sync=' + encodeURIComponent(group.group_id);
+
+                    // Build summary line
+                    const summaryParts = [s.duration + 's', s.mode];
+                    if (s.width && s.height) {
+                        summaryParts.push(s.width + '×' + s.height);
+                    } else if (s.width) {
+                        summaryParts.push(s.width + 'w');
+                    } else if (s.height) {
+                        summaryParts.push(s.height + 'h');
+                    }
+                    if (s.eink) summaryParts.push('E-Ink');
+                    if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
+
                     return `
                         <div class="group-card">
-                            <div class="group-header">
-                                <span class="group-id">${groupIdSafe}</span>
-                                <div class="group-stats">
-                                    <span class="stat">Browsers: <span class="stat-value">${group.browser_count}</span></span>
-                                    <span class="stat">Cycle: <span class="stat-value">${group.current_cycle}</span></span>
-                                </div>
-                            </div>
-                            <div class="group-settings">
-                                <div class="setting"><span class="setting-label">Duration:</span> <span class="setting-value">${s.duration}s</span></div>
-                                <div class="setting"><span class="setting-label">Folders:</span> <span class="setting-value">${escapeHtml(s.folders || 'All')}</span></div>
-                                <div class="setting"><span class="setting-label">Recursive:</span> <span class="setting-value">${s.recursive ? 'Yes' : 'No'}</span></div>
-                                ${s.width ? `<div class="setting"><span class="setting-label">Width:</span> <span class="setting-value">${s.width}px</span></div>` : ''}
-                                ${s.height ? `<div class="setting"><span class="setting-label">Height:</span> <span class="setting-value">${s.height}px</span></div>` : ''}
-                                <div class="setting"><span class="setting-label">Mode:</span> <span class="setting-value">${escapeHtml(s.mode)}</span></div>
-                                <div class="setting"><span class="setting-label">E-Ink:</span> <span class="setting-value">${s.eink ? 'Yes' : 'No'}</span></div>
-                            </div>
-                            <a href="${syncUrl}" target="_blank" class="group-link">Open sync display &rarr;</a>
+                            <div class="group-name">${groupIdSafe}</div>
+                            <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
+                            <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                             <div class="group-actions">
-                                <button class="btn-secondary btn-small btn-edit" data-group-id="${groupIdSafe}">Edit</button>
-                                <button class="btn-danger btn-small btn-delete" data-group-id="${groupIdSafe}">Delete</button>
+                                <a href="${syncUrl}" target="_blank" class="btn btn-link">Open Display</a>
+                                <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
+                                <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
                             </div>
                         </div>
                     `;
                 }).join('');
             }
 
-            // Event delegation for edit/delete buttons (#23)
+            // Event delegation for buttons
             document.getElementById('groupsList').addEventListener('click', function(e) {
                 const editBtn = e.target.closest('.btn-edit');
                 const deleteBtn = e.target.closest('.btn-delete');
 
                 if (editBtn) {
                     const groupId = editBtn.dataset.groupId;
-                    const settings = groupSettingsCache[groupId];
-                    if (settings) {
-                        openEditModal(groupId, settings);
-                    }
+                    openPanel('edit', groupId);
                 } else if (deleteBtn) {
                     const groupId = deleteBtn.dataset.groupId;
                     deleteGroup(groupId);
                 }
             });
 
-            // Create group
-            document.getElementById('createForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                const form = e.target;
-                const data = {
-                    group_id: form.group_id.value,
-                    duration: parseInt(form.duration.value) || 30,
-                    folders: form.folders.value || null,
-                    recursive: form.recursive.checked,
-                    width: form.width.value ? parseInt(form.width.value) : null,
-                    height: form.height.value ? parseInt(form.height.value) : null,
-                    mode: form.mode.value,
-                    pad_color: form.pad_color.value || 'black',
-                    eink: form.eink.checked,
-                    format: form.format.value || null,
-                    saturation: parseFloat(form.saturation.value) || 2.5,
-                    contrast: parseFloat(form.contrast.value) || 1.2,
-                    brightness: parseFloat(form.brightness.value) || 1.1,
-                    sharpen: form.sharpen.checked
-                };
-
-                try {
-                    const response = await fetch(API_BASE, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-Token': CSRF_TOKEN  // CSRF protection (S5)
-                        },
-                        body: JSON.stringify(data)
-                    });
-
-                    if (response.ok) {
-                        showMessage('Group created successfully', 'success');
-                        form.reset();
-                        form.duration.value = 30;
-                        form.saturation.value = 2.5;
-                        form.contrast.value = 1.2;
-                        form.brightness.value = 1.1;
-                        form.sharpen.checked = true;
-                        loadGroups();
-                    } else {
-                        const err = await response.json();
-                        showMessage(err.detail || 'Failed to create group', 'error');
-                    }
-                } catch (e) {
-                    showMessage('Failed to create group: ' + e.message, 'error');
-                }
-            });
-
-            // Edit modal
-            function openEditModal(groupId, settings) {
-                editingGroupId = groupId;
-                document.getElementById('editGroupId').textContent = groupId;
-                document.getElementById('edit_duration').value = settings.duration;
-                document.getElementById('edit_folders').value = settings.folders || '';
-                document.getElementById('edit_recursive').checked = settings.recursive;
-                document.getElementById('edit_width').value = settings.width || '';
-                document.getElementById('edit_height').value = settings.height || '';
-                document.getElementById('edit_mode').value = settings.mode;
-                document.getElementById('edit_eink').checked = settings.eink;
-                document.getElementById('editModal').classList.add('visible');
-            }
-
-            function closeEditModal() {
-                editingGroupId = null;
-                document.getElementById('editModal').classList.remove('visible');
-            }
-
-            document.getElementById('editForm').addEventListener('submit', async (e) => {
-                e.preventDefault();
-                if (!editingGroupId) return;
-
-                const form = e.target;
-                const data = {};
-
-                // Only include changed values
-                const duration = parseInt(form.duration.value);
-                if (!isNaN(duration)) data.duration = duration;
-
-                const folders = form.folders.value;
-                if (folders !== '') data.folders = folders;
-
-                data.recursive = form.recursive.checked;
-
-                const width = parseInt(form.width.value);
-                if (!isNaN(width)) data.width = width;
-
-                const height = parseInt(form.height.value);
-                if (!isNaN(height)) data.height = height;
-
-                data.mode = form.mode.value;
-                data.eink = form.eink.checked;
-
-                try {
-                    const response = await fetch(API_BASE + '/' + editingGroupId, {
-                        method: 'PATCH',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-Token': CSRF_TOKEN  // CSRF protection (S5)
-                        },
-                        body: JSON.stringify(data)
-                    });
-
-                    if (response.ok) {
-                        showMessage('Group updated successfully', 'success');
-                        closeEditModal();
-                        loadGroups();
-                    } else {
-                        const err = await response.json();
-                        showMessage(err.detail || 'Failed to update group', 'error');
-                    }
-                } catch (e) {
-                    showMessage('Failed to update group: ' + e.message, 'error');
-                }
-            });
-
             // Delete group
             async function deleteGroup(groupId) {
-                if (!confirm('Delete group "' + groupId + '"? All connected browsers will be disconnected.')) {
+                if (!confirm('Delete "' + groupId + '"?\n\nAll connected browsers will be disconnected.')) {
                     return;
                 }
 
@@ -623,7 +766,7 @@
                     const response = await fetch(API_BASE + '/' + groupId, {
                         method: 'DELETE',
                         headers: {
-                            'X-CSRF-Token': CSRF_TOKEN  // CSRF protection (S5)
+                            'X-CSRF-Token': CSRF_TOKEN
                         }
                     });
 
@@ -632,21 +775,21 @@
                         loadGroups();
                     } else {
                         const err = await response.json();
-                        showMessage(err.detail || 'Failed to delete group', 'error');
+                        showMessage(err.detail || 'Failed to delete', 'error');
                     }
                 } catch (e) {
-                    showMessage('Failed to delete group: ' + e.message, 'error');
+                    showMessage('Delete failed: ' + e.message, 'error');
                 }
             }
 
-            // Close modal on outside click
-            document.getElementById('editModal').addEventListener('click', (e) => {
-                if (e.target.id === 'editModal') {
-                    closeEditModal();
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    closePanel();
                 }
             });
 
-            // Auto-refresh groups list
+            // Auto-refresh
             setInterval(loadGroups, 5000);
 
             // Initial load
