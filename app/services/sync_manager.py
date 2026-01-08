@@ -302,8 +302,9 @@ class SyncManager:
                         "reason": "Group deleted"
                     })
                     await browser.websocket.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Log error but continue cleanup (P2)
+                    logger.debug(f"Error closing browser {browser.browser_id}: {e}")
 
             del self.groups[group_id]
             logger.info(f"Deleted sync group: {group_id}")
@@ -333,7 +334,8 @@ class SyncManager:
             }
             await self._broadcast_to_group(group, message)
 
-            logger.info(f"Updated settings for group {group_id}: {updates}")
+            # Log only field names, not values (S11)
+            logger.info(f"Updated settings for group {group_id}: {list(updates.keys())}")
             return group
 
     async def list_groups(self) -> List[Dict[str, Any]]:
