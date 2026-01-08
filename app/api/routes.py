@@ -804,8 +804,9 @@ async def sync_page(
             detail=f"Sync group '{sync}' not found. Create it via /sync/admin first."
         )
 
-    # Get WebSocket URL
-    ws_scheme = "wss" if request.url.scheme == "https" else "ws"
+    # Get WebSocket URL - check X-Forwarded-Proto for reverse proxy support
+    original_scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
+    ws_scheme = "wss" if original_scheme == "https" else "ws"
     ws_url = f"{ws_scheme}://{request.url.netloc}/ws/sync/{sync}"
 
     return templates.TemplateResponse(
