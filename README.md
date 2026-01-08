@@ -8,9 +8,13 @@ A modern image screensaver service built with Python/FastAPI, featuring image pr
 - **Image Resizing**: Dynamic image resizing with flexible parameters
 - **E-Ink Color Mapping**: Floyd-Steinberg dithering for 6-color Spectra displays
 - **Web Interface**: Auto-rotating image slideshow (30-second intervals)
+- **Synchronized Multi-Browser**: Display unique images across 100+ browsers in sync
 - **Docker-based**: Easy deployment with Docker Compose
 - **Modern Stack**: Python 3.11 + FastAPI + Pillow
 - **Security Hardened**: Non-root container, security headers, path traversal protection
+- **OIDC Authentication**: Protect admin endpoints with SSO integration
+- **Rate Limiting**: Prevent resource exhaustion attacks
+- **Metrics Endpoint**: Monitor connections, cycles, and errors at `/metrics`
 
 ## Tech Stack
 
@@ -110,6 +114,8 @@ Display images across multiple browsers (20+) in sync, with each browser showing
 **Admin Dashboard:** `http://localhost/sync/admin`
 
 Create and manage sync groups with all image processing options.
+
+**Note:** When OIDC authentication is configured, admin endpoints require login. Unauthenticated users are redirected to `/auth/login`.
 
 **Browser Display:** `http://localhost/sync?sync={group_id}`
 
@@ -285,6 +291,46 @@ Returns application health status and image count.
 }
 ```
 
+### Metrics
+
+**GET /metrics**
+
+Returns application metrics for observability and monitoring.
+
+**Response:**
+```json
+{
+  "uptime_seconds": 3600.5,
+  "counters": {
+    "websocket_connections_total": 150,
+    "websocket_disconnections_total": 140,
+    "groups_created_total": 5,
+    "groups_deleted_total": 2,
+    "image_cycles_total": 720,
+    "errors_total": 0
+  },
+  "gauges": {
+    "active_groups": 3,
+    "active_browsers": 10
+  },
+  "timestamps": {
+    "start_time": "2026-01-08T10:00:00+00:00",
+    "last_cycle_time": "2026-01-08T11:00:00+00:00"
+  }
+}
+```
+
+### Authentication
+
+When OIDC is configured, admin endpoints require authentication. Unauthenticated users are redirected to the login page.
+
+| Endpoint | Description |
+|----------|-------------|
+| **GET /auth/login** | Redirects to OIDC provider for authentication |
+| **GET /auth/callback** | Handles OIDC callback after authentication |
+| **GET /auth/logout** | Clears session and logs out user |
+| **GET /auth/me** | Returns current user info (email, name) |
+
 ## Image Processing Details
 
 ### Resize Modes
@@ -369,6 +415,22 @@ EINK_BRIGHTNESS=1.1
 
 # Logging
 LOG_LEVEL=info
+
+# Authentication (OIDC) - leave empty to disable auth
+OIDC_ISSUER=https://keycloak.example.com/realms/myrealm
+OIDC_CLIENT_ID=screensaver
+OIDC_CLIENT_SECRET=your-client-secret
+OIDC_REDIRECT_URI=https://screensaver.example.com/auth/callback
+SESSION_SECRET=random-32-char-secret-for-sessions
+
+# Security
+ALLOWED_ORIGINS=https://screensaver.example.com
+ALLOWED_WS_ORIGINS=https://screensaver.example.com
+HTTPS_ONLY=true
+
+# Connection Limits
+MAX_BROWSERS_PER_GROUP=100
+MAX_GROUPS=50
 ```
 
 **Dimension Limits:** Width and height parameters are capped at 8192px to prevent memory exhaustion.
@@ -422,19 +484,29 @@ screensaver/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI application entry point
+│   ├── exceptions.py           # Custom exceptions and error helpers
 │   ├── api/
 │   │   ├── __init__.py
 │   │   └── routes.py           # API endpoints
+│   ├── auth/                   # Authentication module
+│   │   ├── __init__.py
+│   │   ├── oidc.py             # OIDC client configuration
+│   │   ├── dependencies.py     # Auth & CSRF dependencies
+│   │   └── routes.py           # Login/logout endpoints
 │   ├── services/
 │   │   ├── __init__.py
-│   │   └── image_service.py    # Image processing logic
+│   │   ├── image_service.py    # Image processing logic
+│   │   └── sync_manager.py     # Multi-browser sync manager
 │   └── utils/
 │       ├── __init__.py
 │       ├── color_mapping.py    # Spectra-6 dithering
 │       ├── path_security.py    # Path validation & traversal protection
-│       └── logging.py          # Structured logging configuration
+│       ├── logging.py          # Structured logging configuration
+│       └── metrics.py          # Application metrics collection
 ├── templates/
-│   └── index.html              # Web interface template
+│   ├── index.html              # Web interface template
+│   ├── sync.html               # Sync browser display
+│   └── sync_admin.html         # Admin dashboard
 ├── static/                     # Static files (if any)
 ├── Dockerfile                  # Container definition
 ├── compose.yaml                # Docker Compose config
@@ -514,6 +586,22 @@ All responses include security headers:
 - `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
 - `X-Frame-Options: DENY` - Prevents clickjacking
 - `X-XSS-Protection: 1; mode=block` - XSS protection for legacy browsers
+- `Content-Security-Policy` - Restricts script/style sources, prevents XSS
+
+### Authentication & Authorization
+- **OIDC Integration**: Admin endpoints protected by OpenID Connect (optional)
+- **Session Management**: Secure cookie-based sessions (1 hour expiry)
+- **CSRF Protection**: X-CSRF-Token header required for state-changing requests
+
+### Rate Limiting
+- **Admin API**: 5 requests/minute for group create/update/delete operations
+- **Image Processing**: Rate limited to prevent resource exhaustion
+- **429 Response**: Too Many Requests returned when limit exceeded
+
+### WebSocket Security
+- **Origin Validation**: Configurable allowed origins list (`ALLOWED_WS_ORIGINS`)
+- **Connection Limits**: Max 100 browsers per group, 50 groups total (configurable)
+- **Stale Connection Cleanup**: Automatic cleanup of disconnected browsers
 
 ### Container Security
 - **Non-root User**: Application runs as `appuser` (UID 1000), not root
