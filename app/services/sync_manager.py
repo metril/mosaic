@@ -7,6 +7,7 @@ at exactly the same time.
 """
 
 import asyncio
+import os
 import random
 import uuid
 from dataclasses import dataclass, field, asdict
@@ -18,10 +19,15 @@ from fastapi import WebSocket
 
 from app.services.image_service import ImageService
 from app.utils.logging import logger
+from app.utils.metrics import metrics
 
 # Constants
 PRELOAD_LEAD_TIME_SECONDS = 5  # Time before switch to send preload command (P9)
 MAX_CYCLE_COUNT = 2**31  # Wrap cycle counter to prevent overflow (S14)
+
+# Connection limits (A10) - configurable via environment variables
+MAX_BROWSERS_PER_GROUP = int(os.environ.get("MAX_BROWSERS_PER_GROUP", "100"))
+MAX_GROUPS = int(os.environ.get("MAX_GROUPS", "50"))
 
 
 class BrowserStatus(str, Enum):
@@ -262,6 +268,10 @@ class SyncManager:
             if group_id in self.groups:
                 raise ValueError(f"Group '{group_id}' already exists")
 
+            # Check group limit (A10)
+            if len(self.groups) >= MAX_GROUPS:
+                raise ValueError(f"Maximum number of groups ({MAX_GROUPS}) reached")
+
             if settings is None:
                 settings = SyncGroupSettings()
 
@@ -272,6 +282,7 @@ class SyncManager:
                 image_pool=image_pool
             )
             self.groups[group_id] = group
+            metrics.record_group_created()  # A6
             logger.info(f"Created sync group: {group_id}")
             return group
 
@@ -307,6 +318,7 @@ class SyncManager:
                     logger.debug(f"Error closing browser {browser.browser_id}: {e}")
 
             del self.groups[group_id]
+            metrics.record_group_deleted()  # A6
             logger.info(f"Deleted sync group: {group_id}")
             return True
 
@@ -347,12 +359,23 @@ class SyncManager:
         group_id: str,
         websocket: WebSocket
     ) -> Optional[BrowserState]:
-        """Add a browser to a sync group"""
+        """
+        Add a browser to a sync group.
+
+        Returns None if group doesn't exist.
+        Raises ValueError if browser limit is reached (A10).
+        """
         # Use main lock to prevent race with delete_group (#5, #13)
         async with self._lock:
             group = self.groups.get(group_id)
             if not group:
                 return None
+
+            # Check browser limit (A10)
+            if len(group.browsers) >= MAX_BROWSERS_PER_GROUP:
+                raise ValueError(
+                    f"Maximum browsers per group ({MAX_BROWSERS_PER_GROUP}) reached"
+                )
 
             browser_id = uuid.uuid4().hex[:16]  # 64-bit uniqueness (P4)
             browser = BrowserState(
@@ -381,6 +404,7 @@ class SyncManager:
                         self._run_cycle_loop(group)
                     )
 
+            metrics.record_connection()  # A6
             logger.info(f"Browser {browser_id} joined group {group_id}")
             return browser
 
@@ -394,6 +418,7 @@ class SyncManager:
             if browser_id in group.browsers:
                 group.image_pool.release_image(browser_id)
                 del group.browsers[browser_id]
+                metrics.record_disconnection()  # A6
                 logger.info(f"Browser {browser_id} left group {group_id}")
 
             # Stop cycle task if no browsers left
@@ -586,6 +611,7 @@ class SyncManager:
 
                     # Send synchronized switch command (S14 - wrap to prevent overflow)
                     group.current_cycle = (group.current_cycle + 1) % MAX_CYCLE_COUNT
+                    metrics.record_cycle()  # A6
                     switch_timestamp = _utc_now().timestamp() * 1000
 
                     await self._broadcast_to_group(group, {
@@ -600,6 +626,7 @@ class SyncManager:
                     raise  # Re-raise cancellation
                 except Exception as e:
                     # Catch all other exceptions and continue (#3)
+                    metrics.record_error()  # A6
                     logger.error(f"Error in cycle loop for {group.group_id}: {e}", exc_info=True)
                     await asyncio.sleep(1)  # Brief pause before retry
 

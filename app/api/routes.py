@@ -25,9 +25,10 @@ from app.services.image_service import ImageService
 from app.services.sync_manager import SyncManager, SyncGroupSettings
 from app.auth.dependencies import get_current_user, get_optional_user, User, get_csrf_token, verify_csrf_token
 from app.auth.oidc import get_oidc_config
-from app.exceptions import PathSecurityError, NoImagesFoundError
+from app.exceptions import PathSecurityError, NoImagesFoundError, error_response
 from app.utils.path_security import resolve_image_path
 from app.utils.logging import logger
+from app.utils.metrics import metrics
 
 # Allowed WebSocket origins (comma-separated in env, empty = allow all)
 ALLOWED_WS_ORIGINS = os.environ.get("ALLOWED_WS_ORIGINS", "").split(",")
@@ -104,6 +105,36 @@ async def health_check():
         "image_count": len(image_files),
         "image_directory": str(image_service.image_dir)
     }
+
+
+@router.get("/metrics", responses={
+    200: {
+        "description": "Application metrics for observability (A6)",
+        "content": {
+            "application/json": {
+                "example": {
+                    "uptime_seconds": 3600.5,
+                    "counters": {
+                        "websocket_connections_total": 100,
+                        "groups_created_total": 5
+                    },
+                    "gauges": {
+                        "active_groups": 2,
+                        "active_browsers": 10
+                    }
+                }
+            }
+        }
+    }
+})
+async def get_metrics():
+    """
+    Return application metrics for observability.
+
+    Provides counters (monotonically increasing) and gauges (current values)
+    for monitoring sync group and WebSocket connection health.
+    """
+    return metrics.to_dict()
 
 
 @router.get("/browse", responses={
@@ -199,7 +230,7 @@ async def get_thumbnail(image_path: str):
         if not full_path.exists() or full_path.is_symlink():
             return JSONResponse(
                 status_code=404,
-                content={"error": "Image not found"}
+                content=error_response("Image not found")
             )
 
         # Security check: ensure it's actually within image_dir
@@ -208,7 +239,7 @@ async def get_thumbnail(image_path: str):
         except ValueError:
             return JSONResponse(
                 status_code=400,
-                content={"error": "Invalid image path"}
+                content=error_response("Invalid image path")
             )
 
         # Load and resize image in thread pool
@@ -252,12 +283,12 @@ async def get_thumbnail(image_path: str):
     except PathSecurityError:
         return JSONResponse(
             status_code=400,
-            content={"error": "Invalid image path"}
+            content=error_response("Invalid image path")
         )
     except Exception as e:
         return JSONResponse(
             status_code=500,
-            content={"error": "Failed to generate thumbnail"}
+            content=error_response("Failed to generate thumbnail")
         )
 
 
@@ -307,7 +338,7 @@ async def get_image_metadata(
         if not full_path.exists() or not full_path.is_file():
             return JSONResponse(
                 status_code=404,
-                content={"error": "Image not found"}
+                content=error_response("Image not found")
             )
 
         # Get metadata (runs in thread pool for EXIF extraction)
@@ -321,13 +352,13 @@ async def get_image_metadata(
     except PathSecurityError:
         return JSONResponse(
             status_code=400,
-            content={"error": "Invalid image path"}
+            content=error_response("Invalid image path")
         )
     except Exception as e:
         logger.error(f"Failed to extract metadata for {image_path}: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"error": "Failed to extract metadata"}
+            content=error_response("Failed to extract metadata")
         )
 
 
@@ -374,7 +405,7 @@ async def serve_processed_image(
         if not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
             return JSONResponse(
                 status_code=404,
-                content={"error": "Image not found"}
+                content=error_response("Image not found")
             )
 
         # Process image in thread pool (CPU-intensive operations)
@@ -468,13 +499,13 @@ async def serve_processed_image(
     except PathSecurityError:
         return JSONResponse(
             status_code=400,
-            content={"error": "Invalid image path"}
+            content=error_response("Invalid image path")
         )
     except Exception as e:
         logger.error(f"Failed to process image {image_path}: {e}", exc_info=True)
         return JSONResponse(
             status_code=500,
-            content={"error": "Failed to process image"}
+            content=error_response("Failed to process image")
         )
 
 
@@ -838,8 +869,14 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
     await websocket.accept()
 
     try:
-        # Add browser to group (may fail if group deleted between check and add)
-        browser = await sync_manager.add_browser(group_id, websocket)
+        # Add browser to group (may fail if group deleted or limit reached)
+        try:
+            browser = await sync_manager.add_browser(group_id, websocket)
+        except ValueError as e:
+            # Connection limit reached (A10)
+            await websocket.close(code=4008, reason=str(e))
+            return
+
         if not browser:
             await websocket.close(code=4004, reason="Failed to join group")
             return
@@ -1020,13 +1057,13 @@ async def root(
             if result is None:
                 return JSONResponse(
                     status_code=404,
-                    content={"error": "No images found"}
+                    content=error_response("No images found")
                 )
         except PathSecurityError as e:
             # Security violation - return 400 Bad Request with generic message
             return JSONResponse(
                 status_code=400,
-                content={"error": "Invalid folder path"}
+                content=error_response("Invalid folder path")
             )
 
         buffer, content_type, filename, relative_path, mtime = result

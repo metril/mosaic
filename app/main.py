@@ -24,7 +24,7 @@ from app.auth.routes import router as auth_router
 from app.auth.oidc import get_oidc_config
 from app.services.sync_manager import SyncManager
 from app.utils.logging import logger
-from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException
+from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException, error_response
 
 # Rate limiter for API endpoints
 limiter = Limiter(key_func=get_remote_address)
@@ -186,7 +186,7 @@ async def path_security_exception_handler(request: Request, exc: PathSecurityErr
     logger.warning(f"Path security violation: {exc} - Path: {request.url.path}")
     return JSONResponse(
         status_code=400,
-        content={"error": "Invalid path", "detail": str(exc)}
+        content=error_response("Invalid path", str(exc))
     )
 
 
@@ -196,7 +196,7 @@ async def no_images_exception_handler(request: Request, exc: NoImagesFoundError)
     logger.info(f"No images found: {exc} - Path: {request.url.path}")
     return JSONResponse(
         status_code=404,
-        content={"error": "No images found", "detail": str(exc)}
+        content=error_response("No images found", str(exc))
     )
 
 
@@ -206,7 +206,7 @@ async def screensaver_exception_handler(request: Request, exc: ScreensaverExcept
     logger.error(f"Application error: {exc} - Path: {request.url.path}")
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "detail": str(exc)}
+        content=error_response("Internal server error", str(exc))
     )
 
 
@@ -216,7 +216,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unexpected error: {exc} - Path: {request.url.path}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error"}
+        content=error_response("Internal server error")
     )
 
 
