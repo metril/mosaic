@@ -741,7 +741,14 @@ class SyncManager:
         """Go to previous image - each browser goes to its own previous image."""
         group = self.groups.get(group_id)
         if not group or not group.browsers:
+            logger.info(f"previous_group({group_id}): no group or no browsers")
             return False
+
+        # Debug: log state of all browsers before rewind
+        for bid, b in group.browsers.items():
+            logger.info(f"previous_group({group_id}): browser {bid}: "
+                       f"history_len={len(b.image_history)}, "
+                       f"current={b.current_image}, next={b.next_image}")
 
         # Check if any browser can rewind (has history OR is mid-switch with next_image)
         can_rewind = any(
@@ -749,6 +756,7 @@ class SyncManager:
             for browser in group.browsers.values()
         )
         if not can_rewind:
+            logger.info(f"previous_group({group_id}): can_rewind=False, returning")
             return False
 
         async with group._lock:
@@ -828,17 +836,24 @@ class SyncManager:
 
         for browser in list(group.browsers.values()):
             previous_image = None
+            rewind_case = None
+
+            logger.info(f"_rewind_browsers: browser {browser.browser_id}: "
+                       f"BEFORE history={[p.split('/')[-1] for p in browser.image_history]}, "
+                       f"current={browser.current_image}, next={browser.next_image}")
 
             # Case 1: Browser is mid-switch (next_image is set, SWITCH_COMPLETE not yet received)
             # The browser is showing/transitioning to next_image, cancel and stay on current_image
             if browser.next_image:
                 previous_image = browser.current_image
+                rewind_case = "mid-switch"
                 # Clear next_image to cancel the pending switch
                 browser.next_image = None
                 # Note: Don't pop from history - we're just canceling a pending switch
             # Case 2: Normal rewind from history
             elif browser.image_history:
                 previous_image = browser.image_history.pop()
+                rewind_case = "history"
                 # Release current image back to pool
                 async with group._lock:
                     if browser.current_image:
@@ -846,9 +861,13 @@ class SyncManager:
                 browser.current_image = previous_image
             else:
                 # No next_image and no history - nothing to rewind to
+                logger.info(f"_rewind_browsers: browser {browser.browser_id}: SKIP (no next, no history)")
                 continue
 
             browser.status = BrowserStatus.READY
+
+            logger.info(f"_rewind_browsers: browser {browser.browser_id}: "
+                       f"case={rewind_case}, will send ASSIGN {previous_image}")
 
             # Send ASSIGN to show the previous/current image
             if previous_image:
@@ -863,5 +882,6 @@ class SyncManager:
                         }),
                         timeout=5.0
                     )
+                    logger.info(f"_rewind_browsers: browser {browser.browser_id}: ASSIGN sent successfully")
                 except Exception as e:
                     logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
