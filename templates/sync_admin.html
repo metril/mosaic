@@ -801,10 +801,10 @@
                 // Validate that the date is valid (not NaN)
                 if (isNaN(nextSwitchTime)) return;
 
-                // Use escaped groupId to match the HTML attribute
-                const groupIdSafe = escapeHtml(groupId);
+                // Use raw groupId - browser decodes HTML entities in attribute values
+                // so escapeHtml() would create a mismatch
                 const countdownEl = document.querySelector(
-                    `.countdown[data-group-id="${groupIdSafe}"] .countdown-value`
+                    `.countdown[data-group-id="${groupId}"] .countdown-value`
                 );
 
                 if (!countdownEl) return;
