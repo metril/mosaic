@@ -895,6 +895,54 @@ async def previous_sync_group(
     return JSONResponse(content={"status": "rewound", "group_id": group_id})
 
 
+@router.post("/sync/admin/groups/{group_id}/rewind-all")
+async def rewind_all_group(
+    group_id: str,
+    request: Request,
+    user: User = Depends(get_authenticated_user),
+    _csrf: str = Depends(verify_csrf),
+):
+    """
+    Jump to the first image in history (rewind all the way).
+
+    Requires authentication.
+    This is a bulk operation - moves instantly to the beginning of history
+    without stepping through each image.
+    """
+    sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} rewinding all for sync group: {group_id}")
+    success = await sync_manager.rewind_all_group(group_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found or no history available")
+
+    return JSONResponse(content={"status": "rewound_all", "group_id": group_id})
+
+
+@router.post("/sync/admin/groups/{group_id}/forward-all")
+async def forward_all_group(
+    group_id: str,
+    request: Request,
+    user: User = Depends(get_authenticated_user),
+    _csrf: str = Depends(verify_csrf),
+):
+    """
+    Jump to the most recent image (forward all the way).
+
+    Requires authentication.
+    This is a bulk operation - moves instantly to the most recent image
+    without stepping through each one.
+    """
+    sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} forwarding all for sync group: {group_id}")
+    success = await sync_manager.forward_all_group(group_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found or no forward history available")
+
+    return JSONResponse(content={"status": "forwarded_all", "group_id": group_id})
+
+
 @router.get("/sync", include_in_schema=False)
 async def sync_page(
     request: Request,

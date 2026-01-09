@@ -536,6 +536,59 @@
                 padding-left: 8px;
             }
 
+            /* History strip */
+            .history-section {
+                margin: 12px 0;
+            }
+            .history-strip {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.3);
+                border-radius: 6px;
+                overflow-x: auto;
+            }
+            .thumb {
+                width: 60px;
+                height: 40px;
+                object-fit: cover;
+                border-radius: 4px;
+                opacity: 0.6;
+                cursor: pointer;
+                transition: all 0.2s;
+                flex-shrink: 0;
+            }
+            .thumb:hover {
+                opacity: 1;
+                transform: scale(1.1);
+                z-index: 1;
+            }
+            .thumb.current {
+                width: 80px;
+                height: 54px;
+                opacity: 1;
+                border: 2px solid #e94560;
+            }
+            .thumb.past {
+                border: 1px solid #666;
+            }
+            .thumb.forward {
+                border: 1px solid #4caf50;
+            }
+            .position-indicator {
+                font-size: 12px;
+                color: #888;
+                text-align: center;
+                margin-top: 6px;
+            }
+            .history-empty {
+                color: #666;
+                font-size: 12px;
+                padding: 8px;
+                text-align: center;
+            }
+
             /* Responsive */
             @media (max-width: 500px) {
                 .panel {
@@ -916,15 +969,64 @@
                     // Status indicator
                     const statusText = isPaused ? ' (Paused)' : '';
 
+                    // Build history strip for each browser
+                    const browserHistoryHtml = group.browsers.map(browser => {
+                        const historyCount = browser.history_count || 0;
+                        const forwardCount = browser.forward_count || 0;
+                        const totalSeen = historyCount + 1 + forwardCount;
+                        const currentPos = historyCount + 1;
+
+                        // Build thumbnail strip
+                        let thumbsHtml = '';
+
+                        // Past images (from image_history, oldest to newest)
+                        if (browser.image_history && browser.image_history.length > 0) {
+                            thumbsHtml += browser.image_history.map(img =>
+                                `<img src="/image/${encodeURIComponent(img)}?width=120&height=80" class="thumb past" alt="Past" loading="lazy">`
+                            ).join('');
+                        }
+
+                        // Current image
+                        if (browser.current_image) {
+                            thumbsHtml += `<img src="/image/${encodeURIComponent(browser.current_image)}?width=160&height=108" class="thumb current" alt="Current" loading="lazy">`;
+                        }
+
+                        // Forward images (newest to oldest, so reverse for display)
+                        if (browser.forward_history && browser.forward_history.length > 0) {
+                            thumbsHtml += browser.forward_history.slice().reverse().map(img =>
+                                `<img src="/image/${encodeURIComponent(img)}?width=120&height=80" class="thumb forward" alt="Forward" loading="lazy">`
+                            ).join('');
+                        }
+
+                        if (!thumbsHtml) {
+                            thumbsHtml = '<div class="history-empty">No history yet</div>';
+                        }
+
+                        // Position indicator
+                        const positionHtml = forwardCount > 0
+                            ? `Image ${currentPos}/${totalSeen} (${forwardCount} ahead)`
+                            : `Image ${currentPos}/${totalSeen}`;
+
+                        return `
+                            <div class="history-section">
+                                <div class="history-strip">${thumbsHtml}</div>
+                                <div class="position-indicator">${positionHtml}</div>
+                            </div>
+                        `;
+                    }).join('');
+
                     return `
                         <div class="group-card">
                             <div class="group-name">${groupIdSafe}${statusText}</div>
                             <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
                             <div class="group-controls">
+                                <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;&#9198;</button>
                                 <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9198;</button>
                                 <button class="btn-control ${isPaused ? 'paused' : 'playing'}" data-action="${isPaused ? 'play' : 'pause'}" data-group-id="${groupIdSafe}" title="${isPaused ? 'Play' : 'Pause'}">${isPaused ? '&#9654;' : '&#9208;'}</button>
                                 <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9197;</button>
+                                <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;&#9197;</button>
                             </div>
+                            ${browserHistoryHtml}
                             <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                             <div class="group-actions">
                                 <a href="${syncUrl}" target="_blank" class="btn btn-link">Open Display</a>
