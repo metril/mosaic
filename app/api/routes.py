@@ -899,8 +899,8 @@ async def previous_sync_group(
 async def rewind_all_group(
     group_id: str,
     request: Request,
-    user: User = Depends(get_authenticated_user),
-    _csrf: str = Depends(verify_csrf),
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """
     Jump to the first image in history (rewind all the way).
@@ -923,8 +923,8 @@ async def rewind_all_group(
 async def forward_all_group(
     group_id: str,
     request: Request,
-    user: User = Depends(get_authenticated_user),
-    _csrf: str = Depends(verify_csrf),
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """
     Jump to the most recent image (forward all the way).
