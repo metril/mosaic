@@ -590,6 +590,18 @@
                 border: 2px solid #4caf50;
             }
 
+            /* Countdown timer */
+            .countdown {
+                font-size: 14px;
+                color: #888;
+                margin: 4px 0 8px 0;
+            }
+            .countdown-value {
+                font-family: monospace;
+                color: #e94560;
+                font-weight: bold;
+            }
+
             /* Responsive */
             @media (max-width: 500px) {
                 .panel {
@@ -771,6 +783,42 @@
             let groupSettingsCache = {};
             let folderTreeData = null;
             let selectedFolders = new Set();
+
+            // Countdown timer management
+            const countdownTimers = {};
+
+            function startCountdown(groupId, nextSwitchAt) {
+                // Clear existing timer for this group
+                if (countdownTimers[groupId]) {
+                    clearInterval(countdownTimers[groupId]);
+                }
+
+                if (!nextSwitchAt) return;
+
+                const nextSwitchTime = new Date(nextSwitchAt).getTime();
+                const countdownEl = document.querySelector(
+                    `.countdown[data-group-id="${groupId}"] .countdown-value`
+                );
+
+                if (!countdownEl) return;
+
+                // Update immediately
+                const updateCountdown = () => {
+                    const remaining = Math.max(0, nextSwitchTime - Date.now());
+                    countdownEl.textContent = (remaining / 1000).toFixed(1);
+                };
+                updateCountdown();
+
+                // Update every 100ms for smooth display
+                countdownTimers[groupId] = setInterval(updateCountdown, 100);
+            }
+
+            function stopCountdown(groupId) {
+                if (countdownTimers[groupId]) {
+                    clearInterval(countdownTimers[groupId]);
+                    delete countdownTimers[groupId];
+                }
+            }
 
             // Show message
             function showMessage(text, type) {
@@ -1041,10 +1089,15 @@
                         `;
                     }).join('');
 
+                    // Countdown display (only if not paused and has next_switch_at)
+                    const countdownHtml = isPaused ? '' :
+                        `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
+
                     return `
                         <div class="group-card">
                             <div class="group-name">${groupIdSafe}${statusText}</div>
                             <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
+                            ${countdownHtml}
                             <div class="group-controls">
                                 <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;</button>
                                 <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9664;</button>
@@ -1062,6 +1115,13 @@
                         </div>
                     `;
                 }).join('');
+
+                // Start countdown timers for all groups
+                groups.forEach(group => {
+                    if (!group.paused && group.next_switch_at) {
+                        startCountdown(group.group_id, group.next_switch_at);
+                    }
+                });
             }
 
             // Event delegation for buttons and thumbnail clicks
@@ -1343,10 +1403,18 @@
                 const cardHtml = buildGroupCardHtml(group);
                 container.insertAdjacentHTML('beforeend', cardHtml);
                 updateGroupCount();
+
+                // Start countdown timer if not paused
+                if (!group.paused && group.next_switch_at) {
+                    startCountdown(group.group_id, group.next_switch_at);
+                }
             }
 
             // Remove a group card from the DOM
             function removeGroupCard(groupId) {
+                // Stop countdown timer for this group
+                stopCountdown(groupId);
+
                 const card = document.querySelector(`.btn-control[data-group-id="${groupId}"]`)?.closest('.group-card');
                 if (card) {
                     card.remove();
@@ -1414,6 +1482,13 @@
                         strip.scrollLeft = scrollPositions[browserId];
                     }
                 });
+
+                // Start/stop countdown timer based on pause state
+                if (!group.paused && group.next_switch_at) {
+                    startCountdown(group.group_id, group.next_switch_at);
+                } else {
+                    stopCountdown(group.group_id);
+                }
             }
 
             // Update group count display
@@ -1488,10 +1563,15 @@
                     `;
                 }).join('');
 
+                // Countdown display (only if not paused and has next_switch_at)
+                const countdownHtml = isPaused ? '' :
+                    `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
+
                 return `
                     <div class="group-card">
                         <div class="group-name">${groupIdSafe}${statusText}</div>
                         <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
+                        ${countdownHtml}
                         <div class="group-controls">
                             <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;</button>
                             <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9664;</button>
