@@ -911,8 +911,22 @@
                 }
             });
 
+            // Track open history details panels
+            let openHistoryPanels = new Set();
+
             // Load groups
             async function loadGroups() {
+                // Save open history panels before refresh
+                document.querySelectorAll('.history-details[open]').forEach(d => {
+                    const groupId = d.dataset.groupId;
+                    if (groupId) openHistoryPanels.add(groupId);
+                });
+                // Also remove closed panels from the set
+                document.querySelectorAll('.history-details:not([open])').forEach(d => {
+                    const groupId = d.dataset.groupId;
+                    if (groupId) openHistoryPanels.delete(groupId);
+                });
+
                 try {
                     const response = await fetch(API_BASE);
                     if (!response.ok) {
@@ -920,6 +934,12 @@
                     }
                     const groups = await response.json();
                     renderGroups(groups);
+
+                    // Restore open history panels after render
+                    openHistoryPanels.forEach(groupId => {
+                        const details = document.querySelector(`.history-details[data-group-id="${groupId}"]`);
+                        if (details) details.open = true;
+                    });
                 } catch (e) {
                     document.getElementById('groupsList').innerHTML =
                         '<div class="empty-state"><p>Failed to load groups</p><p style="color:#666">' + escapeHtml(e.message) + '</p></div>';
@@ -980,22 +1000,25 @@
                         // Build thumbnail strip
                         let thumbsHtml = '';
 
+                        // Helper to encode path preserving slashes
+                        const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
+
                         // Past images (from image_history, oldest to newest)
                         if (browser.image_history && browser.image_history.length > 0) {
                             thumbsHtml += browser.image_history.map(img =>
-                                `<img src="/api/image/${encodeURIComponent(img)}?width=200&height=133" class="thumb past" alt="Past" loading="lazy">`
+                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" alt="Past" loading="lazy">`
                             ).join('');
                         }
 
                         // Current image
                         if (browser.current_image) {
-                            thumbsHtml += `<img src="/api/image/${encodeURIComponent(browser.current_image)}?width=260&height=173" class="thumb current" alt="Current" loading="lazy">`;
+                            thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" alt="Current" loading="lazy">`;
                         }
 
                         // Forward images (newest to oldest, so reverse for display)
                         if (browser.forward_history && browser.forward_history.length > 0) {
                             thumbsHtml += browser.forward_history.slice().reverse().map(img =>
-                                `<img src="/api/image/${encodeURIComponent(img)}?width=200&height=133" class="thumb forward" alt="Forward" loading="lazy">`
+                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" alt="Forward" loading="lazy">`
                             ).join('');
                         }
 
@@ -1011,7 +1034,7 @@
                                 : 'Current image';
 
                         return `
-                            <details class="history-details">
+                            <details class="history-details" data-group-id="${escapeHtml(group.group_id)}">
                                 <summary>${summaryText}</summary>
                                 <div class="history-strip">${thumbsHtml}</div>
                             </details>
@@ -1024,9 +1047,9 @@
                             <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
                             <div class="group-controls">
                                 <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;</button>
-                                <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9194;</button>
+                                <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9664;</button>
                                 <button class="btn-control ${isPaused ? 'paused' : 'playing'}" data-action="${isPaused ? 'play' : 'pause'}" data-group-id="${groupIdSafe}" title="${isPaused ? 'Play' : 'Pause'}">${isPaused ? '&#9654;' : '&#9208;'}</button>
-                                <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9193;</button>
+                                <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9654;</button>
                                 <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
                             </div>
                             ${browserHistoryHtml}
