@@ -536,57 +536,58 @@
                 padding-left: 8px;
             }
 
-            /* History strip */
-            .history-section {
+            /* History details (collapsible) */
+            .history-details {
                 margin: 12px 0;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+            }
+            .history-details summary {
+                padding: 10px 14px;
+                cursor: pointer;
+                font-size: 13px;
+                color: #aaa;
+                user-select: none;
+            }
+            .history-details summary:hover {
+                color: #eee;
+            }
+            .history-details[open] summary {
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             }
             .history-strip {
                 display: flex;
                 align-items: center;
-                gap: 4px;
-                padding: 8px;
-                background: rgba(0, 0, 0, 0.3);
-                border-radius: 6px;
+                gap: 6px;
+                padding: 12px;
                 overflow-x: auto;
             }
             .thumb {
-                width: 60px;
-                height: 40px;
+                width: 100px;
+                height: 67px;
                 object-fit: cover;
                 border-radius: 4px;
-                opacity: 0.6;
+                opacity: 0.7;
                 cursor: pointer;
                 transition: all 0.2s;
                 flex-shrink: 0;
             }
             .thumb:hover {
                 opacity: 1;
-                transform: scale(1.1);
+                transform: scale(1.05);
                 z-index: 1;
             }
             .thumb.current {
-                width: 80px;
-                height: 54px;
+                width: 130px;
+                height: 87px;
                 opacity: 1;
-                border: 2px solid #e94560;
+                border: 3px solid #e94560;
             }
             .thumb.past {
-                border: 1px solid #666;
+                border: 2px solid #666;
             }
             .thumb.forward {
-                border: 1px solid #4caf50;
-            }
-            .position-indicator {
-                font-size: 12px;
-                color: #888;
-                text-align: center;
-                margin-top: 6px;
-            }
-            .history-empty {
-                color: #666;
-                font-size: 12px;
-                padding: 8px;
-                text-align: center;
+                border: 2px solid #4caf50;
             }
 
             /* Responsive */
@@ -982,36 +983,38 @@
                         // Past images (from image_history, oldest to newest)
                         if (browser.image_history && browser.image_history.length > 0) {
                             thumbsHtml += browser.image_history.map(img =>
-                                `<img src="/image/${encodeURIComponent(img)}?width=120&height=80" class="thumb past" alt="Past" loading="lazy">`
+                                `<img src="/api/image/${encodeURIComponent(img)}?width=200&height=133" class="thumb past" alt="Past" loading="lazy">`
                             ).join('');
                         }
 
                         // Current image
                         if (browser.current_image) {
-                            thumbsHtml += `<img src="/image/${encodeURIComponent(browser.current_image)}?width=160&height=108" class="thumb current" alt="Current" loading="lazy">`;
+                            thumbsHtml += `<img src="/api/image/${encodeURIComponent(browser.current_image)}?width=260&height=173" class="thumb current" alt="Current" loading="lazy">`;
                         }
 
                         // Forward images (newest to oldest, so reverse for display)
                         if (browser.forward_history && browser.forward_history.length > 0) {
                             thumbsHtml += browser.forward_history.slice().reverse().map(img =>
-                                `<img src="/image/${encodeURIComponent(img)}?width=120&height=80" class="thumb forward" alt="Forward" loading="lazy">`
+                                `<img src="/api/image/${encodeURIComponent(img)}?width=200&height=133" class="thumb forward" alt="Forward" loading="lazy">`
                             ).join('');
                         }
 
                         if (!thumbsHtml) {
-                            thumbsHtml = '<div class="history-empty">No history yet</div>';
+                            return '';  // No history section if nothing to show
                         }
 
-                        // Position indicator
-                        const positionHtml = forwardCount > 0
-                            ? `Image ${currentPos}/${totalSeen} (${forwardCount} ahead)`
-                            : `Image ${currentPos}/${totalSeen}`;
+                        // Summary for collapsible header
+                        const summaryText = forwardCount > 0
+                            ? `History (${historyCount} behind, ${forwardCount} ahead)`
+                            : historyCount > 0
+                                ? `History (${historyCount} behind)`
+                                : 'Current image';
 
                         return `
-                            <div class="history-section">
+                            <details class="history-details">
+                                <summary>${summaryText}</summary>
                                 <div class="history-strip">${thumbsHtml}</div>
-                                <div class="position-indicator">${positionHtml}</div>
-                            </div>
+                            </details>
                         `;
                     }).join('');
 
@@ -1020,11 +1023,11 @@
                             <div class="group-name">${groupIdSafe}${statusText}</div>
                             <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
                             <div class="group-controls">
-                                <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;&#9198;</button>
-                                <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9198;</button>
+                                <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;</button>
+                                <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9194;</button>
                                 <button class="btn-control ${isPaused ? 'paused' : 'playing'}" data-action="${isPaused ? 'play' : 'pause'}" data-group-id="${groupIdSafe}" title="${isPaused ? 'Play' : 'Pause'}">${isPaused ? '&#9654;' : '&#9208;'}</button>
-                                <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9197;</button>
-                                <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;&#9197;</button>
+                                <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9193;</button>
+                                <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
                             </div>
                             ${browserHistoryHtml}
                             <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
