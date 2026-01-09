@@ -1383,9 +1383,16 @@
                         delete groupSettingsCache[msg.group_id];
                         break;
                     case 'GROUP_UPDATED':
-                        // Update existing group card (preserve scroll)
+                        // Update existing group card
                         groupSettingsCache[msg.group.group_id] = msg.group.settings;
                         updateGroupCard(msg.group);
+                        // Scroll open history strips to show current image
+                        setTimeout(() => {
+                            const groupId = escapeHtml(msg.group.group_id);
+                            document.querySelectorAll(`.history-details[data-group-id="${groupId}"][open] .history-strip`).forEach(strip => {
+                                scrollToCurrentImage(strip);
+                            });
+                        }, 50);
                         break;
                     case 'PING':
                         ws.send(JSON.stringify({ type: 'PONG' }));
