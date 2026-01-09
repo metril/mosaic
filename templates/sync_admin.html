@@ -796,6 +796,10 @@
                 if (!nextSwitchAt) return;
 
                 const nextSwitchTime = new Date(nextSwitchAt).getTime();
+
+                // Validate that the date is valid (not NaN)
+                if (isNaN(nextSwitchTime)) return;
+
                 const countdownEl = document.querySelector(
                     `.countdown[data-group-id="${groupId}"] .countdown-value`
                 );
@@ -1440,7 +1444,7 @@
                 }
             }
 
-            // Update an existing group card (preserving scroll position)
+            // Update an existing group card (scroll position managed by GROUP_UPDATED handler)
             function updateGroupCard(group) {
                 const card = document.querySelector(`.btn-control[data-group-id="${escapeHtml(group.group_id)}"]`)?.closest('.group-card');
                 if (!card) {
@@ -1449,15 +1453,10 @@
                     return;
                 }
 
-                // Save scroll positions and open state for ALL history strips (by browser_id)
-                const scrollPositions = {};
+                // Save open state for ALL history strips (by browser_id) - scroll position is set by scrollToCurrentImage()
                 const openDetails = new Set();
                 card.querySelectorAll('.history-details').forEach(details => {
                     const browserId = details.dataset.browserId;
-                    const strip = details.querySelector('.history-strip');
-                    if (strip && browserId) {
-                        scrollPositions[browserId] = strip.scrollLeft;
-                    }
                     if (details.open && browserId) {
                         openDetails.add(browserId);
                     }
@@ -1478,15 +1477,6 @@
                     const key = group.group_id + ':' + browserId;
                     if (openDetails.has(browserId) || openHistoryPanels.has(key)) {
                         details.open = true;
-                    }
-                });
-
-                // Restore scroll positions
-                newCard.querySelectorAll('.history-details').forEach(details => {
-                    const browserId = details.dataset.browserId;
-                    const strip = details.querySelector('.history-strip');
-                    if (strip && browserId && scrollPositions[browserId] !== undefined) {
-                        strip.scrollLeft = scrollPositions[browserId];
                     }
                 });
 
