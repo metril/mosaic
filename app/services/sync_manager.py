@@ -7,11 +7,12 @@ at exactly the same time.
 """
 
 import asyncio
+import math
 import os
 import random
 import uuid
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Any
@@ -75,6 +76,19 @@ class SyncGroupSettings:
 def _utc_now() -> datetime:
     """Return current UTC time as timezone-aware datetime (P3)."""
     return datetime.now(timezone.utc)
+
+
+def _next_cron_time(duration: int) -> datetime:
+    """Calculate next switch time aligned to clock boundaries like cron.
+
+    For duration=30: switches at :00, :30 of each minute
+    For duration=60: switches at :00 of each minute
+    For duration=15: switches at :00, :15, :30, :45
+    """
+    now = _utc_now()
+    epoch_seconds = now.timestamp()
+    next_boundary = math.ceil(epoch_seconds / duration) * duration
+    return datetime.fromtimestamp(next_boundary, tz=timezone.utc)
 
 
 @dataclass
@@ -384,7 +398,10 @@ class SyncManager:
         group_id: str,
         updates: Dict[str, Any]
     ) -> Optional[SyncGroup]:
-        """Update settings for a sync group and notify all browsers"""
+        """Update settings for a sync group and notify all browsers.
+
+        Cancels and restarts the cycle task to apply new settings immediately.
+        """
         group = self.groups.get(group_id)
         if not group:
             return None
@@ -395,6 +412,21 @@ class SyncManager:
             current_dict.update(updates)
             group.settings = SyncGroupSettings.from_dict(current_dict)
             group.image_pool.update_settings(group.settings)
+
+            # Cancel existing cycle task to pick up new settings
+            if group._cycle_task and not group._cycle_task.done():
+                group._cycle_task.cancel()
+                try:
+                    await group._cycle_task
+                except asyncio.CancelledError:
+                    pass
+                group._cycle_task = None
+
+            # Restart cycle if not paused and has browsers
+            if not group.paused and group.browsers:
+                group._cycle_task = asyncio.create_task(
+                    self._run_cycle_loop(group)
+                )
 
             # Notify all browsers of settings change
             message = {
@@ -654,7 +686,13 @@ class SyncManager:
             await self.remove_browser(group.group_id, browser_id)
 
     async def _run_cycle_loop(self, group: SyncGroup) -> None:
-        """Main loop that coordinates image cycling for a group"""
+        """Main loop that coordinates image cycling for a group with cron-aligned timing.
+
+        Images switch at clock-aligned boundaries (like cron):
+        - duration=30: switches at :00, :30 of each minute
+        - duration=60: switches at :00 of each minute
+        - duration=15: switches at :00, :15, :30, :45
+        """
         logger.info(f"Starting cycle loop for group {group.group_id}")
 
         try:
@@ -662,15 +700,19 @@ class SyncManager:
                 try:
                     duration = group.settings.duration
 
-                    # Calculate next switch time
-                    group.next_switch_time = _utc_now()
+                    # Calculate next cron-aligned switch time
+                    next_switch = _next_cron_time(duration)
+                    group.next_switch_time = next_switch
 
-                    # Wait until PRELOAD_LEAD_TIME_SECONDS before switch (P9)
-                    preload_delay = max(0, duration - PRELOAD_LEAD_TIME_SECONDS)
-                    await asyncio.sleep(preload_delay)
+                    # Wait until preload time (PRELOAD_LEAD_TIME_SECONDS before switch)
+                    preload_time = next_switch - timedelta(seconds=PRELOAD_LEAD_TIME_SECONDS)
+                    now = _utc_now()
+                    preload_delay = (preload_time - now).total_seconds()
+                    if preload_delay > 0:
+                        await asyncio.sleep(preload_delay)
 
                     # Prepare next images for all browsers
-                    switch_at = _utc_now().timestamp() * 1000 + (PRELOAD_LEAD_TIME_SECONDS * 1000)
+                    switch_at = next_switch.timestamp() * 1000
                     async with group._lock:
                         # Take snapshot for iteration and cache settings (#25)
                         browsers_to_update = list(group.browsers.values())
@@ -702,9 +744,11 @@ class SyncManager:
                             except Exception as e:
                                 logger.warning(f"Failed to send preload: {e}")
 
-                    # Wait remaining time until switch
-                    remaining = PRELOAD_LEAD_TIME_SECONDS if preload_delay > 0 else duration
-                    await asyncio.sleep(remaining)
+                    # Wait until exact switch time
+                    now = _utc_now()
+                    switch_delay = (next_switch - now).total_seconds()
+                    if switch_delay > 0:
+                        await asyncio.sleep(switch_delay)
 
                     # Send synchronized switch command (S14 - wrap to prevent overflow)
                     group.current_cycle = (group.current_cycle + 1) % MAX_CYCLE_COUNT
@@ -717,7 +761,7 @@ class SyncManager:
                         "cycle": group.current_cycle
                     })
 
-                    logger.debug(f"Group {group.group_id} cycle {group.current_cycle} switch")
+                    logger.debug(f"Group {group.group_id} cycle {group.current_cycle} switch at {next_switch.isoformat()}")
 
                 except asyncio.CancelledError:
                     raise  # Re-raise cancellation
