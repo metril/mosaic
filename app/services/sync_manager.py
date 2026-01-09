@@ -743,12 +743,12 @@ class SyncManager:
         if not group or not group.browsers:
             return False
 
-        # Check if any browser has history
-        has_history = any(
-            len(browser.image_history) > 0
+        # Check if any browser can rewind (has history OR is mid-switch with next_image)
+        can_rewind = any(
+            len(browser.image_history) > 0 or browser.next_image is not None
             for browser in group.browsers.values()
         )
-        if not has_history:
+        if not can_rewind:
             return False
 
         async with group._lock:
@@ -827,32 +827,41 @@ class SyncManager:
         settings = group.settings
 
         for browser in list(group.browsers.values()):
-            if not browser.image_history:
-                continue  # No history for this browser
+            previous_image = None
 
-            # Pop from history
-            previous_image = browser.image_history.pop()
+            # Case 1: Browser is mid-switch (next_image is set, SWITCH_COMPLETE not yet received)
+            # The browser is showing/transitioning to next_image, cancel and stay on current_image
+            if browser.next_image:
+                previous_image = browser.current_image
+                # Clear next_image to cancel the pending switch
+                browser.next_image = None
+                # Note: Don't pop from history - we're just canceling a pending switch
+            # Case 2: Normal rewind from history
+            elif browser.image_history:
+                previous_image = browser.image_history.pop()
+                # Release current image back to pool
+                async with group._lock:
+                    if browser.current_image:
+                        group.image_pool.release_image(browser.browser_id)
+                browser.current_image = previous_image
+            else:
+                # No next_image and no history - nothing to rewind to
+                continue
 
-            # Release current image back to pool if assigned
-            async with group._lock:
-                if browser.current_image:
-                    group.image_pool.release_image(browser.browser_id)
-
-            browser.current_image = previous_image
-            browser.next_image = None
             browser.status = BrowserStatus.READY
 
-            # Send ASSIGN to show the previous image immediately
-            image_url = self.build_image_url(previous_image, settings)
-            try:
-                await asyncio.wait_for(
-                    browser.websocket.send_json({
-                        "type": "ASSIGN",
-                        "image_url": image_url,
-                        "image_id": previous_image,
-                        "cycle": group.current_cycle
-                    }),
-                    timeout=5.0
-                )
-            except Exception as e:
-                logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
+            # Send ASSIGN to show the previous/current image
+            if previous_image:
+                image_url = self.build_image_url(previous_image, settings)
+                try:
+                    await asyncio.wait_for(
+                        browser.websocket.send_json({
+                            "type": "ASSIGN",
+                            "image_url": image_url,
+                            "image_id": previous_image,
+                            "cycle": group.current_cycle
+                        }),
+                        timeout=5.0
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
