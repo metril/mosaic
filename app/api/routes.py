@@ -781,6 +781,120 @@ async def delete_sync_group(
     return JSONResponse(content={"deleted": group_id})
 
 
+# --- Sync Group Playback Controls ---
+
+@router.post("/sync/admin/groups/{group_id}/pause", responses={
+    200: {"description": "Group paused"},
+    401: {"description": "Not authenticated"},
+    403: {"description": "CSRF token invalid"},
+    404: {"description": "Group not found"}
+})
+async def pause_sync_group(
+    request: Request,
+    group_id: str,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Pause a sync group's image cycling.
+
+    Requires authentication.
+    Connected browsers will stay on their current image until resumed.
+    """
+    sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} pausing sync group: {group_id}")
+    success = await sync_manager.pause_group(group_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    return JSONResponse(content={"status": "paused", "group_id": group_id})
+
+
+@router.post("/sync/admin/groups/{group_id}/play", responses={
+    200: {"description": "Group resumed"},
+    401: {"description": "Not authenticated"},
+    403: {"description": "CSRF token invalid"},
+    404: {"description": "Group not found"}
+})
+async def play_sync_group(
+    request: Request,
+    group_id: str,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Resume a sync group's image cycling.
+
+    Requires authentication.
+    """
+    sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} resuming sync group: {group_id}")
+    success = await sync_manager.play_group(group_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    return JSONResponse(content={"status": "playing", "group_id": group_id})
+
+
+@router.post("/sync/admin/groups/{group_id}/next", responses={
+    200: {"description": "Skipped to next image"},
+    401: {"description": "Not authenticated"},
+    403: {"description": "CSRF token invalid"},
+    404: {"description": "Group not found or no browsers connected"}
+})
+async def next_sync_group(
+    request: Request,
+    group_id: str,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Skip to the next image immediately.
+
+    Requires authentication.
+    All browsers advance to their next image.
+    """
+    sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} skipping sync group: {group_id}")
+    success = await sync_manager.skip_group(group_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found or no browsers connected")
+
+    return JSONResponse(content={"status": "skipped", "group_id": group_id})
+
+
+@router.post("/sync/admin/groups/{group_id}/previous", responses={
+    200: {"description": "Went to previous image"},
+    401: {"description": "Not authenticated"},
+    403: {"description": "CSRF token invalid"},
+    404: {"description": "Group not found or no history available"}
+})
+async def previous_sync_group(
+    request: Request,
+    group_id: str,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Go to the previous image.
+
+    Requires authentication.
+    Each browser goes back to its own previous image from history.
+    Can be called multiple times to go further back (up to 100 images).
+    """
+    sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} going to previous for sync group: {group_id}")
+    success = await sync_manager.previous_group(group_id)
+
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found or no history available")
+
+    return JSONResponse(content={"status": "rewound", "group_id": group_id})
+
+
 @router.get("/sync", include_in_schema=False)
 async def sync_page(
     request: Request,

@@ -24,6 +24,7 @@ from app.utils.metrics import metrics
 # Constants
 PRELOAD_LEAD_TIME_SECONDS = 5  # Time before switch to send preload command (P9)
 MAX_CYCLE_COUNT = 2**31  # Wrap cycle counter to prevent overflow (S14)
+MAX_IMAGE_HISTORY = 100  # Maximum images to keep in browser history for "previous"
 
 # Connection limits (A10) - configurable via environment variables
 MAX_BROWSERS_PER_GROUP = int(os.environ.get("MAX_BROWSERS_PER_GROUP", "100"))
@@ -83,6 +84,7 @@ class BrowserState:
     websocket: WebSocket
     current_image: Optional[str] = None
     next_image: Optional[str] = None
+    image_history: List[str] = field(default_factory=list)  # History for "previous" control
     status: BrowserStatus = BrowserStatus.CONNECTING
     connected_at: datetime = field(default_factory=_utc_now)  # Timezone-aware (P3)
     last_heartbeat: datetime = field(default_factory=_utc_now)  # Timezone-aware (P3)
@@ -219,6 +221,7 @@ class SyncGroup:
     created_at: datetime = field(default_factory=_utc_now)
     current_cycle: int = 0
     next_switch_time: Optional[datetime] = None
+    paused: bool = False  # Pause/play state for admin controls
     _cycle_task: Optional[asyncio.Task] = field(default=None, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
@@ -228,6 +231,7 @@ class SyncGroup:
             "group_id": self.group_id,
             "browser_count": len(self.browsers),
             "current_cycle": self.current_cycle,
+            "paused": self.paused,
             "created_at": self.created_at.isoformat() + "Z",
             "next_switch_at": self.next_switch_time.isoformat() + "Z" if self.next_switch_time else None,
             "settings": self.settings.to_dict(),
@@ -391,11 +395,12 @@ class SyncManager:
                 if image_path:
                     browser.current_image = image_path
 
-                # Start cycle task if needed (#2, #11)
+                # Start cycle task if needed (#2, #11) and not paused
                 # Check both: first browser OR crashed task
                 should_start_task = (
-                    len(group.browsers) == 1 or
-                    (group._cycle_task is not None and group._cycle_task.done())
+                    not group.paused and
+                    (len(group.browsers) == 1 or
+                     (group._cycle_task is not None and group._cycle_task.done()))
                 )
                 if should_start_task:
                     if group._cycle_task and group._cycle_task.done():
@@ -459,8 +464,14 @@ class SyncManager:
 
             elif msg_type == "SWITCH_COMPLETE":
                 browser.status = BrowserStatus.READY
-                # Move next_image to current_image
+                # Move next_image to current_image, push old to history
                 if browser.next_image:
+                    # Push current to history before replacing (for "previous" control)
+                    if browser.current_image:
+                        browser.image_history.append(browser.current_image)
+                        # Cap history at MAX_IMAGE_HISTORY
+                        if len(browser.image_history) > MAX_IMAGE_HISTORY:
+                            browser.image_history.pop(0)
                     browser.current_image = browser.next_image
                     browser.next_image = None
                 logger.debug(f"Browser {browser_id} switch complete")
@@ -652,3 +663,196 @@ class SyncManager:
             for browser_id in stale:
                 logger.info(f"Removing stale browser {browser_id}")
                 await self.remove_browser(group.group_id, browser_id)
+
+    # --- Playback Control Methods ---
+
+    async def pause_group(self, group_id: str) -> bool:
+        """Pause cycling for a group."""
+        group = self.groups.get(group_id)
+        if not group:
+            return False
+
+        async with group._lock:
+            if group.paused:
+                return True  # Already paused
+
+            group.paused = True
+            # Cancel the cycle task if running
+            if group._cycle_task and not group._cycle_task.done():
+                group._cycle_task.cancel()
+                try:
+                    await group._cycle_task
+                except asyncio.CancelledError:
+                    pass
+            group._cycle_task = None
+            logger.info(f"Group {group_id} paused")
+
+        return True
+
+    async def play_group(self, group_id: str) -> bool:
+        """Resume cycling for a group."""
+        group = self.groups.get(group_id)
+        if not group:
+            return False
+
+        async with group._lock:
+            if not group.paused:
+                return True  # Already playing
+
+            group.paused = False
+            # Restart the cycle task if there are browsers
+            if len(group.browsers) > 0:
+                group._cycle_task = asyncio.create_task(
+                    self._run_cycle_loop(group)
+                )
+            logger.info(f"Group {group_id} resumed")
+
+        return True
+
+    async def skip_group(self, group_id: str) -> bool:
+        """Skip to next image immediately."""
+        group = self.groups.get(group_id)
+        if not group or not group.browsers:
+            return False
+
+        async with group._lock:
+            # Cancel current wait
+            if group._cycle_task and not group._cycle_task.done():
+                group._cycle_task.cancel()
+                try:
+                    await group._cycle_task
+                except asyncio.CancelledError:
+                    pass
+
+        # Perform immediate advance (outside lock to allow message sending)
+        await self._advance_browsers(group)
+
+        async with group._lock:
+            # Restart cycle task if not paused
+            if not group.paused and group.browsers:
+                group._cycle_task = asyncio.create_task(
+                    self._run_cycle_loop(group)
+                )
+
+        logger.info(f"Group {group_id} skipped to next")
+        return True
+
+    async def previous_group(self, group_id: str) -> bool:
+        """Go to previous image - each browser goes to its own previous image."""
+        group = self.groups.get(group_id)
+        if not group or not group.browsers:
+            return False
+
+        # Check if any browser has history
+        has_history = any(
+            len(browser.image_history) > 0
+            for browser in group.browsers.values()
+        )
+        if not has_history:
+            return False
+
+        async with group._lock:
+            # Cancel current cycle task
+            if group._cycle_task and not group._cycle_task.done():
+                group._cycle_task.cancel()
+                try:
+                    await group._cycle_task
+                except asyncio.CancelledError:
+                    pass
+
+        # Rewind each browser (outside lock to allow message sending)
+        await self._rewind_browsers(group)
+
+        async with group._lock:
+            # Restart cycle task if not paused
+            if not group.paused and group.browsers:
+                group._cycle_task = asyncio.create_task(
+                    self._run_cycle_loop(group)
+                )
+
+        logger.info(f"Group {group_id} went to previous")
+        return True
+
+    async def _advance_browsers(self, group: SyncGroup) -> None:
+        """Immediately advance all browsers to next image."""
+        settings = group.settings
+        switch_at = _utc_now().timestamp() * 1000 + 500  # 500ms delay for preload
+
+        for browser in list(group.browsers.values()):
+            # Push current to history
+            if browser.current_image:
+                browser.image_history.append(browser.current_image)
+                if len(browser.image_history) > MAX_IMAGE_HISTORY:
+                    browser.image_history.pop(0)
+
+            # Assign new image
+            async with group._lock:
+                next_image = group.image_pool.assign_unique_image(browser.browser_id)
+            if not next_image:
+                continue
+
+            browser.next_image = next_image
+            browser.status = BrowserStatus.PRELOADING
+
+            # Send preload
+            image_url = self.build_image_url(next_image, settings)
+            try:
+                await asyncio.wait_for(
+                    browser.websocket.send_json({
+                        "type": "PRELOAD",
+                        "image_url": image_url,
+                        "image_id": next_image,
+                        "switch_at": switch_at
+                    }),
+                    timeout=5.0
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send preload to {browser.browser_id}: {e}")
+
+        # Brief delay then send switch
+        await asyncio.sleep(0.5)
+
+        group.current_cycle = (group.current_cycle + 1) % MAX_CYCLE_COUNT
+        metrics.record_cycle()
+        switch_timestamp = _utc_now().timestamp() * 1000
+
+        await self._broadcast_to_group(group, {
+            "type": "SWITCH",
+            "timestamp": switch_timestamp,
+            "cycle": group.current_cycle
+        })
+
+    async def _rewind_browsers(self, group: SyncGroup) -> None:
+        """Rewind each browser to its own previous image."""
+        settings = group.settings
+
+        for browser in list(group.browsers.values()):
+            if not browser.image_history:
+                continue  # No history for this browser
+
+            # Pop from history
+            previous_image = browser.image_history.pop()
+
+            # Release current image back to pool if assigned
+            async with group._lock:
+                if browser.current_image:
+                    group.image_pool.release_image(browser.browser_id)
+
+            browser.current_image = previous_image
+            browser.next_image = None
+            browser.status = BrowserStatus.READY
+
+            # Send ASSIGN to show the previous image immediately
+            image_url = self.build_image_url(previous_image, settings)
+            try:
+                await asyncio.wait_for(
+                    browser.websocket.send_json({
+                        "type": "ASSIGN",
+                        "image_url": image_url,
+                        "image_id": previous_image,
+                        "cycle": group.current_cycle
+                    }),
+                    timeout=5.0
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")

@@ -105,6 +105,43 @@
                 flex-wrap: wrap;
             }
 
+            /* Playback controls */
+            .group-controls {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 12px;
+            }
+            .btn-control {
+                width: 36px;
+                height: 36px;
+                padding: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 14px;
+                background: #0f3460;
+                color: #eee;
+                border: 1px solid #1a4a7a;
+                border-radius: 6px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            .btn-control:hover {
+                background: #1a4a7a;
+            }
+            .btn-control:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
+            .btn-control.playing {
+                background: #4caf50;
+                border-color: #4caf50;
+            }
+            .btn-control.paused {
+                background: #ff9800;
+                border-color: #ff9800;
+            }
+
             /* Buttons */
             .btn {
                 padding: 8px 14px;
@@ -862,6 +899,7 @@
                     const s = group.settings;
                     const groupIdSafe = escapeHtml(group.group_id);
                     const syncUrl = window.location.origin + '/sync?sync=' + encodeURIComponent(group.group_id);
+                    const isPaused = group.paused;
 
                     // Build summary line
                     const summaryParts = [s.duration + 's', s.mode];
@@ -875,10 +913,18 @@
                     if (s.eink) summaryParts.push('E-Ink');
                     if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
 
+                    // Status indicator
+                    const statusText = isPaused ? ' (Paused)' : '';
+
                     return `
                         <div class="group-card">
-                            <div class="group-name">${groupIdSafe}</div>
+                            <div class="group-name">${groupIdSafe}${statusText}</div>
                             <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
+                            <div class="group-controls">
+                                <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9198;</button>
+                                <button class="btn-control ${isPaused ? 'paused' : 'playing'}" data-action="${isPaused ? 'play' : 'pause'}" data-group-id="${groupIdSafe}" title="${isPaused ? 'Play' : 'Pause'}">${isPaused ? '&#9654;' : '&#9208;'}</button>
+                                <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9197;</button>
+                            </div>
                             <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                             <div class="group-actions">
                                 <a href="${syncUrl}" target="_blank" class="btn btn-link">Open Display</a>
@@ -891,11 +937,16 @@
             }
 
             // Event delegation for buttons
-            document.getElementById('groupsList').addEventListener('click', function(e) {
+            document.getElementById('groupsList').addEventListener('click', async function(e) {
+                const controlBtn = e.target.closest('.btn-control');
                 const editBtn = e.target.closest('.btn-edit');
                 const deleteBtn = e.target.closest('.btn-delete');
 
-                if (editBtn) {
+                if (controlBtn) {
+                    const action = controlBtn.dataset.action;
+                    const groupId = controlBtn.dataset.groupId;
+                    await sendControlAction(groupId, action);
+                } else if (editBtn) {
                     const groupId = editBtn.dataset.groupId;
                     openPanel('edit', groupId);
                 } else if (deleteBtn) {
@@ -903,6 +954,27 @@
                     deleteGroup(groupId);
                 }
             });
+
+            // Send playback control action
+            async function sendControlAction(groupId, action) {
+                try {
+                    const response = await fetch(API_BASE + '/' + groupId + '/' + action, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-Token': CSRF_TOKEN
+                        }
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        showMessage(err.detail || 'Action failed', 'error');
+                    } else {
+                        loadGroups();  // Refresh to show updated state
+                    }
+                } catch (e) {
+                    showMessage('Action failed: ' + e.message, 'error');
+                }
+            }
 
             // Delete group
             async function deleteGroup(groupId) {
