@@ -800,8 +800,10 @@
                 // Validate that the date is valid (not NaN)
                 if (isNaN(nextSwitchTime)) return;
 
+                // Use escaped groupId to match the HTML attribute
+                const groupIdSafe = escapeHtml(groupId);
                 const countdownEl = document.querySelector(
-                    `.countdown[data-group-id="${groupId}"] .countdown-value`
+                    `.countdown[data-group-id="${groupIdSafe}"] .countdown-value`
                 );
 
                 if (!countdownEl) return;
