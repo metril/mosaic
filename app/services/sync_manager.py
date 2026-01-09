@@ -263,10 +263,45 @@ class SyncManager:
         self.groups: Dict[str, SyncGroup] = {}
         self._lock = asyncio.Lock()
         self._base_url: str = ""
+        # Admin WebSocket connections for real-time updates
+        self.admin_connections: Set[WebSocket] = set()
+        self._admin_lock = asyncio.Lock()
 
     def set_base_url(self, base_url: str) -> None:
         """Set the base URL for image URLs"""
         self._base_url = base_url.rstrip("/")
+
+    async def register_admin(self, websocket: WebSocket) -> None:
+        """Register an admin WebSocket connection for real-time updates."""
+        async with self._admin_lock:
+            self.admin_connections.add(websocket)
+        logger.debug(f"Admin WebSocket registered, total: {len(self.admin_connections)}")
+
+    async def unregister_admin(self, websocket: WebSocket) -> None:
+        """Unregister an admin WebSocket connection."""
+        async with self._admin_lock:
+            self.admin_connections.discard(websocket)
+        logger.debug(f"Admin WebSocket unregistered, total: {len(self.admin_connections)}")
+
+    async def _notify_admins(self, message: Dict[str, Any]) -> None:
+        """Broadcast an update to all connected admin clients."""
+        async with self._admin_lock:
+            if not self.admin_connections:
+                return
+            connections = list(self.admin_connections)
+
+        dead_connections = []
+        for ws in connections:
+            try:
+                await asyncio.wait_for(ws.send_json(message), timeout=5.0)
+            except Exception:
+                dead_connections.append(ws)
+
+        # Clean up dead connections
+        if dead_connections:
+            async with self._admin_lock:
+                for ws in dead_connections:
+                    self.admin_connections.discard(ws)
 
     async def create_group(
         self,
@@ -294,7 +329,13 @@ class SyncManager:
             self.groups[group_id] = group
             metrics.record_group_created()  # A6
             logger.info(f"Created sync group: {group_id}")
-            return group
+
+        # Notify admin clients (outside lock to avoid deadlock)
+        await self._notify_admins({
+            "type": "GROUP_CREATED",
+            "group": group.to_dict()
+        })
+        return group
 
     async def get_group(self, group_id: str) -> Optional[SyncGroup]:
         """Get a sync group by ID"""
@@ -330,7 +371,13 @@ class SyncManager:
             del self.groups[group_id]
             metrics.record_group_deleted()  # A6
             logger.info(f"Deleted sync group: {group_id}")
-            return True
+
+        # Notify admin clients (outside lock to avoid deadlock)
+        await self._notify_admins({
+            "type": "GROUP_DELETED",
+            "group_id": group_id
+        })
+        return True
 
     async def update_group_settings(
         self,
@@ -358,7 +405,13 @@ class SyncManager:
 
             # Log only field names, not values (S11)
             logger.info(f"Updated settings for group {group_id}: {list(updates.keys())}")
-            return group
+
+        # Notify admin clients (outside lock to avoid deadlock)
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
+        return group
 
     async def list_groups(self) -> List[Dict[str, Any]]:
         """List all active sync groups"""
@@ -417,7 +470,13 @@ class SyncManager:
 
             metrics.record_connection()  # A6
             logger.info(f"Browser {browser_id} joined group {group_id}")
-            return browser
+
+        # Notify admin clients (outside lock to avoid deadlock)
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
+        return browser
 
     async def remove_browser(self, group_id: str, browser_id: str) -> None:
         """Remove a browser from a sync group"""
@@ -425,12 +484,14 @@ class SyncManager:
         if not group:
             return
 
+        removed = False
         async with group._lock:
             if browser_id in group.browsers:
                 group.image_pool.release_image(browser_id)
                 del group.browsers[browser_id]
                 metrics.record_disconnection()  # A6
                 logger.info(f"Browser {browser_id} left group {group_id}")
+                removed = True
 
             # Stop cycle task if no browsers left
             if not group.browsers and group._cycle_task:
@@ -440,6 +501,13 @@ class SyncManager:
                 except asyncio.CancelledError:
                     pass
                 group._cycle_task = None
+
+        # Notify admin clients (outside lock to avoid deadlock)
+        if removed:
+            await self._notify_admins({
+                "type": "GROUP_UPDATED",
+                "group": group.to_dict()
+            })
 
     async def handle_browser_message(
         self,
@@ -451,6 +519,8 @@ class SyncManager:
         group = self.groups.get(group_id)
         if not group:
             return
+
+        should_notify_admins = False
 
         # Acquire lock to prevent race with cleanup_stale_browsers (#8)
         async with group._lock:
@@ -482,10 +552,18 @@ class SyncManager:
                     browser.next_image = None
                     # Clear forward history - new image from cycling invalidates replay history
                     browser.forward_history.clear()
+                    should_notify_admins = True
                 logger.debug(f"Browser {browser_id} switch complete")
 
             elif msg_type == "HEARTBEAT":
                 browser.last_heartbeat = _utc_now()
+
+        # Notify admin clients outside lock
+        if should_notify_admins:
+            await self._notify_admins({
+                "type": "GROUP_UPDATED",
+                "group": group.to_dict()
+            })
 
     def build_image_url(self, image_path: str, settings: SyncGroupSettings) -> str:
         """Build a full image URL with processing parameters"""
@@ -695,6 +773,11 @@ class SyncManager:
             group._cycle_task = None
             logger.info(f"Group {group_id} paused")
 
+        # Notify admin clients
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
         return True
 
     async def play_group(self, group_id: str) -> bool:
@@ -715,6 +798,11 @@ class SyncManager:
                 )
             logger.info(f"Group {group_id} resumed")
 
+        # Notify admin clients
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
         return True
 
     async def skip_group(self, group_id: str) -> bool:
@@ -756,6 +844,12 @@ class SyncManager:
                 )
 
         logger.info(f"Group {group_id} skipped to next")
+
+        # Notify admin clients
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
         return True
 
     async def previous_group(self, group_id: str) -> bool:
@@ -800,6 +894,12 @@ class SyncManager:
                 )
 
         logger.info(f"Group {group_id} went to previous")
+
+        # Notify admin clients
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
         return True
 
     async def rewind_all_group(self, group_id: str) -> bool:
@@ -860,6 +960,12 @@ class SyncManager:
                 group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
 
         logger.info(f"Group {group_id} rewound to first image")
+
+        # Notify admin clients
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
         return True
 
     async def forward_all_group(self, group_id: str) -> bool:
@@ -924,6 +1030,12 @@ class SyncManager:
                 group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
 
         logger.info(f"Group {group_id} forwarded to most recent image")
+
+        # Notify admin clients
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
         return True
 
     async def _advance_browsers(self, group: SyncGroup) -> None:

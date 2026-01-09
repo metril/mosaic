@@ -981,6 +981,73 @@ async def sync_page(
     )
 
 
+@router.websocket("/ws/admin")
+async def websocket_admin(websocket: WebSocket):
+    """
+    WebSocket endpoint for sync admin real-time updates.
+
+    Protocol:
+        Server -> Client:
+        - INITIAL_STATE: { groups: [...] } - Sent on connect
+        - GROUP_CREATED: { group: {...} } - New group
+        - GROUP_DELETED: { group_id: "..." } - Group removed
+        - GROUP_UPDATED: { group: {...} } - State changed (navigation, settings, browser join/leave)
+        - PING: Keep-alive check
+
+        Client -> Server:
+        - PONG: Response to PING
+    """
+    sync_manager = websocket.app.state.sync_manager
+    oidc_config = get_oidc_config()
+
+    # Authentication check
+    if oidc_config.enabled:
+        # Check session for authenticated user
+        user_info = websocket.session.get("user") if hasattr(websocket, 'session') else None
+        if not user_info:
+            await websocket.close(code=4001, reason="Not authenticated")
+            return
+
+    await websocket.accept()
+    await sync_manager.register_admin(websocket)
+    logger.info("Admin WebSocket connected")
+
+    try:
+        # Send initial state
+        groups = await sync_manager.list_groups()
+        await websocket.send_json({
+            "type": "INITIAL_STATE",
+            "groups": groups
+        })
+
+        # Keep connection alive, handle pings
+        while True:
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=30.0
+                )
+                if data.get("type") == "PONG":
+                    pass  # Response to our ping, connection is alive
+            except asyncio.TimeoutError:
+                # Send ping to check connection
+                try:
+                    await websocket.send_json({"type": "PING"})
+                except Exception:
+                    break
+            except WebSocketDisconnect:
+                break
+            except json.JSONDecodeError:
+                pass  # Ignore malformed JSON
+            except Exception as e:
+                logger.debug(f"Admin WebSocket error: {e}")
+                break
+
+    finally:
+        await sync_manager.unregister_admin(websocket)
+        logger.info("Admin WebSocket disconnected")
+
+
 @router.websocket("/ws/sync/{group_id}")
 async def websocket_sync(websocket: WebSocket, group_id: str):
     """

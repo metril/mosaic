@@ -1096,9 +1096,8 @@
                     if (!response.ok) {
                         const err = await response.json();
                         showMessage(err.detail || 'Action failed', 'error');
-                    } else {
-                        loadGroups();  // Refresh to show updated state
                     }
+                    // No need to refresh - WebSocket will push the update
                 } catch (e) {
                     showMessage('Action failed: ' + e.message, 'error');
                 }
@@ -1233,11 +1232,283 @@
                 }
             });
 
-            // Auto-refresh
-            setInterval(loadGroups, 5000);
+            // ============================================================
+            // WebSocket for real-time updates
+            // ============================================================
+            let ws = null;
+            let reconnectAttempts = 0;
+            let wsConnected = false;
 
-            // Initial load
-            loadGroups();
+            function connectWebSocket() {
+                const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                ws = new WebSocket(`${protocol}//${location.host}/ws/admin`);
+
+                ws.onopen = () => {
+                    reconnectAttempts = 0;
+                    wsConnected = true;
+                    console.log('Admin WebSocket connected');
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const msg = JSON.parse(event.data);
+                        handleWebSocketMessage(msg);
+                    } catch (e) {
+                        console.error('Failed to parse WebSocket message:', e);
+                    }
+                };
+
+                ws.onclose = () => {
+                    wsConnected = false;
+                    console.log('Admin WebSocket disconnected');
+                    // Reconnect with exponential backoff
+                    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                    reconnectAttempts++;
+                    setTimeout(connectWebSocket, delay);
+                };
+
+                ws.onerror = (e) => {
+                    console.error('WebSocket error:', e);
+                };
+            }
+
+            function handleWebSocketMessage(msg) {
+                switch (msg.type) {
+                    case 'INITIAL_STATE':
+                        // Full render on initial connect
+                        renderGroups(msg.groups);
+                        scrollAllToCurrentImage();
+                        break;
+                    case 'GROUP_CREATED':
+                        // Add new group card
+                        groupSettingsCache[msg.group.group_id] = msg.group.settings;
+                        addGroupCard(msg.group);
+                        break;
+                    case 'GROUP_DELETED':
+                        // Remove group card
+                        removeGroupCard(msg.group_id);
+                        delete groupSettingsCache[msg.group_id];
+                        break;
+                    case 'GROUP_UPDATED':
+                        // Update existing group card (preserve scroll)
+                        groupSettingsCache[msg.group.group_id] = msg.group.settings;
+                        updateGroupCard(msg.group);
+                        break;
+                    case 'PING':
+                        ws.send(JSON.stringify({ type: 'PONG' }));
+                        break;
+                }
+            }
+
+            // Add a single group card to the DOM
+            function addGroupCard(group) {
+                const container = document.getElementById('groupsList');
+                const emptyState = container.querySelector('.empty-state');
+                if (emptyState) {
+                    container.innerHTML = '';
+                }
+                const cardHtml = buildGroupCardHtml(group);
+                container.insertAdjacentHTML('beforeend', cardHtml);
+                updateGroupCount();
+            }
+
+            // Remove a group card from the DOM
+            function removeGroupCard(groupId) {
+                const card = document.querySelector(`.btn-control[data-group-id="${groupId}"]`)?.closest('.group-card');
+                if (card) {
+                    card.remove();
+                }
+                updateGroupCount();
+                // Show empty state if no groups
+                const container = document.getElementById('groupsList');
+                if (!container.querySelector('.group-card')) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">&#128247;</div>
+                            <p>No sync groups yet</p>
+                            <button class="btn btn-primary" onclick="openPanel('create')">Create your first group</button>
+                        </div>
+                    `;
+                }
+            }
+
+            // Update an existing group card (preserving scroll position)
+            function updateGroupCard(group) {
+                const card = document.querySelector(`.btn-control[data-group-id="${escapeHtml(group.group_id)}"]`)?.closest('.group-card');
+                if (!card) {
+                    // Card doesn't exist, add it
+                    addGroupCard(group);
+                    return;
+                }
+
+                // Save scroll positions for all history strips
+                const scrollPositions = {};
+                card.querySelectorAll('.history-details').forEach((details, i) => {
+                    const strip = details.querySelector('.history-strip');
+                    if (strip) {
+                        scrollPositions[i] = strip.scrollLeft;
+                    }
+                });
+
+                // Save open state
+                const wasOpen = card.querySelector('.history-details[open]') !== null;
+
+                // Update card content
+                const newCardHtml = buildGroupCardHtml(group);
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = newCardHtml;
+                const newCard = tempDiv.firstElementChild;
+
+                // Replace the card
+                card.replaceWith(newCard);
+
+                // Restore open state
+                if (wasOpen || openHistoryPanels.has(group.group_id)) {
+                    const details = newCard.querySelector('.history-details');
+                    if (details) details.open = true;
+                }
+
+                // Restore scroll positions
+                newCard.querySelectorAll('.history-details').forEach((details, i) => {
+                    const strip = details.querySelector('.history-strip');
+                    if (strip && scrollPositions[i] !== undefined) {
+                        strip.scrollLeft = scrollPositions[i];
+                    }
+                });
+            }
+
+            // Update group count display
+            function updateGroupCount() {
+                const count = document.querySelectorAll('.group-card').length;
+                document.getElementById('groupCount').textContent = count;
+            }
+
+            // Build HTML for a single group card
+            function buildGroupCardHtml(group) {
+                const s = group.settings;
+                const groupIdSafe = escapeHtml(group.group_id);
+                const syncUrl = window.location.origin + '/sync?sync=' + encodeURIComponent(group.group_id);
+                const isPaused = group.paused;
+
+                // Build summary line
+                const summaryParts = [s.duration + 's', s.mode];
+                if (s.width && s.height) {
+                    summaryParts.push(s.width + '×' + s.height);
+                } else if (s.width) {
+                    summaryParts.push(s.width + 'w');
+                } else if (s.height) {
+                    summaryParts.push(s.height + 'h');
+                }
+                if (s.eink) summaryParts.push('E-Ink');
+                if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
+
+                // Status indicator
+                const statusText = isPaused ? ' (Paused)' : '';
+
+                // Build history strip for each browser
+                const browserHistoryHtml = group.browsers.map(browser => {
+                    const historyCount = browser.history_count || 0;
+                    const forwardCount = browser.forward_count || 0;
+
+                    // Build thumbnail strip
+                    let thumbsHtml = '';
+                    const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
+
+                    if (browser.image_history && browser.image_history.length > 0) {
+                        thumbsHtml += browser.image_history.map(img =>
+                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" alt="Past" loading="lazy">`
+                        ).join('');
+                    }
+
+                    if (browser.current_image) {
+                        thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" alt="Current" loading="lazy">`;
+                    }
+
+                    if (browser.forward_history && browser.forward_history.length > 0) {
+                        thumbsHtml += browser.forward_history.slice().reverse().map(img =>
+                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" alt="Forward" loading="lazy">`
+                        ).join('');
+                    }
+
+                    if (!thumbsHtml) {
+                        return '';
+                    }
+
+                    const summaryText = forwardCount > 0
+                        ? `History (${historyCount} behind, ${forwardCount} ahead)`
+                        : historyCount > 0
+                            ? `History (${historyCount} behind)`
+                            : 'Current image';
+
+                    return `
+                        <details class="history-details" data-group-id="${groupIdSafe}">
+                            <summary>${summaryText}</summary>
+                            <div class="history-strip">${thumbsHtml}</div>
+                        </details>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="group-card">
+                        <div class="group-name">${groupIdSafe}${statusText}</div>
+                        <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
+                        <div class="group-controls">
+                            <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;</button>
+                            <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9664;</button>
+                            <button class="btn-control ${isPaused ? 'paused' : 'playing'}" data-action="${isPaused ? 'play' : 'pause'}" data-group-id="${groupIdSafe}" title="${isPaused ? 'Play' : 'Pause'}">${isPaused ? '&#9654;' : '&#9208;'}</button>
+                            <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9654;</button>
+                            <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
+                        </div>
+                        ${browserHistoryHtml}
+                        <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
+                        <div class="group-actions">
+                            <a href="${syncUrl}" target="_blank" class="btn btn-link">Open Display</a>
+                            <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
+                            <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Scroll all history strips to show current image
+            function scrollAllToCurrentImage() {
+                document.querySelectorAll('.history-strip').forEach(strip => {
+                    scrollToCurrentImage(strip);
+                });
+            }
+
+            // Scroll a single history strip to center the current image
+            function scrollToCurrentImage(strip) {
+                const current = strip.querySelector('.thumb.current');
+                if (current) {
+                    const stripRect = strip.getBoundingClientRect();
+                    const scrollTarget = current.offsetLeft - (stripRect.width / 2) + (current.offsetWidth / 2);
+                    strip.scrollLeft = Math.max(0, scrollTarget);
+                }
+            }
+
+            // Listen for details toggle to scroll to current image
+            document.getElementById('groupsList').addEventListener('toggle', (e) => {
+                if (e.target.classList.contains('history-details') && e.target.open) {
+                    const strip = e.target.querySelector('.history-strip');
+                    if (strip) {
+                        // Small delay to let the DOM update
+                        setTimeout(() => scrollToCurrentImage(strip), 50);
+                    }
+                }
+            }, true);
+
+            // Initialize WebSocket connection
+            connectWebSocket();
+
+            // Fallback: if WebSocket fails, use polling
+            setTimeout(() => {
+                if (!wsConnected) {
+                    console.log('WebSocket not connected, falling back to polling');
+                    loadGroups();
+                    setInterval(loadGroups, 5000);
+                }
+            }, 3000);
         </script>
     </body>
 </html>
