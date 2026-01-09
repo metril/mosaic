@@ -834,54 +834,60 @@ class SyncManager:
         """Rewind each browser to its own previous image."""
         settings = group.settings
 
-        for browser in list(group.browsers.values()):
-            previous_image = None
-            rewind_case = None
+        # Collect what to send while holding the lock to prevent race with SWITCH_COMPLETE
+        browsers_to_assign = []
 
-            logger.info(f"_rewind_browsers: browser {browser.browser_id}: "
-                       f"BEFORE history={[p.split('/')[-1] for p in browser.image_history]}, "
-                       f"current={browser.current_image}, next={browser.next_image}")
+        async with group._lock:
+            for browser in list(group.browsers.values()):
+                previous_image = None
+                rewind_case = None
 
-            # Case 1: Browser is mid-switch (next_image is set, SWITCH_COMPLETE not yet received)
-            # The browser is showing/transitioning to next_image, cancel and stay on current_image
-            if browser.next_image:
-                previous_image = browser.current_image
-                rewind_case = "mid-switch"
-                # Clear next_image to cancel the pending switch
-                browser.next_image = None
-                # Note: Don't pop from history - we're just canceling a pending switch
-            # Case 2: Normal rewind from history
-            elif browser.image_history:
-                previous_image = browser.image_history.pop()
-                rewind_case = "history"
-                # Release current image back to pool
-                async with group._lock:
+                logger.info(f"_rewind_browsers: browser {browser.browser_id}: "
+                           f"BEFORE history={[p.split('/')[-1] for p in browser.image_history]}, "
+                           f"current={browser.current_image}, next={browser.next_image}")
+
+                # Case 1: Browser is mid-switch (next_image is set, SWITCH_COMPLETE not yet received)
+                # The browser is showing/transitioning to next_image, cancel and stay on current_image
+                if browser.next_image:
+                    previous_image = browser.current_image
+                    rewind_case = "mid-switch"
+                    # Clear next_image to cancel the pending switch
+                    browser.next_image = None
+                    # Note: Don't pop from history - we're just canceling a pending switch
+                # Case 2: Normal rewind from history
+                elif browser.image_history:
+                    previous_image = browser.image_history.pop()
+                    rewind_case = "history"
+                    # Release current image back to pool
                     if browser.current_image:
                         group.image_pool.release_image(browser.browser_id)
-                browser.current_image = previous_image
-            else:
-                # No next_image and no history - nothing to rewind to
-                logger.info(f"_rewind_browsers: browser {browser.browser_id}: SKIP (no next, no history)")
-                continue
+                    browser.current_image = previous_image
+                else:
+                    # No next_image and no history - nothing to rewind to
+                    logger.info(f"_rewind_browsers: browser {browser.browser_id}: SKIP (no next, no history)")
+                    continue
 
-            browser.status = BrowserStatus.READY
+                browser.status = BrowserStatus.READY
 
-            logger.info(f"_rewind_browsers: browser {browser.browser_id}: "
-                       f"case={rewind_case}, will send ASSIGN {previous_image}")
+                logger.info(f"_rewind_browsers: browser {browser.browser_id}: "
+                           f"case={rewind_case}, will send ASSIGN {previous_image}")
 
-            # Send ASSIGN to show the previous/current image
-            if previous_image:
-                image_url = self.build_image_url(previous_image, settings)
-                try:
-                    await asyncio.wait_for(
-                        browser.websocket.send_json({
-                            "type": "ASSIGN",
-                            "image_url": image_url,
-                            "image_id": previous_image,
-                            "cycle": group.current_cycle
-                        }),
-                        timeout=5.0
-                    )
-                    logger.info(f"_rewind_browsers: browser {browser.browser_id}: ASSIGN sent successfully")
-                except Exception as e:
-                    logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
+                if previous_image:
+                    browsers_to_assign.append((browser, previous_image))
+
+        # Send ASSIGNs outside the lock to avoid holding it during network I/O
+        for browser, image_path in browsers_to_assign:
+            image_url = self.build_image_url(image_path, settings)
+            try:
+                await asyncio.wait_for(
+                    browser.websocket.send_json({
+                        "type": "ASSIGN",
+                        "image_url": image_url,
+                        "image_id": image_path,
+                        "cycle": group.current_cycle
+                    }),
+                    timeout=5.0
+                )
+                logger.info(f"_rewind_browsers: browser {browser.browser_id}: ASSIGN sent successfully")
+            except Exception as e:
+                logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
