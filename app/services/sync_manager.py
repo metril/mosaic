@@ -787,12 +787,7 @@ class SyncManager:
         switch_at = _utc_now().timestamp() * 1000 + 500  # 500ms delay for preload
 
         for browser in list(group.browsers.values()):
-            # Push current to history
-            if browser.current_image:
-                browser.image_history.append(browser.current_image)
-                if len(browser.image_history) > MAX_IMAGE_HISTORY:
-                    browser.image_history.pop(0)
-
+            # Note: History push happens in SWITCH_COMPLETE handler, not here
             # Assign new image
             async with group._lock:
                 next_image = group.image_pool.assign_unique_image(browser.browser_id)
