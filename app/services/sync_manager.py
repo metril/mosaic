@@ -401,13 +401,14 @@ class SyncManager:
         """Update settings for a sync group and notify all browsers.
 
         Cancels and restarts the cycle task to apply new settings immediately.
+        Uses 3-phase approach to avoid deadlock with _broadcast_to_group.
         """
         group = self.groups.get(group_id)
         if not group:
             return None
 
+        # Phase 1: Update settings and cancel cycle under lock
         async with group._lock:
-            # Update settings
             current_dict = group.settings.to_dict()
             current_dict.update(updates)
             group.settings = SyncGroupSettings.from_dict(current_dict)
@@ -422,23 +423,24 @@ class SyncManager:
                     pass
                 group._cycle_task = None
 
-            # Restart cycle if not paused and has browsers
+        # Phase 2: Broadcast OUTSIDE the lock (prevents deadlock)
+        message = {
+            "type": "SETTINGS_CHANGED",
+            "settings": group.settings.to_dict()
+        }
+        await self._broadcast_to_group(group, message)
+
+        # Phase 3: Restart cycle under lock
+        async with group._lock:
             if not group.paused and group.browsers:
                 group._cycle_task = asyncio.create_task(
                     self._run_cycle_loop(group)
                 )
 
-            # Notify all browsers of settings change
-            message = {
-                "type": "SETTINGS_CHANGED",
-                "settings": group.settings.to_dict()
-            }
-            await self._broadcast_to_group(group, message)
+        # Log only field names, not values (S11)
+        logger.info(f"Updated settings for group {group_id}: {list(updates.keys())}")
 
-            # Log only field names, not values (S11)
-            logger.info(f"Updated settings for group {group_id}: {list(updates.keys())}")
-
-        # Notify admin clients (outside lock to avoid deadlock)
+        # Notify admin clients
         await self._notify_admins({
             "type": "GROUP_UPDATED",
             "group": group.to_dict()

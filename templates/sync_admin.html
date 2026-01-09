@@ -901,7 +901,7 @@
                     if (response.ok) {
                         showMessage(editingGroupId ? 'Group updated' : 'Group created', 'success');
                         closePanel();
-                        loadGroups();
+                        // WebSocket will push GROUP_UPDATED or GROUP_CREATED
                     } else {
                         const err = await response.json();
                         showMessage(err.detail || 'Operation failed', 'error');
