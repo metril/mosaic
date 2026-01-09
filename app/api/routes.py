@@ -943,6 +943,39 @@ async def forward_all_group(
     return JSONResponse(content={"status": "forwarded_all", "group_id": group_id})
 
 
+@router.post("/sync/admin/groups/{group_id}/browsers/{browser_id}/jump")
+async def jump_to_image(
+    group_id: str,
+    browser_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Jump a specific browser to a specific image in its history.
+
+    Requires authentication.
+    The image must be in the browser's image_history or forward_history.
+    """
+    body = await request.json()
+    image_path = body.get("image_path")
+
+    if not image_path:
+        raise HTTPException(status_code=400, detail="image_path required")
+
+    sync_manager = get_sync_manager(request)
+    logger.info(f"User {user.email} jumping browser {browser_id} in group {group_id} to {image_path}")
+    success = await sync_manager.jump_to_image(group_id, browser_id, image_path)
+
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail="Group, browser, or image not found in history"
+        )
+
+    return JSONResponse(content={"status": "jumped", "image_path": image_path})
+
+
 @router.get("/sync", include_in_schema=False)
 async def sync_page(
     request: Request,

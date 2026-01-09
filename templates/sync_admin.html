@@ -911,20 +911,20 @@
                 }
             });
 
-            // Track open history details panels
+            // Track open history details panels by group_id:browser_id
             let openHistoryPanels = new Set();
 
             // Load groups
             async function loadGroups() {
-                // Save open history panels before refresh
+                // Save open history panels before refresh (by group_id:browser_id)
                 document.querySelectorAll('.history-details[open]').forEach(d => {
-                    const groupId = d.dataset.groupId;
-                    if (groupId) openHistoryPanels.add(groupId);
+                    const key = d.dataset.groupId + ':' + d.dataset.browserId;
+                    if (d.dataset.browserId) openHistoryPanels.add(key);
                 });
                 // Also remove closed panels from the set
                 document.querySelectorAll('.history-details:not([open])').forEach(d => {
-                    const groupId = d.dataset.groupId;
-                    if (groupId) openHistoryPanels.delete(groupId);
+                    const key = d.dataset.groupId + ':' + d.dataset.browserId;
+                    if (d.dataset.browserId) openHistoryPanels.delete(key);
                 });
 
                 try {
@@ -936,8 +936,9 @@
                     renderGroups(groups);
 
                     // Restore open history panels after render
-                    openHistoryPanels.forEach(groupId => {
-                        const details = document.querySelector(`.history-details[data-group-id="${groupId}"]`);
+                    openHistoryPanels.forEach(key => {
+                        const [groupId, browserId] = key.split(':');
+                        const details = document.querySelector(`.history-details[data-group-id="${groupId}"][data-browser-id="${browserId}"]`);
                         if (details) details.open = true;
                     });
                 } catch (e) {
@@ -994,8 +995,7 @@
                     const browserHistoryHtml = group.browsers.map(browser => {
                         const historyCount = browser.history_count || 0;
                         const forwardCount = browser.forward_count || 0;
-                        const totalSeen = historyCount + 1 + forwardCount;
-                        const currentPos = historyCount + 1;
+                        const browserIdSafe = escapeHtml(browser.browser_id);
 
                         // Build thumbnail strip
                         let thumbsHtml = '';
@@ -1006,19 +1006,19 @@
                         // Past images (from image_history, oldest to newest)
                         if (browser.image_history && browser.image_history.length > 0) {
                             thumbsHtml += browser.image_history.map(img =>
-                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" alt="Past" loading="lazy">`
+                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy">`
                             ).join('');
                         }
 
                         // Current image
                         if (browser.current_image) {
-                            thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" alt="Current" loading="lazy">`;
+                            thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" alt="Current" loading="lazy">`;
                         }
 
                         // Forward images (newest to oldest, so reverse for display)
                         if (browser.forward_history && browser.forward_history.length > 0) {
                             thumbsHtml += browser.forward_history.slice().reverse().map(img =>
-                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" alt="Forward" loading="lazy">`
+                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
                             ).join('');
                         }
 
@@ -1034,7 +1034,7 @@
                                 : 'Current image';
 
                         return `
-                            <details class="history-details" data-group-id="${escapeHtml(group.group_id)}">
+                            <details class="history-details" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}">
                                 <summary>${summaryText}</summary>
                                 <div class="history-strip">${thumbsHtml}</div>
                             </details>
@@ -1064,11 +1064,12 @@
                 }).join('');
             }
 
-            // Event delegation for buttons
+            // Event delegation for buttons and thumbnail clicks
             document.getElementById('groupsList').addEventListener('click', async function(e) {
                 const controlBtn = e.target.closest('.btn-control');
                 const editBtn = e.target.closest('.btn-edit');
                 const deleteBtn = e.target.closest('.btn-delete');
+                const thumb = e.target.closest('.thumb');
 
                 if (controlBtn) {
                     const action = controlBtn.dataset.action;
@@ -1080,6 +1081,14 @@
                 } else if (deleteBtn) {
                     const groupId = deleteBtn.dataset.groupId;
                     deleteGroup(groupId);
+                } else if (thumb && !thumb.classList.contains('current')) {
+                    // Thumbnail click - jump to that image (not for current image)
+                    const groupId = thumb.dataset.groupId;
+                    const browserId = thumb.dataset.browserId;
+                    const imagePath = thumb.dataset.imagePath;
+                    if (groupId && browserId && imagePath) {
+                        await jumpToImage(groupId, browserId, imagePath);
+                    }
                 }
             });
 
@@ -1100,6 +1109,30 @@
                     // No need to refresh - WebSocket will push the update
                 } catch (e) {
                     showMessage('Action failed: ' + e.message, 'error');
+                }
+            }
+
+            // Jump to a specific image in history
+            async function jumpToImage(groupId, browserId, imagePath) {
+                try {
+                    const response = await fetch(
+                        API_BASE + '/' + groupId + '/browsers/' + browserId + '/jump',
+                        {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': CSRF_TOKEN
+                            },
+                            body: JSON.stringify({ image_path: imagePath })
+                        }
+                    );
+                    if (!response.ok) {
+                        const err = await response.json();
+                        showMessage(err.detail || 'Jump failed', 'error');
+                    }
+                    // WebSocket will push the update
+                } catch (e) {
+                    showMessage('Jump failed: ' + e.message, 'error');
                 }
             }
 
@@ -1341,17 +1374,19 @@
                     return;
                 }
 
-                // Save scroll positions for all history strips
+                // Save scroll positions and open state for ALL history strips (by browser_id)
                 const scrollPositions = {};
-                card.querySelectorAll('.history-details').forEach((details, i) => {
+                const openDetails = new Set();
+                card.querySelectorAll('.history-details').forEach(details => {
+                    const browserId = details.dataset.browserId;
                     const strip = details.querySelector('.history-strip');
-                    if (strip) {
-                        scrollPositions[i] = strip.scrollLeft;
+                    if (strip && browserId) {
+                        scrollPositions[browserId] = strip.scrollLeft;
+                    }
+                    if (details.open && browserId) {
+                        openDetails.add(browserId);
                     }
                 });
-
-                // Save open state
-                const wasOpen = card.querySelector('.history-details[open]') !== null;
 
                 // Update card content
                 const newCardHtml = buildGroupCardHtml(group);
@@ -1362,17 +1397,21 @@
                 // Replace the card
                 card.replaceWith(newCard);
 
-                // Restore open state
-                if (wasOpen || openHistoryPanels.has(group.group_id)) {
-                    const details = newCard.querySelector('.history-details');
-                    if (details) details.open = true;
-                }
+                // Restore open state for ALL details elements
+                newCard.querySelectorAll('.history-details').forEach(details => {
+                    const browserId = details.dataset.browserId;
+                    const key = group.group_id + ':' + browserId;
+                    if (openDetails.has(browserId) || openHistoryPanels.has(key)) {
+                        details.open = true;
+                    }
+                });
 
                 // Restore scroll positions
-                newCard.querySelectorAll('.history-details').forEach((details, i) => {
+                newCard.querySelectorAll('.history-details').forEach(details => {
+                    const browserId = details.dataset.browserId;
                     const strip = details.querySelector('.history-strip');
-                    if (strip && scrollPositions[i] !== undefined) {
-                        strip.scrollLeft = scrollPositions[i];
+                    if (strip && browserId && scrollPositions[browserId] !== undefined) {
+                        strip.scrollLeft = scrollPositions[browserId];
                     }
                 });
             }
@@ -1409,6 +1448,7 @@
                 const browserHistoryHtml = group.browsers.map(browser => {
                     const historyCount = browser.history_count || 0;
                     const forwardCount = browser.forward_count || 0;
+                    const browserIdSafe = escapeHtml(browser.browser_id);
 
                     // Build thumbnail strip
                     let thumbsHtml = '';
@@ -1416,17 +1456,17 @@
 
                     if (browser.image_history && browser.image_history.length > 0) {
                         thumbsHtml += browser.image_history.map(img =>
-                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" alt="Past" loading="lazy">`
+                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy">`
                         ).join('');
                     }
 
                     if (browser.current_image) {
-                        thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" alt="Current" loading="lazy">`;
+                        thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" alt="Current" loading="lazy">`;
                     }
 
                     if (browser.forward_history && browser.forward_history.length > 0) {
                         thumbsHtml += browser.forward_history.slice().reverse().map(img =>
-                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" alt="Forward" loading="lazy">`
+                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
                         ).join('');
                     }
 
@@ -1441,7 +1481,7 @@
                             : 'Current image';
 
                     return `
-                        <details class="history-details" data-group-id="${groupIdSafe}">
+                        <details class="history-details" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}">
                             <summary>${summaryText}</summary>
                             <div class="history-strip">${thumbsHtml}</div>
                         </details>

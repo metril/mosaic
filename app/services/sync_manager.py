@@ -1038,6 +1038,96 @@ class SyncManager:
         })
         return True
 
+    async def jump_to_image(
+        self, group_id: str, browser_id: str, image_path: str
+    ) -> bool:
+        """Jump a specific browser to a specific image from its history."""
+        group = self.groups.get(group_id)
+        if not group:
+            return False
+
+        browser = group.browsers.get(browser_id)
+        if not browser:
+            return False
+
+        # Cancel current cycle task
+        async with group._lock:
+            if group._cycle_task and not group._cycle_task.done():
+                group._cycle_task.cancel()
+                try:
+                    await group._cycle_task
+                except asyncio.CancelledError:
+                    pass
+
+        # Find image in history or forward_history
+        async with group._lock:
+            # Check if jumping to past image
+            if image_path in browser.image_history:
+                idx = browser.image_history.index(image_path)
+                # Move images after idx to forward_history (including current)
+                if browser.current_image:
+                    browser.forward_history.append(browser.current_image)
+                # Add history items after idx to forward_history
+                for img in browser.image_history[idx + 1:]:
+                    browser.forward_history.append(img)
+                # Set new current and trim history
+                browser.current_image = image_path
+                browser.image_history = browser.image_history[:idx]
+
+            # Check if jumping to forward image
+            elif image_path in browser.forward_history:
+                idx = browser.forward_history.index(image_path)
+                # Move images before idx to history (including current)
+                if browser.current_image:
+                    browser.image_history.append(browser.current_image)
+                for img in browser.forward_history[:idx]:
+                    browser.image_history.append(img)
+                # Set new current and trim forward_history
+                browser.current_image = image_path
+                browser.forward_history = browser.forward_history[idx + 1:]
+                # Trim history if needed
+                while len(browser.image_history) > MAX_IMAGE_HISTORY:
+                    browser.image_history.pop(0)
+            else:
+                # Image not in history - can't jump
+                return False
+
+            browser.next_image = None
+            browser.status = BrowserStatus.READY
+
+        # Send ASSIGN
+        image_url = self.build_image_url(image_path, group.settings)
+        try:
+            await asyncio.wait_for(
+                browser.websocket.send_json({
+                    "type": "ASSIGN",
+                    "image_url": image_url,
+                    "image_id": image_path,
+                    "cycle": group.current_cycle
+                }),
+                timeout=5.0
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send jump assign to {browser_id}: {e}")
+            return False
+
+        # Restart cycle if not paused
+        async with group._lock:
+            if not group.paused and group.browsers:
+                group._cycle_task = asyncio.create_task(
+                    self._run_cycle_loop(group)
+                )
+
+        logger.info(f"Browser {browser_id} in group {group_id} jumped to {image_path}")
+
+        # Notify admin clients
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
+
+        return True
+
     async def _advance_browsers(self, group: SyncGroup) -> None:
         """Immediately advance all browsers to next image."""
         settings = group.settings
