@@ -1117,15 +1117,15 @@ class SyncManager:
             # Check if jumping to past image
             if image_path in browser.image_history:
                 idx = browser.image_history.index(image_path)
-                # Clear forward_history - we're rebuilding it from scratch
-                browser.forward_history.clear()
-                # Move images after idx to forward_history (including current)
-                # History items first (they come before current chronologically)
+                # Build new forward: history items after idx, then current, then existing forward
+                new_forward = []
                 for img in browser.image_history[idx + 1:]:
-                    browser.forward_history.append(img)
-                # Then current (most recent)
+                    new_forward.append(img)
                 if browser.current_image:
-                    browser.forward_history.append(browser.current_image)
+                    new_forward.append(browser.current_image)
+                # Prepend to existing forward (existing items are newer)
+                new_forward.extend(browser.forward_history)
+                browser.forward_history = new_forward
                 # Set new current and trim history
                 browser.current_image = image_path
                 browser.image_history = browser.image_history[:idx]
