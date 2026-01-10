@@ -765,6 +765,12 @@ class SyncManager:
 
                     logger.debug(f"Group {group.group_id} cycle {group.current_cycle} switch at {next_switch.isoformat()}")
 
+                    # Notify admin clients of updated state (countdown timer)
+                    await self._notify_admins({
+                        "type": "GROUP_UPDATED",
+                        "group": group.to_dict()
+                    })
+
                 except asyncio.CancelledError:
                     raise  # Re-raise cancellation
                 except Exception as e:
