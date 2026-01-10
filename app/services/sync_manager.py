@@ -579,19 +579,13 @@ class SyncManager:
                     # Push current to history before replacing
                     if browser.current_image:
                         browser.image_history.append(browser.current_image)
-
-                    # Move forward_history to image_history (preserves timeline)
-                    # forward_history is [oldest, ..., newest], append in order
-                    for img in browser.forward_history:
-                        browser.image_history.append(img)
-                    browser.forward_history.clear()
-
-                    # Cap history at MAX_IMAGE_HISTORY
-                    while len(browser.image_history) > MAX_IMAGE_HISTORY:
-                        browser.image_history.pop(0)
-
+                        # Cap history at MAX_IMAGE_HISTORY
+                        if len(browser.image_history) > MAX_IMAGE_HISTORY:
+                            browser.image_history.pop(0)
                     browser.current_image = browser.next_image
                     browser.next_image = None
+                    # Clear forward_history - user is now at live position
+                    browser.forward_history.clear()
                     should_notify_admins = True
                 logger.debug(f"Browser {browser_id} switch complete")
 
