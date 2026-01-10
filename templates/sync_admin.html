@@ -1536,7 +1536,24 @@
                     groupName.textContent = group.group_id + statusText;
                 }
 
-                // 3. Update history strips for each browser
+                // 3. Update settings summary
+                const groupSummary = card.querySelector('.group-summary');
+                if (groupSummary && group.settings) {
+                    const s = group.settings;
+                    const summaryParts = [s.duration + 's', s.mode];
+                    if (s.width && s.height) {
+                        summaryParts.push(s.width + '×' + s.height);
+                    } else if (s.width) {
+                        summaryParts.push(s.width + 'w');
+                    } else if (s.height) {
+                        summaryParts.push(s.height + 'h');
+                    }
+                    if (s.eink) summaryParts.push('E-Ink');
+                    if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
+                    groupSummary.innerHTML = summaryParts.join(' &bull; ');
+                }
+
+                // 4. Update history strips for each browser
                 if (group.browsers) {
                     group.browsers.forEach(browser => {
                         const browserIdSafe = escapeHtml(browser.browser_id);
@@ -1567,7 +1584,7 @@
                     });
                 }
 
-                // 4. Update pause/play button state
+                // 5. Update pause/play button state
                 const playPauseBtn = card.querySelector('.btn-control[data-action="pause"], .btn-control[data-action="play"]');
                 if (playPauseBtn) {
                     playPauseBtn.dataset.action = group.paused ? 'play' : 'pause';
@@ -1577,7 +1594,7 @@
                     playPauseBtn.classList.toggle('playing', !group.paused);
                 }
 
-                // 5. Handle countdown visibility
+                // 6. Handle countdown visibility
                 let countdownEl = card.querySelector('.countdown');
                 if (!group.paused && group.next_switch_at) {
                     if (!countdownEl) {
@@ -1667,13 +1684,13 @@
                         thumbsHtml += `<img src="/api/image/${encodePath(path)}?${size}" class="thumb ${type}" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" ${dataPath} alt="${type}" loading="lazy">`;
                     });
                     strip.innerHTML = thumbsHtml;
-
-                    // Scroll to show current image after rebuild
-                    // Use requestAnimationFrame to defer until after browser lays out new images
-                    requestAnimationFrame(() => {
-                        scrollToCurrentImage(strip);
-                    });
                 }
+
+                // Always scroll to current image after any update (not just rebuilds)
+                // Use requestAnimationFrame to defer until after browser lays out images
+                requestAnimationFrame(() => {
+                    scrollToCurrentImage(strip);
+                });
             }
 
             // Update group count display
