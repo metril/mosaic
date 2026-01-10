@@ -248,7 +248,7 @@ class SyncGroup:
             "current_cycle": self.current_cycle,
             "paused": self.paused,
             "created_at": self.created_at.isoformat() + "Z",
-            "next_switch_at": self.next_switch_time.isoformat() + "Z" if self.next_switch_time else None,
+            "next_switch_at": self.next_switch_time.isoformat() if self.next_switch_time else None,
             "settings": self.settings.to_dict(),
             "browsers": [
                 {
