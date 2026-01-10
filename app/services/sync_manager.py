@@ -576,16 +576,22 @@ class SyncManager:
                 browser.status = BrowserStatus.READY
                 # Move next_image to current_image, push old to history
                 if browser.next_image:
-                    # Push current to history before replacing (for "previous" control)
+                    # Push current to history before replacing
                     if browser.current_image:
                         browser.image_history.append(browser.current_image)
-                        # Cap history at MAX_IMAGE_HISTORY
-                        if len(browser.image_history) > MAX_IMAGE_HISTORY:
-                            browser.image_history.pop(0)
+
+                    # Move forward_history to image_history (preserves timeline)
+                    # forward_history is [oldest, ..., newest], append in order
+                    for img in browser.forward_history:
+                        browser.image_history.append(img)
+                    browser.forward_history.clear()
+
+                    # Cap history at MAX_IMAGE_HISTORY
+                    while len(browser.image_history) > MAX_IMAGE_HISTORY:
+                        browser.image_history.pop(0)
+
                     browser.current_image = browser.next_image
                     browser.next_image = None
-                    # Don't clear forward_history - it's populated by manual navigation
-                    # and should only be consumed by forward navigation, not cleared by cycling
                     should_notify_admins = True
                 logger.debug(f"Browser {browser_id} switch complete")
 
