@@ -98,7 +98,6 @@ class BrowserState:
     websocket: WebSocket
     current_image: Optional[str] = None
     next_image: Optional[str] = None
-    next_image_from_pool: bool = False  # True if next_image came from cycle pool, False for navigation
     image_history: List[str] = field(default_factory=list)  # Past images for "previous"
     forward_history: List[str] = field(default_factory=list)  # Future images for "next" replay
     status: BrowserStatus = BrowserStatus.CONNECTING
@@ -585,11 +584,8 @@ class SyncManager:
                             browser.image_history.pop(0)
                     browser.current_image = browser.next_image
                     browser.next_image = None
-                    # Only clear forward history if this was a new image from cycling
-                    # (not from manual navigation like jump_to_image)
-                    if browser.next_image_from_pool:
-                        browser.forward_history.clear()
-                    browser.next_image_from_pool = False  # Reset flag
+                    # Don't clear forward_history - it's populated by manual navigation
+                    # and should only be consumed by forward navigation, not cleared by cycling
                     should_notify_admins = True
                 logger.debug(f"Browser {browser_id} switch complete")
 
@@ -736,7 +732,6 @@ class SyncManager:
                             next_image = group.image_pool.assign_unique_image(browser.browser_id)
                             if next_image:
                                 browser.next_image = next_image
-                                browser.next_image_from_pool = True  # Mark as pool image (clears forward_history)
                                 browser.status = BrowserStatus.PRELOADING
 
                         if next_image:
@@ -1134,14 +1129,16 @@ class SyncManager:
             # Check if jumping to forward image
             elif image_path in browser.forward_history:
                 idx = browser.forward_history.index(image_path)
-                # Move images before idx to history (including current)
+                # forward_history stores [oldest, ..., newest] but displays reversed
+                # Images AFTER idx are older (visually before clicked) - add to history
+                # Images BEFORE idx are newer (visually after clicked) - stay as forward
                 if browser.current_image:
                     browser.image_history.append(browser.current_image)
-                for img in browser.forward_history[:idx]:
+                for img in browser.forward_history[idx + 1:]:
                     browser.image_history.append(img)
-                # Set new current and trim forward_history
+                # Set new current and keep newer items as forward
                 browser.current_image = image_path
-                browser.forward_history = browser.forward_history[idx + 1:]
+                browser.forward_history = browser.forward_history[:idx]
                 # Trim history if needed
                 while len(browser.image_history) > MAX_IMAGE_HISTORY:
                     browser.image_history.pop(0)
@@ -1199,7 +1196,6 @@ class SyncManager:
                 continue
 
             browser.next_image = next_image
-            browser.next_image_from_pool = True  # Mark as pool image (clears forward_history)
             browser.status = BrowserStatus.PRELOADING
 
             # Send preload
