@@ -789,17 +789,25 @@
             const countdownTimers = {};
 
             function startCountdown(groupId, nextSwitchAt) {
+                console.log('startCountdown called:', groupId, 'nextSwitchAt:', nextSwitchAt);
+
                 // Clear existing timer for this group
                 if (countdownTimers[groupId]) {
                     clearInterval(countdownTimers[groupId]);
                 }
 
-                if (!nextSwitchAt) return;
+                if (!nextSwitchAt) {
+                    console.log('startCountdown: nextSwitchAt is falsy, returning');
+                    return;
+                }
 
                 const nextSwitchTime = new Date(nextSwitchAt).getTime();
 
                 // Validate that the date is valid (not NaN)
-                if (isNaN(nextSwitchTime)) return;
+                if (isNaN(nextSwitchTime)) {
+                    console.log('startCountdown: nextSwitchTime is NaN, returning');
+                    return;
+                }
 
                 // Use raw groupId - browser decodes HTML entities in attribute values
                 // so escapeHtml() would create a mismatch
@@ -807,7 +815,12 @@
                     `.countdown[data-group-id="${groupId}"] .countdown-value`
                 );
 
-                if (!countdownEl) return;
+                console.log('startCountdown: countdownEl found:', countdownEl);
+
+                if (!countdownEl) {
+                    console.log('startCountdown: element not found, returning');
+                    return;
+                }
 
                 // Update immediately
                 const updateCountdown = () => {
@@ -1125,6 +1138,7 @@
 
                 // Start countdown timers for all groups
                 groups.forEach(group => {
+                    console.log('renderGroups - group:', group.group_id, 'paused:', group.paused, 'next_switch_at:', group.next_switch_at);
                     if (!group.paused && group.next_switch_at) {
                         startCountdown(group.group_id, group.next_switch_at);
                     }
@@ -1653,6 +1667,9 @@
                         thumbsHtml += `<img src="/api/image/${encodePath(path)}?${size}" class="thumb ${type}" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" ${dataPath} alt="${type}" loading="lazy">`;
                     });
                     strip.innerHTML = thumbsHtml;
+
+                    // Scroll to show current image after rebuild
+                    scrollToCurrentImage(strip);
                 }
             }
 
