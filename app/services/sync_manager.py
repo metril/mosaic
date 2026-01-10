@@ -579,13 +579,14 @@ class SyncManager:
                     # Push current to history before replacing
                     if browser.current_image:
                         browser.image_history.append(browser.current_image)
-                        # Cap history at MAX_IMAGE_HISTORY
-                        if len(browser.image_history) > MAX_IMAGE_HISTORY:
-                            browser.image_history.pop(0)
+                    # Move forward items to history (they're already in chronological order)
+                    browser.image_history.extend(browser.forward_history)
+                    browser.forward_history.clear()
                     browser.current_image = browser.next_image
                     browser.next_image = None
-                    # Clear forward_history - user is now at live position
-                    browser.forward_history.clear()
+                    # Cap history at MAX_IMAGE_HISTORY
+                    while len(browser.image_history) > MAX_IMAGE_HISTORY:
+                        browser.image_history.pop(0)
                     should_notify_admins = True
                 logger.debug(f"Browser {browser_id} switch complete")
 
@@ -1119,11 +1120,12 @@ class SyncManager:
                 # Clear forward_history - we're rebuilding it from scratch
                 browser.forward_history.clear()
                 # Move images after idx to forward_history (including current)
-                if browser.current_image:
-                    browser.forward_history.append(browser.current_image)
-                # Add history items after idx to forward_history
+                # History items first (they come before current chronologically)
                 for img in browser.image_history[idx + 1:]:
                     browser.forward_history.append(img)
+                # Then current (most recent)
+                if browser.current_image:
+                    browser.forward_history.append(browser.current_image)
                 # Set new current and trim history
                 browser.current_image = image_path
                 browser.image_history = browser.image_history[:idx]
