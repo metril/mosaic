@@ -1133,16 +1133,15 @@ class SyncManager:
             # Check if jumping to forward image
             elif image_path in browser.forward_history:
                 idx = browser.forward_history.index(image_path)
-                # forward_history stores [oldest, ..., newest] but displays reversed
-                # Images AFTER idx are older (visually before clicked) - add to history
-                # Images BEFORE idx are newer (visually after clicked) - stay as forward
+                # forward_history stores [oldest, ..., newest]
+                # Items BEFORE idx are older - add current then those to history
                 if browser.current_image:
                     browser.image_history.append(browser.current_image)
-                for img in browser.forward_history[idx + 1:]:
+                for img in browser.forward_history[:idx]:
                     browser.image_history.append(img)
-                # Set new current and keep newer items as forward
+                # Items AFTER idx are newer - stay as forward
+                browser.forward_history = browser.forward_history[idx + 1:]
                 browser.current_image = image_path
-                browser.forward_history = browser.forward_history[:idx]
                 # Trim history if needed
                 while len(browser.image_history) > MAX_IMAGE_HISTORY:
                     browser.image_history.pop(0)
