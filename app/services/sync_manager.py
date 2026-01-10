@@ -1122,6 +1122,8 @@ class SyncManager:
             # Check if jumping to past image
             if image_path in browser.image_history:
                 idx = browser.image_history.index(image_path)
+                # Clear forward_history - we're rebuilding it from scratch
+                browser.forward_history.clear()
                 # Move images after idx to forward_history (including current)
                 if browser.current_image:
                     browser.forward_history.append(browser.current_image)
