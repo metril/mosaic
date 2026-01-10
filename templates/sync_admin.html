@@ -1669,7 +1669,10 @@
                     strip.innerHTML = thumbsHtml;
 
                     // Scroll to show current image after rebuild
-                    scrollToCurrentImage(strip);
+                    // Use requestAnimationFrame to defer until after browser lays out new images
+                    requestAnimationFrame(() => {
+                        scrollToCurrentImage(strip);
+                    });
                 }
             }
 

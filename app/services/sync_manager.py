@@ -98,6 +98,7 @@ class BrowserState:
     websocket: WebSocket
     current_image: Optional[str] = None
     next_image: Optional[str] = None
+    next_image_from_pool: bool = False  # True if next_image came from cycle pool, False for navigation
     image_history: List[str] = field(default_factory=list)  # Past images for "previous"
     forward_history: List[str] = field(default_factory=list)  # Future images for "next" replay
     status: BrowserStatus = BrowserStatus.CONNECTING
@@ -584,8 +585,11 @@ class SyncManager:
                             browser.image_history.pop(0)
                     browser.current_image = browser.next_image
                     browser.next_image = None
-                    # Clear forward history - new image from cycling invalidates replay history
-                    browser.forward_history.clear()
+                    # Only clear forward history if this was a new image from cycling
+                    # (not from manual navigation like jump_to_image)
+                    if browser.next_image_from_pool:
+                        browser.forward_history.clear()
+                    browser.next_image_from_pool = False  # Reset flag
                     should_notify_admins = True
                 logger.debug(f"Browser {browser_id} switch complete")
 
@@ -732,6 +736,7 @@ class SyncManager:
                             next_image = group.image_pool.assign_unique_image(browser.browser_id)
                             if next_image:
                                 browser.next_image = next_image
+                                browser.next_image_from_pool = True  # Mark as pool image (clears forward_history)
                                 browser.status = BrowserStatus.PRELOADING
 
                         if next_image:
@@ -1194,6 +1199,7 @@ class SyncManager:
                 continue
 
             browser.next_image = next_image
+            browser.next_image_from_pool = True  # Mark as pool image (clears forward_history)
             browser.status = BrowserStatus.PRELOADING
 
             # Send preload
