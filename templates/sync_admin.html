@@ -1164,15 +1164,11 @@
                     deleteGroup(groupId);
                 } else if (thumb && !thumb.classList.contains('current')) {
                     // Thumbnail click - jump to that image (not for current image)
+                    // Extract data synchronously before any await - this captures the
+                    // clicked element's data before DOM updates can replace it
                     const groupId = thumb.dataset.groupId;
                     const browserId = thumb.dataset.browserId;
                     const imagePath = thumb.dataset.imagePath;
-
-                    // Verify element wasn't replaced during click (race condition with DOM updates)
-                    if (!document.body.contains(thumb)) {
-                        console.log('Thumbnail replaced during click, ignoring');
-                        return;
-                    }
 
                     if (groupId && browserId && imagePath) {
                         await jumpToImage(groupId, browserId, imagePath);
