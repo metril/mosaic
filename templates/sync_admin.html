@@ -1153,6 +1153,13 @@
                     const groupId = thumb.dataset.groupId;
                     const browserId = thumb.dataset.browserId;
                     const imagePath = thumb.dataset.imagePath;
+
+                    // Verify element wasn't replaced during click (race condition with DOM updates)
+                    if (!document.body.contains(thumb)) {
+                        console.log('Thumbnail replaced during click, ignoring');
+                        return;
+                    }
+
                     if (groupId && browserId && imagePath) {
                         await jumpToImage(groupId, browserId, imagePath);
                     }
@@ -1390,16 +1397,9 @@
                         delete groupSettingsCache[msg.group_id];
                         break;
                     case 'GROUP_UPDATED':
-                        // Update existing group card
+                        // Update existing group card with partial DOM update to preserve scroll position
                         groupSettingsCache[msg.group.group_id] = msg.group.settings;
-                        updateGroupCard(msg.group);
-                        // Scroll open history strips to show current image
-                        setTimeout(() => {
-                            const groupId = escapeHtml(msg.group.group_id);
-                            document.querySelectorAll(`.history-details[data-group-id="${groupId}"][open] .history-strip`).forEach(strip => {
-                                scrollToCurrentImage(strip);
-                            });
-                        }, 50);
+                        updateGroupCardPartial(msg.group);
                         break;
                     case 'PING':
                         ws.send(JSON.stringify({ type: 'PONG' }));
@@ -1488,6 +1488,171 @@
                     startCountdown(group.group_id, group.next_switch_at);
                 } else {
                     stopCountdown(group.group_id);
+                }
+            }
+
+            // Partial update of group card - avoids scroll position reset
+            function updateGroupCardPartial(group) {
+                const groupIdSafe = escapeHtml(group.group_id);
+                const card = document.querySelector(`.btn-control[data-group-id="${groupIdSafe}"]`)?.closest('.group-card');
+
+                if (!card) {
+                    addGroupCard(group);
+                    return;
+                }
+
+                // Check if browser count changed - need full rebuild
+                const existingBrowserSections = card.querySelectorAll('.history-details').length;
+                const newBrowserCount = group.browsers ? group.browsers.length : 0;
+                if (existingBrowserSections !== newBrowserCount) {
+                    updateGroupCard(group);
+                    return;
+                }
+
+                // 1. Update cycle count in group-meta
+                const meta = card.querySelector('.group-meta');
+                if (meta) {
+                    meta.innerHTML = `${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}`;
+                }
+
+                // 2. Update group name (for pause status)
+                const groupName = card.querySelector('.group-name');
+                if (groupName) {
+                    const statusText = group.paused ? ' (Paused)' : '';
+                    groupName.textContent = group.group_id + statusText;
+                }
+
+                // 3. Update history strips for each browser
+                if (group.browsers) {
+                    group.browsers.forEach(browser => {
+                        const browserIdSafe = escapeHtml(browser.browser_id);
+                        const details = card.querySelector(`.history-details[data-browser-id="${browserIdSafe}"]`);
+
+                        if (!details) {
+                            // Browser section doesn't exist, need full rebuild
+                            updateGroupCard(group);
+                            return;
+                        }
+
+                        const strip = details.querySelector('.history-strip');
+                        if (strip) {
+                            updateHistoryStrip(strip, browser, groupIdSafe, browserIdSafe);
+                        }
+
+                        // Update summary text
+                        const summary = details.querySelector('summary');
+                        if (summary) {
+                            const historyCount = browser.history_count || 0;
+                            const forwardCount = browser.forward_count || 0;
+                            summary.textContent = forwardCount > 0
+                                ? `History (${historyCount} behind, ${forwardCount} ahead)`
+                                : historyCount > 0
+                                    ? `History (${historyCount} behind)`
+                                    : 'Current image';
+                        }
+                    });
+                }
+
+                // 4. Update pause/play button state
+                const playPauseBtn = card.querySelector('.btn-control[data-action="pause"], .btn-control[data-action="play"]');
+                if (playPauseBtn) {
+                    playPauseBtn.dataset.action = group.paused ? 'play' : 'pause';
+                    playPauseBtn.innerHTML = group.paused ? '&#9654;' : '&#9208;';
+                    playPauseBtn.title = group.paused ? 'Play' : 'Pause';
+                    playPauseBtn.classList.toggle('paused', group.paused);
+                    playPauseBtn.classList.toggle('playing', !group.paused);
+                }
+
+                // 5. Handle countdown visibility
+                let countdownEl = card.querySelector('.countdown');
+                if (!group.paused && group.next_switch_at) {
+                    if (!countdownEl) {
+                        // Need to add countdown element - fall back to full update
+                        updateGroupCard(group);
+                        return;
+                    }
+                    startCountdown(group.group_id, group.next_switch_at);
+                } else {
+                    stopCountdown(group.group_id);
+                    if (countdownEl) {
+                        countdownEl.remove();
+                    }
+                }
+            }
+
+            // Update history strip thumbnails in-place
+            function updateHistoryStrip(strip, browser, groupIdSafe, browserIdSafe) {
+                const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
+
+                // Get current thumbnails
+                const existingThumbs = Array.from(strip.querySelectorAll('.thumb'));
+
+                // Build expected state
+                const expectedImages = [];
+
+                // Past images
+                (browser.image_history || []).forEach(img => {
+                    expectedImages.push({ path: img, type: 'past' });
+                });
+
+                // Current image
+                if (browser.current_image) {
+                    expectedImages.push({ path: browser.current_image, type: 'current' });
+                }
+
+                // Forward images (reversed for display)
+                (browser.forward_history || []).slice().reverse().forEach(img => {
+                    expectedImages.push({ path: img, type: 'forward' });
+                });
+
+                // Check if we need full rebuild
+                let needsRebuild = existingThumbs.length !== expectedImages.length;
+
+                if (!needsRebuild) {
+                    // Check if images changed (comparing paths)
+                    for (let i = 0; i < expectedImages.length; i++) {
+                        const existing = existingThumbs[i];
+                        const expected = expectedImages[i];
+
+                        // Extract path from existing thumbnail
+                        let existingPath = existing.dataset.imagePath;
+                        if (!existingPath) {
+                            // Current image doesn't have data-image-path, extract from src
+                            const srcMatch = existing.src.match(/\/api\/image\/(.+?)\?/);
+                            if (srcMatch) {
+                                existingPath = decodeURIComponent(srcMatch[1]);
+                            }
+                        }
+
+                        if (existingPath !== expected.path) {
+                            needsRebuild = true;
+                            break;
+                        }
+
+                        // Update class (past/current/forward)
+                        existing.classList.remove('past', 'current', 'forward');
+                        existing.classList.add(expected.type);
+
+                        // Update size and attributes based on type
+                        if (expected.type === 'current') {
+                            existing.src = `/api/image/${encodePath(expected.path)}?width=260&height=173`;
+                            existing.removeAttribute('data-image-path');
+                        } else {
+                            existing.src = `/api/image/${encodePath(expected.path)}?width=200&height=133`;
+                            existing.dataset.imagePath = expected.path;
+                        }
+                    }
+                }
+
+                if (needsRebuild) {
+                    // Full rebuild of strip content
+                    let thumbsHtml = '';
+                    expectedImages.forEach(({path, type}) => {
+                        const size = type === 'current' ? 'width=260&height=173' : 'width=200&height=133';
+                        const dataPath = type === 'current' ? '' : `data-image-path="${escapeHtml(path)}"`;
+                        thumbsHtml += `<img src="/api/image/${encodePath(path)}?${size}" class="thumb ${type}" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" ${dataPath} alt="${type}" loading="lazy">`;
+                    });
+                    strip.innerHTML = thumbsHtml;
                 }
             }
 

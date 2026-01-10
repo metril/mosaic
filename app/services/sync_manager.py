@@ -706,6 +706,12 @@ class SyncManager:
                     next_switch = _next_cron_time(duration)
                     group.next_switch_time = next_switch
 
+                    # Notify admin clients of new countdown time
+                    await self._notify_admins({
+                        "type": "GROUP_UPDATED",
+                        "group": group.to_dict()
+                    })
+
                     # Wait until preload time (PRELOAD_LEAD_TIME_SECONDS before switch)
                     preload_time = next_switch - timedelta(seconds=PRELOAD_LEAD_TIME_SECONDS)
                     now = _utc_now()
@@ -764,12 +770,6 @@ class SyncManager:
                     })
 
                     logger.debug(f"Group {group.group_id} cycle {group.current_cycle} switch at {next_switch.isoformat()}")
-
-                    # Notify admin clients of updated state (countdown timer)
-                    await self._notify_admins({
-                        "type": "GROUP_UPDATED",
-                        "group": group.to_dict()
-                    })
 
                 except asyncio.CancelledError:
                     raise  # Re-raise cancellation
