@@ -789,6 +789,7 @@ async def delete_sync_group(
 async def save_sync_config(
     request: Request,
     user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
     sync_manager: SyncManager = Depends(get_sync_manager)
 ):
     """
@@ -797,7 +798,6 @@ async def save_sync_config(
     Saves all sync groups and their settings to the TOML config file.
     Groups will be automatically restored on application restart.
     """
-    validate_csrf_token(request)
     logger.info(f"User {user.email} saving sync config")
     saved = sync_manager.save_config()
     return JSONResponse(content={"saved": saved, "message": f"Saved {saved} groups to config"})
