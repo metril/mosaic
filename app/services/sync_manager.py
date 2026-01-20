@@ -321,7 +321,9 @@ class SyncManager:
 
         config: Dict[str, Any] = {"groups": {}}
         for group_id, group in self.groups.items():
-            config["groups"][group_id] = group.settings.to_dict()
+            # Filter out None values - TOML can't serialize them
+            settings_dict = {k: v for k, v in group.settings.to_dict().items() if v is not None}
+            config["groups"][group_id] = settings_dict
 
         # Ensure config directory exists
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
