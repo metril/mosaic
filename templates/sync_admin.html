@@ -1083,9 +1083,9 @@
                             thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" alt="Current" loading="lazy">`;
                         }
 
-                        // Forward images (newest to oldest, so reverse for display)
+                        // Forward images (oldest to newest, next step closest to current)
                         if (browser.forward_history && browser.forward_history.length > 0) {
-                            thumbsHtml += browser.forward_history.slice().reverse().map(img =>
+                            thumbsHtml += browser.forward_history.map(img =>
                                 `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
                             ).join('');
                         }
@@ -1627,8 +1627,8 @@
                     expectedImages.push({ path: browser.current_image, type: 'current' });
                 }
 
-                // Forward images (reversed for display)
-                (browser.forward_history || []).slice().reverse().forEach(img => {
+                // Forward images (oldest to newest, next step closest to current)
+                (browser.forward_history || []).forEach(img => {
                     expectedImages.push({ path: img, type: 'forward' });
                 });
 
@@ -1738,7 +1738,7 @@
                     }
 
                     if (browser.forward_history && browser.forward_history.length > 0) {
-                        thumbsHtml += browser.forward_history.slice().reverse().map(img =>
+                        thumbsHtml += browser.forward_history.map(img =>
                             `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
                         ).join('');
                     }
