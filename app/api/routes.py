@@ -781,6 +781,28 @@ async def delete_sync_group(
     return JSONResponse(content={"deleted": group_id})
 
 
+@router.post("/sync/admin/save-config", responses={
+    200: {"description": "Configuration saved"},
+    401: {"description": "Not authenticated"},
+    403: {"description": "CSRF token invalid"}
+})
+async def save_sync_config(
+    request: Request,
+    user: User = Depends(get_current_user),
+    sync_manager: SyncManager = Depends(get_sync_manager)
+):
+    """
+    Save current sync groups configuration to file.
+
+    Saves all sync groups and their settings to the TOML config file.
+    Groups will be automatically restored on application restart.
+    """
+    validate_csrf_token(request)
+    logger.info(f"User {user.email} saving sync config")
+    saved = sync_manager.save_config()
+    return JSONResponse(content={"saved": saved, "message": f"Saved {saved} groups to config"})
+
+
 # --- Sync Group Playback Controls ---
 
 @router.post("/sync/admin/groups/{group_id}/pause", responses={

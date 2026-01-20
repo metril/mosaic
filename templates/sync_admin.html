@@ -619,7 +619,10 @@
     <body>
         <header class="header">
             <h1>Sync Admin</h1>
-            <button class="btn btn-primary" onclick="openPanel('create')">+ Create Group</button>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn btn-secondary" onclick="saveConfig()" id="saveConfigBtn">Save Config</button>
+                <button class="btn btn-primary" onclick="openPanel('create')">+ Create Group</button>
+            </div>
         </header>
 
         <main class="main">
@@ -1217,6 +1220,36 @@
                     // WebSocket will push the update
                 } catch (e) {
                     showMessage('Jump failed: ' + e.message, 'error');
+                }
+            }
+
+            // Save configuration to file
+            async function saveConfig() {
+                const btn = document.getElementById('saveConfigBtn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Saving...';
+                btn.disabled = true;
+
+                try {
+                    const response = await fetch('/api/sync/admin/save-config', {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-Token': CSRF_TOKEN
+                        }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        showMessage(data.message, 'success');
+                    } else {
+                        const err = await response.json();
+                        showMessage(err.detail || 'Failed to save config', 'error');
+                    }
+                } catch (e) {
+                    showMessage('Save failed: ' + e.message, 'error');
+                } finally {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
                 }
             }
 

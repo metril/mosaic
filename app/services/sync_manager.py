@@ -272,7 +272,7 @@ class SyncManager:
     Manages all sync groups and coordinates browser synchronization.
     """
 
-    def __init__(self, image_service: ImageService):
+    def __init__(self, image_service: ImageService, config_path: Optional[Path] = None):
         self.image_service = image_service
         self.groups: Dict[str, SyncGroup] = {}
         self._lock = asyncio.Lock()
@@ -280,10 +280,57 @@ class SyncManager:
         # Admin WebSocket connections for real-time updates
         self.admin_connections: Set[WebSocket] = set()
         self._admin_lock = asyncio.Lock()
+        # Config file path for persistence
+        self.config_path = config_path or Path("config/sync_groups.toml")
 
     def set_base_url(self, base_url: str) -> None:
         """Set the base URL for image URLs"""
         self._base_url = base_url.rstrip("/")
+
+    async def load_config(self) -> int:
+        """Load sync groups from TOML config file.
+
+        Returns the number of groups loaded.
+        """
+        if not self.config_path.exists():
+            logger.debug(f"Config file not found: {self.config_path}")
+            return 0
+
+        import tomllib
+        with open(self.config_path, "rb") as f:
+            config = tomllib.load(f)
+
+        loaded = 0
+        for group_id, settings_dict in config.get("groups", {}).items():
+            try:
+                settings = SyncGroupSettings.from_dict(settings_dict)
+                await self.create_group(group_id, settings)
+                logger.info(f"Loaded sync group from config: {group_id}")
+                loaded += 1
+            except Exception as e:
+                logger.warning(f"Failed to load group '{group_id}' from config: {e}")
+
+        return loaded
+
+    def save_config(self) -> int:
+        """Save current sync groups to TOML config file.
+
+        Returns the number of groups saved.
+        """
+        import tomli_w
+
+        config: Dict[str, Any] = {"groups": {}}
+        for group_id, group in self.groups.items():
+            config["groups"][group_id] = group.settings.to_dict()
+
+        # Ensure config directory exists
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(self.config_path, "wb") as f:
+            tomli_w.dump(config, f)
+
+        logger.info(f"Saved {len(self.groups)} sync groups to config: {self.config_path}")
+        return len(self.groups)
 
     async def register_admin(self, websocket: WebSocket) -> None:
         """Register an admin WebSocket connection for real-time updates."""

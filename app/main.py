@@ -106,6 +106,11 @@ async def lifespan(app: FastAPI):
         app.state.sync_manager = SyncManager(image_service)
         logger.info("SyncManager initialized")
 
+        # Load sync groups from config file
+        loaded_groups = await app.state.sync_manager.load_config()
+        if loaded_groups > 0:
+            logger.info(f"Loaded {loaded_groups} sync groups from config")
+
         # Start cleanup task for stale browser connections
         cleanup_task = asyncio.create_task(periodic_cleanup(app.state.sync_manager))
         logger.info("Cleanup task started")
