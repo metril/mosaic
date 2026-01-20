@@ -281,14 +281,14 @@ class SyncManager:
         self.admin_connections: Set[WebSocket] = set()
         self._admin_lock = asyncio.Lock()
         # Config file path for persistence
-        self.config_path = config_path or Path("config/sync_groups.toml")
+        self.config_path = config_path or Path("config/sync_groups.yaml")
 
     def set_base_url(self, base_url: str) -> None:
         """Set the base URL for image URLs"""
         self._base_url = base_url.rstrip("/")
 
     async def load_config(self) -> int:
-        """Load sync groups from TOML config file.
+        """Load sync groups from YAML config file.
 
         Returns the number of groups loaded.
         """
@@ -296,9 +296,9 @@ class SyncManager:
             logger.debug(f"Config file not found: {self.config_path}")
             return 0
 
-        import tomllib
-        with open(self.config_path, "rb") as f:
-            config = tomllib.load(f)
+        import yaml
+        with open(self.config_path, "r") as f:
+            config = yaml.safe_load(f) or {}
 
         loaded = 0
         for group_id, settings_dict in config.get("groups", {}).items():
@@ -313,23 +313,23 @@ class SyncManager:
         return loaded
 
     def save_config(self) -> int:
-        """Save current sync groups to TOML config file.
+        """Save current sync groups to YAML config file.
 
         Returns the number of groups saved.
         """
-        import tomli_w
+        import yaml
 
         config: Dict[str, Any] = {"groups": {}}
         for group_id, group in self.groups.items():
-            # Filter out None values - TOML can't serialize them
+            # Filter out None values for cleaner output
             settings_dict = {k: v for k, v in group.settings.to_dict().items() if v is not None}
             config["groups"][group_id] = settings_dict
 
         # Ensure config directory exists
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(self.config_path, "wb") as f:
-            tomli_w.dump(config, f)
+        with open(self.config_path, "w") as f:
+            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
         logger.info(f"Saved {len(self.groups)} sync groups to config: {self.config_path}")
         return len(self.groups)
