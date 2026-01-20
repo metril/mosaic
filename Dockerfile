@@ -25,9 +25,13 @@ RUN useradd -m -u 1000 appuser
 # Copy application code and set ownership
 COPY --chown=appuser:appuser app/ ./app/
 COPY --chown=appuser:appuser templates/ ./templates/
+COPY --chown=appuser:appuser config/ ./config/
 
 # Create directory for images (will be mounted as volume)
 RUN mkdir -p /www/images && chown appuser:appuser /www/images
+
+# Create directory for config files (will be mounted as volume)
+RUN mkdir -p /app/config && chown appuser:appuser /app/config
 
 # Switch to non-root user
 USER appuser
