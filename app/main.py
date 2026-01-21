@@ -24,6 +24,7 @@ from app.auth.routes import router as auth_router
 from app.auth.oidc import get_oidc_config
 from app.services.sync_manager import SyncManager
 from app.services.immich_provider import ImmichProvider
+from app.services.homeassistant_provider import HomeAssistantProvider, HomeAssistantConfig
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException, error_response
 
@@ -118,6 +119,21 @@ async def lifespan(app: FastAPI):
         if loaded_pulls > 0:
             logger.info(f"Loaded {loaded_pulls} Immich pull configurations")
 
+        # Initialize Home Assistant provider if configured
+        ha_url = os.environ.get('HOMEASSISTANT_URL', '').strip()
+        ha_token = os.environ.get('HOMEASSISTANT_TOKEN', '').strip()
+        if ha_url and ha_token:
+            ha_config = HomeAssistantConfig(
+                url=ha_url,
+                access_token=ha_token,
+                enabled=True
+            )
+            app.state.ha_provider = HomeAssistantProvider(ha_config)
+            logger.info(f"Home Assistant provider initialized: {ha_url}")
+        else:
+            app.state.ha_provider = None
+            logger.debug("Home Assistant not configured (HOMEASSISTANT_URL/TOKEN not set)")
+
         # Start cleanup task for stale browser connections
         cleanup_task = asyncio.create_task(periodic_cleanup(app.state.sync_manager))
         logger.info("Cleanup task started")
@@ -141,6 +157,10 @@ async def lifespan(app: FastAPI):
         # Close Immich provider HTTP client
         if hasattr(app.state, 'immich_provider'):
             await app.state.immich_provider.close()
+
+        # Close Home Assistant provider HTTP client
+        if hasattr(app.state, 'ha_provider') and app.state.ha_provider:
+            await app.state.ha_provider.close()
 
         logger.info("Screensaver Application Shutting Down")
 

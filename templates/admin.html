@@ -961,6 +961,117 @@
                             </div>
                         </div>
                     </details>
+
+                    <!-- Layout & Background -->
+                    <details class="settings-section">
+                        <summary>Layout & Background</summary>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <label for="layout">Layout</label>
+                                <select id="layout" name="layout">
+                                    <option value="single">Single image</option>
+                                    <option value="splitview">Split view (side by side)</option>
+                                    <option value="splitview-landscape">Split view (stacked)</option>
+                                </select>
+                                <small>Split views show two different images</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="image_fit">Image Fit</label>
+                                <select id="image_fit" name="image_fit">
+                                    <option value="contain">Contain (letterbox)</option>
+                                    <option value="cover">Cover (fill frame)</option>
+                                </select>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="background_blur" name="background_blur">
+                                <label for="background_blur">Background blur (for letterboxed images)</label>
+                            </div>
+                            <div class="form-row" id="blurAmountRow">
+                                <label for="background_blur_amount">Blur Amount</label>
+                                <div style="display: flex; align-items: center; gap: 12px;">
+                                    <input type="range" id="background_blur_amount" name="background_blur_amount"
+                                           min="0" max="100" value="50" style="flex: 1;">
+                                    <span id="blurAmountValue" style="min-width: 40px; text-align: right;">50</span>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Clock Settings -->
+                    <details class="settings-section">
+                        <summary>Clock</summary>
+                        <div class="section-content">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="show_time" name="show_time">
+                                <label for="show_time">Show time</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="show_date" name="show_date">
+                                <label for="show_date">Show date</label>
+                            </div>
+                            <div class="form-row">
+                                <label for="time_format">Time Format</label>
+                                <select id="time_format" name="time_format">
+                                    <option value="24">24-hour</option>
+                                    <option value="12">12-hour (AM/PM)</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label for="date_format">Date Format</label>
+                                <input type="text" id="date_format" name="date_format" value="%A, %B %d"
+                                       placeholder="%A, %B %d">
+                                <small>Python strftime format (e.g., %A = weekday, %B = month, %d = day)</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="clock_source">Time Source</label>
+                                <select id="clock_source" name="clock_source">
+                                    <option value="client">Client browser</option>
+                                    <option value="ntp">Server (NTP)</option>
+                                    <option value="homeassistant">Home Assistant</option>
+                                </select>
+                                <small>Home Assistant requires configuration via environment variables</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="clock_position">Position</label>
+                                <select id="clock_position" name="clock_position">
+                                    <option value="bottom-left">Bottom Left</option>
+                                    <option value="bottom-right">Bottom Right</option>
+                                    <option value="top-left">Top Left</option>
+                                    <option value="top-right">Top Right</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Weather Settings -->
+                    <details class="settings-section">
+                        <summary>Weather</summary>
+                        <div class="section-content">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="show_weather" name="show_weather">
+                                <label for="show_weather">Show weather</label>
+                            </div>
+                            <div class="form-row">
+                                <label for="weather_ha_entity">Home Assistant Entity</label>
+                                <input type="text" id="weather_ha_entity" name="weather_ha_entity"
+                                       placeholder="weather.home">
+                                <small>Weather entity ID from Home Assistant (e.g., weather.home)</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="weather_position">Position</label>
+                                <select id="weather_position" name="weather_position">
+                                    <option value="bottom-right">Bottom Right</option>
+                                    <option value="bottom-left">Bottom Left</option>
+                                    <option value="top-left">Top Left</option>
+                                    <option value="top-right">Top Right</option>
+                                </select>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="weather_show_forecast" name="weather_show_forecast">
+                                <label for="weather_show_forecast">Show 3-day forecast</label>
+                            </div>
+                        </div>
+                    </details>
                 </form>
             </div>
             <div class="panel-footer">
@@ -1227,6 +1338,24 @@
                 document.getElementById('contrast').value = 1.2;
                 document.getElementById('brightness').value = 1.1;
                 document.getElementById('sharpen').checked = true;
+                // Layout & Background defaults
+                document.getElementById('layout').value = 'single';
+                document.getElementById('image_fit').value = 'contain';
+                document.getElementById('background_blur').checked = false;
+                document.getElementById('background_blur_amount').value = 50;
+                updateBlurAmountDisplay();
+                // Clock defaults
+                document.getElementById('show_time').checked = false;
+                document.getElementById('show_date').checked = false;
+                document.getElementById('time_format').value = '24';
+                document.getElementById('date_format').value = '%A, %B %d';
+                document.getElementById('clock_source').value = 'client';
+                document.getElementById('clock_position').value = 'bottom-left';
+                // Weather defaults
+                document.getElementById('show_weather').checked = false;
+                document.getElementById('weather_ha_entity').value = '';
+                document.getElementById('weather_position').value = 'bottom-right';
+                document.getElementById('weather_show_forecast').checked = false;
             }
 
             function populateForm(settings) {
@@ -1244,6 +1373,24 @@
                 document.getElementById('contrast').value = settings.contrast ?? 1.2;
                 document.getElementById('brightness').value = settings.brightness ?? 1.1;
                 document.getElementById('sharpen').checked = settings.sharpen ?? true;
+                // Layout & Background
+                document.getElementById('layout').value = settings.layout || 'single';
+                document.getElementById('image_fit').value = settings.image_fit || 'contain';
+                document.getElementById('background_blur').checked = settings.background_blur || false;
+                document.getElementById('background_blur_amount').value = settings.background_blur_amount ?? 50;
+                updateBlurAmountDisplay();
+                // Clock settings
+                document.getElementById('show_time').checked = settings.show_time || false;
+                document.getElementById('show_date').checked = settings.show_date || false;
+                document.getElementById('time_format').value = settings.time_format || '24';
+                document.getElementById('date_format').value = settings.date_format || '%A, %B %d';
+                document.getElementById('clock_source').value = settings.clock_source || 'client';
+                document.getElementById('clock_position').value = settings.clock_position || 'bottom-left';
+                // Weather settings
+                document.getElementById('show_weather').checked = settings.show_weather || false;
+                document.getElementById('weather_ha_entity').value = settings.weather_ha_entity || '';
+                document.getElementById('weather_position').value = settings.weather_position || 'bottom-right';
+                document.getElementById('weather_show_forecast').checked = settings.weather_show_forecast || false;
             }
 
             function getFormData() {
@@ -1275,8 +1422,40 @@
                 data.brightness = parseFloat(form.brightness.value) || 1.1;
                 data.sharpen = form.sharpen.checked;
 
+                // Layout & Background
+                data.layout = form.layout.value;
+                data.image_fit = form.image_fit.value;
+                data.background_blur = form.background_blur.checked;
+                data.background_blur_amount = parseInt(form.background_blur_amount.value) || 50;
+
+                // Clock settings
+                data.show_time = form.show_time.checked;
+                data.show_date = form.show_date.checked;
+                data.time_format = form.time_format.value;
+                data.date_format = form.date_format.value || '%A, %B %d';
+                data.clock_source = form.clock_source.value;
+                data.clock_position = form.clock_position.value;
+
+                // Weather settings
+                data.show_weather = form.show_weather.checked;
+                data.weather_ha_entity = form.weather_ha_entity.value || null;
+                data.weather_position = form.weather_position.value;
+                data.weather_show_forecast = form.weather_show_forecast.checked;
+
                 return data;
             }
+
+            // Update blur amount display value
+            function updateBlurAmountDisplay() {
+                const slider = document.getElementById('background_blur_amount');
+                const display = document.getElementById('blurAmountValue');
+                if (slider && display) {
+                    display.textContent = slider.value;
+                }
+            }
+
+            // Set up blur slider event listener
+            document.getElementById('background_blur_amount').addEventListener('input', updateBlurAmountDisplay);
 
             // Form submission
             document.getElementById('groupForm').addEventListener('submit', async (e) => {
@@ -1384,6 +1563,9 @@
                         summaryParts.push(s.height + 'h');
                     }
                     if (s.eink) summaryParts.push('E-Ink');
+                    if (s.layout && s.layout !== 'single') summaryParts.push(s.layout);
+                    if (s.show_time || s.show_date) summaryParts.push('Clock');
+                    if (s.show_weather) summaryParts.push('Weather');
                     if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
 
                     // Status indicator
@@ -1979,6 +2161,9 @@
                         summaryParts.push(s.height + 'h');
                     }
                     if (s.eink) summaryParts.push('E-Ink');
+                    if (s.layout && s.layout !== 'single') summaryParts.push(s.layout);
+                    if (s.show_time || s.show_date) summaryParts.push('Clock');
+                    if (s.show_weather) summaryParts.push('Weather');
                     if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
                     groupSummary.innerHTML = summaryParts.join(' &bull; ');
                 }
@@ -2146,6 +2331,9 @@
                     summaryParts.push(s.height + 'h');
                 }
                 if (s.eink) summaryParts.push('E-Ink');
+                if (s.layout && s.layout !== 'single') summaryParts.push(s.layout);
+                if (s.show_time || s.show_date) summaryParts.push('Clock');
+                if (s.show_weather) summaryParts.push('Weather');
                 if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
 
                 // Status indicator

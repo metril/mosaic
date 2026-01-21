@@ -60,6 +60,28 @@ class SyncGroupSettings:
     brightness: float = 1.1  # E-Ink brightness
     sharpen: bool = True  # E-Ink sharpening
 
+    # Clock settings
+    show_time: bool = False  # Display time overlay
+    show_date: bool = False  # Display date overlay
+    time_format: str = "24"  # "12" or "24" hour format
+    date_format: str = "%A, %B %d"  # strftime format for date
+    clock_source: str = "client"  # "client", "ntp", or "homeassistant"
+    clock_position: str = "bottom-left"  # "top-left", "top-right", "bottom-left", "bottom-right"
+
+    # Weather settings
+    show_weather: bool = False  # Display weather overlay
+    weather_position: str = "bottom-right"  # Position for weather display
+    weather_ha_entity: Optional[str] = None  # Home Assistant weather entity ID
+    weather_show_forecast: bool = False  # Show 3-day forecast
+
+    # Layout settings
+    layout: str = "single"  # "single", "splitview", "splitview-landscape"
+
+    # Background blur settings
+    background_blur: bool = False  # Enable blurred background for letterboxed images
+    background_blur_amount: int = 50  # Blur intensity (0-100)
+    image_fit: str = "contain"  # "contain" or "cover"
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return asdict(self)

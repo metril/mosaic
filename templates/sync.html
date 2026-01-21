@@ -97,6 +97,199 @@
             .debug-overlay.visible {
                 display: block;
             }
+
+            /* =================================================================
+               Background Blur Layer
+               ================================================================= */
+            .frame--background {
+                position: absolute;
+                top: -5%;
+                left: -5%;
+                width: 110%;
+                height: 110%;
+                background-size: cover;
+                background-position: center;
+                background-repeat: no-repeat;
+                z-index: -1;
+                transition: background-image 0.5s ease-in-out;
+            }
+            .frame--background.hidden {
+                display: none;
+            }
+
+            /* =================================================================
+               Layout Styles
+               ================================================================= */
+            /* Single layout (default) */
+            .layout-single {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .frame--layout-single {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                position: relative;
+            }
+
+            /* Split view - side by side */
+            .layout-splitview {
+                display: flex;
+                flex-direction: row;
+            }
+            .layout-splitview .frame {
+                width: 50%;
+                height: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                position: relative;
+                overflow: hidden;
+            }
+            .layout-splitview .frame .screensaver-image {
+                max-width: 100%;
+                max-height: 100%;
+                width: auto;
+                height: auto;
+                position: relative;
+            }
+
+            /* Split view landscape - stacked vertically */
+            .layout-splitview-landscape {
+                display: flex;
+                flex-direction: column;
+            }
+            .layout-splitview-landscape .frame {
+                width: 100%;
+                height: 50%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                position: relative;
+                overflow: hidden;
+            }
+            .layout-splitview-landscape .frame .screensaver-image {
+                max-width: 100%;
+                max-height: 100%;
+                width: auto;
+                height: auto;
+                position: relative;
+            }
+
+            /* Responsive adjustments */
+            @media (orientation: portrait) {
+                .layout-splitview {
+                    flex-direction: column;
+                }
+                .layout-splitview .frame {
+                    width: 100%;
+                    height: 50%;
+                }
+            }
+            @media (orientation: landscape) {
+                .layout-splitview-landscape {
+                    flex-direction: row;
+                }
+                .layout-splitview-landscape .frame {
+                    width: 50%;
+                    height: 100%;
+                }
+            }
+
+            /* =================================================================
+               Overlay Styles (Clock & Weather)
+               ================================================================= */
+            .overlay {
+                position: fixed;
+                z-index: 100;
+                padding: 20px;
+                background: rgba(0, 0, 0, 0.4);
+                border-radius: 12px;
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+            }
+            .overlay.hidden {
+                display: none !important;
+            }
+
+            /* Position classes */
+            .position-bottom-left { bottom: 30px; left: 30px; }
+            .position-bottom-right { bottom: 30px; right: 30px; }
+            .position-top-left { top: 30px; left: 30px; }
+            .position-top-right { top: 30px; right: 30px; }
+
+            /* Clock styles */
+            .clock-overlay {
+                text-align: left;
+            }
+            .clock-time {
+                font-size: 3rem;
+                font-weight: 600;
+                color: white;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+                line-height: 1.2;
+                font-family: system-ui, -apple-system, sans-serif;
+            }
+            .clock-date {
+                font-size: 1.2rem;
+                color: rgba(255, 255, 255, 0.85);
+                text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+                margin-top: 4px;
+                font-family: system-ui, -apple-system, sans-serif;
+            }
+
+            /* Weather styles */
+            .weather-overlay {
+                text-align: right;
+            }
+            .weather-icon {
+                font-size: 3rem;
+                margin-bottom: 8px;
+            }
+            .weather-temp {
+                font-size: 2.5rem;
+                font-weight: 600;
+                color: white;
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+                font-family: system-ui, -apple-system, sans-serif;
+            }
+            .weather-condition {
+                font-size: 1rem;
+                color: rgba(255, 255, 255, 0.85);
+                text-transform: capitalize;
+                margin-top: 4px;
+            }
+            .weather-forecast {
+                display: flex;
+                gap: 16px;
+                margin-top: 12px;
+                padding-top: 12px;
+                border-top: 1px solid rgba(255, 255, 255, 0.2);
+                justify-content: flex-end;
+            }
+            .forecast-day {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                font-size: 0.85rem;
+                color: rgba(255, 255, 255, 0.8);
+            }
+            .forecast-day .forecast-icon {
+                font-size: 1.5rem;
+                margin: 4px 0;
+            }
+
+            /* Image fit modes */
+            .screensaver-image.fit-cover {
+                object-fit: cover;
+            }
+            .screensaver-image.fit-contain {
+                object-fit: contain;
+            }
+
             .debug-overlay dt {
                 color: #888;
                 float: left;
@@ -111,11 +304,35 @@
     <body>
         <div class="status-indicator connecting" id="statusIndicator"></div>
 
-        <div class="image-container">
-            <!-- Current image -->
-            <img id="currentImage" class="screensaver-image visible" src="" alt="Screensaver">
-            <!-- Preload image (hidden) -->
-            <img id="preloadImage" class="screensaver-image hidden" src="" alt="Preload">
+        <div class="image-container layout-{{ settings.layout|default('single') }}" id="imageContainer">
+            <!-- Background blur layer -->
+            <div class="frame--background hidden" id="backgroundBlur"></div>
+
+            <!-- Frame 1 (primary) -->
+            <div class="frame frame--layout-{{ settings.layout|default('single') }}" id="frame1">
+                <img id="currentImage" class="screensaver-image visible fit-{{ settings.image_fit|default('contain') }}" src="" alt="Screensaver">
+                <img id="preloadImage" class="screensaver-image hidden fit-{{ settings.image_fit|default('contain') }}" src="" alt="Preload">
+            </div>
+
+            <!-- Frame 2 (for split views) -->
+            <div class="frame frame--layout-{{ settings.layout|default('single') }}" id="frame2" style="display: none;">
+                <img id="currentImage2" class="screensaver-image visible fit-{{ settings.image_fit|default('contain') }}" src="" alt="Screensaver 2">
+                <img id="preloadImage2" class="screensaver-image hidden fit-{{ settings.image_fit|default('contain') }}" src="" alt="Preload 2">
+            </div>
+        </div>
+
+        <!-- Clock overlay -->
+        <div class="overlay clock-overlay position-{{ settings.clock_position|default('bottom-left') }} hidden" id="clockOverlay">
+            <div class="clock-time" id="clockTime"></div>
+            <div class="clock-date" id="clockDate"></div>
+        </div>
+
+        <!-- Weather overlay -->
+        <div class="overlay weather-overlay position-{{ settings.weather_position|default('bottom-right') }} hidden" id="weatherOverlay">
+            <div class="weather-icon" id="weatherIcon"></div>
+            <div class="weather-temp" id="weatherTemp"></div>
+            <div class="weather-condition" id="weatherCondition"></div>
+            <div class="weather-forecast" id="weatherForecast"></div>
         </div>
 
         <div class="debug-overlay" id="debugOverlay">
@@ -140,6 +357,326 @@
         </div>
 
         <script type="text/javascript">
+            // =================================================================
+            // Settings from server (passed via template)
+            // =================================================================
+            const SETTINGS = {
+                show_time: {{ settings.show_time|default(false)|tojson }},
+                show_date: {{ settings.show_date|default(false)|tojson }},
+                time_format: "{{ settings.time_format|default('24') }}",
+                date_format: "{{ settings.date_format|default('%A, %B %d') }}",
+                clock_source: "{{ settings.clock_source|default('client') }}",
+                clock_position: "{{ settings.clock_position|default('bottom-left') }}",
+                show_weather: {{ settings.show_weather|default(false)|tojson }},
+                weather_position: "{{ settings.weather_position|default('bottom-right') }}",
+                weather_ha_entity: "{{ settings.weather_ha_entity|default('') }}",
+                weather_show_forecast: {{ settings.weather_show_forecast|default(false)|tojson }},
+                layout: "{{ settings.layout|default('single') }}",
+                background_blur: {{ settings.background_blur|default(false)|tojson }},
+                background_blur_amount: {{ settings.background_blur_amount|default(50) }},
+                image_fit: "{{ settings.image_fit|default('contain') }}"
+            };
+
+            // =================================================================
+            // Clock Class - Real-time time display with offset-based server sync
+            // =================================================================
+            class Clock {
+                constructor(settings) {
+                    this.settings = settings;
+                    this.timeEl = document.getElementById('clockTime');
+                    this.dateEl = document.getElementById('clockDate');
+                    this.overlay = document.getElementById('clockOverlay');
+                    this.updateInterval = null;
+                    this.syncInterval = null;
+                    this.serverOffset = 0; // Offset between server and client time (ms)
+                }
+
+                start() {
+                    if (!this.settings.show_time && !this.settings.show_date) {
+                        this.overlay.classList.add('hidden');
+                        return;
+                    }
+
+                    this.overlay.classList.remove('hidden');
+                    this.overlay.className = 'overlay clock-overlay position-' + this.settings.clock_position;
+
+                    // Initial sync if using server time
+                    if (this.settings.clock_source !== 'client') {
+                        this.syncWithServer();
+                        // Re-sync every 15 seconds
+                        this.syncInterval = setInterval(() => this.syncWithServer(), 15000);
+                    }
+
+                    // Update display every second for smooth updates
+                    this.render();
+                    this.updateInterval = setInterval(() => this.render(), 1000);
+                }
+
+                async syncWithServer() {
+                    try {
+                        const clientBefore = Date.now();
+                        const response = await fetch('/api/clock?source=' + this.settings.clock_source);
+                        const clientAfter = Date.now();
+                        const data = await response.json();
+
+                        if (data.datetime) {
+                            const serverTime = new Date(data.datetime).getTime();
+                            // Account for network latency (use midpoint)
+                            const clientMidpoint = (clientBefore + clientAfter) / 2;
+                            this.serverOffset = serverTime - clientMidpoint;
+                            console.log('Clock synced, offset:', this.serverOffset, 'ms');
+                        }
+                    } catch (e) {
+                        console.error('Failed to sync clock:', e);
+                        // Keep using last offset or 0
+                    }
+                }
+
+                getCurrentTime() {
+                    if (this.settings.clock_source === 'client') {
+                        return new Date();
+                    }
+                    // Apply server offset for accurate time
+                    return new Date(Date.now() + this.serverOffset);
+                }
+
+                render() {
+                    const now = this.getCurrentTime();
+
+                    if (this.settings.show_time) {
+                        this.timeEl.textContent = this.formatTime(now);
+                        this.timeEl.style.display = 'block';
+                    } else {
+                        this.timeEl.style.display = 'none';
+                    }
+
+                    if (this.settings.show_date) {
+                        this.dateEl.textContent = this.formatDate(now);
+                        this.dateEl.style.display = 'block';
+                    } else {
+                        this.dateEl.style.display = 'none';
+                    }
+                }
+
+                formatTime(date) {
+                    const options = {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: this.settings.time_format === '12'
+                    };
+                    return date.toLocaleTimeString(undefined, options);
+                }
+
+                formatDate(date) {
+                    // Convert Python strftime to JS options
+                    // Common formats: %A = weekday, %B = month, %d = day
+                    const options = {
+                        weekday: 'long',
+                        month: 'long',
+                        day: 'numeric'
+                    };
+                    return date.toLocaleDateString(undefined, options);
+                }
+
+                stop() {
+                    if (this.updateInterval) {
+                        clearInterval(this.updateInterval);
+                        this.updateInterval = null;
+                    }
+                    if (this.syncInterval) {
+                        clearInterval(this.syncInterval);
+                        this.syncInterval = null;
+                    }
+                }
+
+                updateSettings(newSettings) {
+                    this.stop();
+                    this.settings = { ...this.settings, ...newSettings };
+                    this.start();
+                }
+            }
+
+            // =================================================================
+            // Weather Class - Weather display from Home Assistant
+            // =================================================================
+            class Weather {
+                constructor(settings) {
+                    this.settings = settings;
+                    this.overlay = document.getElementById('weatherOverlay');
+                    this.updateInterval = null;
+                }
+
+                start() {
+                    if (!this.settings.show_weather || !this.settings.weather_ha_entity) {
+                        this.overlay.classList.add('hidden');
+                        return;
+                    }
+
+                    this.overlay.classList.remove('hidden');
+                    this.overlay.className = 'overlay weather-overlay position-' + this.settings.weather_position;
+
+                    // Update immediately
+                    this.update();
+
+                    // Update every 10 minutes
+                    this.updateInterval = setInterval(() => this.update(), 600000);
+                }
+
+                async update() {
+                    try {
+                        const response = await fetch(
+                            '/api/weather?entity_id=' + encodeURIComponent(this.settings.weather_ha_entity)
+                        );
+                        if (response.ok) {
+                            const data = await response.json();
+                            this.render(data);
+                        } else {
+                            console.error('Weather fetch failed:', response.status);
+                        }
+                    } catch (e) {
+                        console.error('Failed to fetch weather:', e);
+                    }
+                }
+
+                render(data) {
+                    document.getElementById('weatherIcon').textContent = this.getWeatherIcon(data.condition);
+                    document.getElementById('weatherTemp').textContent =
+                        Math.round(data.temperature) + (data.temperature_unit || '°');
+                    document.getElementById('weatherCondition').textContent =
+                        data.condition ? data.condition.replace(/-/g, ' ') : '';
+
+                    const forecastEl = document.getElementById('weatherForecast');
+                    if (this.settings.weather_show_forecast && data.forecast && data.forecast.length > 0) {
+                        forecastEl.innerHTML = data.forecast.map(f => {
+                            const date = new Date(f.datetime);
+                            const dayName = date.toLocaleDateString(undefined, { weekday: 'short' });
+                            return '<div class="forecast-day">' +
+                                '<span>' + dayName + '</span>' +
+                                '<span class="forecast-icon">' + this.getWeatherIcon(f.condition) + '</span>' +
+                                '<span>' + Math.round(f.temperature) + '°</span>' +
+                            '</div>';
+                        }).join('');
+                        forecastEl.style.display = 'flex';
+                    } else {
+                        forecastEl.style.display = 'none';
+                    }
+                }
+
+                getWeatherIcon(condition) {
+                    if (!condition) return '🌡️';
+                    const c = condition.toLowerCase();
+                    if (c.includes('sunny') || c.includes('clear')) return c.includes('night') ? '🌙' : '☀️';
+                    if (c.includes('cloud') || c.includes('overcast')) return c.includes('partly') ? '⛅' : '☁️';
+                    if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return '🌧️';
+                    if (c.includes('snow') || c.includes('sleet') || c.includes('hail')) return '❄️';
+                    if (c.includes('thunder') || c.includes('lightning')) return '⚡';
+                    if (c.includes('fog') || c.includes('mist') || c.includes('haze')) return '🌫️';
+                    if (c.includes('wind')) return '💨';
+                    return '🌡️';
+                }
+
+                stop() {
+                    if (this.updateInterval) {
+                        clearInterval(this.updateInterval);
+                        this.updateInterval = null;
+                    }
+                }
+
+                updateSettings(newSettings) {
+                    this.stop();
+                    this.settings = { ...this.settings, ...newSettings };
+                    this.start();
+                }
+            }
+
+            // =================================================================
+            // BackgroundBlur Class - Manages blurred background layer
+            // =================================================================
+            class BackgroundBlur {
+                constructor(settings) {
+                    this.settings = settings;
+                    this.backgroundEl = document.getElementById('backgroundBlur');
+                    this.enabled = settings.background_blur && settings.image_fit !== 'cover';
+                }
+
+                update(blurDataUrl) {
+                    if (!this.enabled || !blurDataUrl) {
+                        this.backgroundEl.classList.add('hidden');
+                        return;
+                    }
+
+                    this.backgroundEl.style.backgroundImage = 'url(' + blurDataUrl + ')';
+                    this.backgroundEl.classList.remove('hidden');
+                }
+
+                clear() {
+                    this.backgroundEl.classList.add('hidden');
+                    this.backgroundEl.style.backgroundImage = '';
+                }
+
+                updateSettings(newSettings) {
+                    this.settings = { ...this.settings, ...newSettings };
+                    this.enabled = this.settings.background_blur && this.settings.image_fit !== 'cover';
+                    if (!this.enabled) {
+                        this.clear();
+                    }
+                }
+            }
+
+            // =================================================================
+            // LayoutManager Class - Manages display layouts
+            // =================================================================
+            class LayoutManager {
+                constructor(settings) {
+                    this.settings = settings;
+                    this.container = document.getElementById('imageContainer');
+                    this.frame1 = document.getElementById('frame1');
+                    this.frame2 = document.getElementById('frame2');
+                }
+
+                initialize() {
+                    const layout = this.settings.layout || 'single';
+
+                    // Set container class
+                    this.container.className = 'image-container layout-' + layout;
+
+                    // Set frame classes
+                    this.frame1.className = 'frame frame--layout-' + layout;
+                    this.frame2.className = 'frame frame--layout-' + layout;
+
+                    // Show/hide second frame based on layout
+                    if (layout !== 'single') {
+                        this.frame2.style.display = 'flex';
+                    } else {
+                        this.frame2.style.display = 'none';
+                    }
+                }
+
+                getFrameCount() {
+                    return this.settings.layout === 'single' ? 1 : 2;
+                }
+
+                updateSettings(newSettings) {
+                    this.settings = { ...this.settings, ...newSettings };
+                    this.initialize();
+                }
+            }
+
+            // =================================================================
+            // Initialize overlay features
+            // =================================================================
+            const clockManager = new Clock(SETTINGS);
+            const weatherManager = new Weather(SETTINGS);
+            const blurManager = new BackgroundBlur(SETTINGS);
+            const layoutManager = new LayoutManager(SETTINGS);
+
+            // Start features on page load
+            document.addEventListener('DOMContentLoaded', function() {
+                layoutManager.initialize();
+                clockManager.start();
+                weatherManager.start();
+            });
+
             (function() {
                 // Configuration
                 const WS_URL = "{{ ws_url }}";
@@ -377,6 +914,9 @@
                     });
                 }
 
+                // Store pending blur URL for next image switch
+                let pendingBlurUrl = null;
+
                 function handlePreload(msg) {
                     console.log('Preloading:', msg.image_id, 'switch at', msg.switch_at);
                     nextSwitchTime = msg.switch_at;
@@ -388,10 +928,38 @@
                     const timeUntilSwitch = Math.max(0, msg.switch_at - now);
                     updateDebug('NextSwitch', Math.round(timeUntilSwitch / 1000) + 's');
 
+                    // Reset pending blur
+                    pendingBlurUrl = null;
+
                     // Preload the image
                     loadImage(preloadImage, msg.image_url, function() {
+                        // If blur is enabled, fetch blur background in parallel
+                        if (blurManager.enabled && msg.image_id) {
+                            fetchBlurBackground(msg.image_id);
+                        }
                         sendPreloadReady();
                     });
+                }
+
+                // Fetch blur background from API
+                function fetchBlurBackground(imagePath) {
+                    const blurAmount = blurManager.settings.background_blur_amount || 50;
+                    const url = '/api/blur/' + encodeURIComponent(imagePath) + '?blur_amount=' + blurAmount;
+
+                    fetch(url)
+                        .then(function(response) {
+                            if (!response.ok) throw new Error('Failed to fetch blur');
+                            return response.json();
+                        })
+                        .then(function(data) {
+                            if (data.blur_url) {
+                                pendingBlurUrl = data.blur_url;
+                                console.log('Blur background fetched');
+                            }
+                        })
+                        .catch(function(err) {
+                            console.warn('Failed to fetch blur background:', err);
+                        });
                 }
 
                 function handleSwitch(msg) {
@@ -421,6 +989,12 @@
 
                 function performSwitch() {
                     timers.switch = null; // Clear reference
+
+                    // Apply pending blur background before visual switch
+                    if (pendingBlurUrl) {
+                        blurManager.update(pendingBlurUrl);
+                        pendingBlurUrl = null;
+                    }
 
                     // Swap images with smooth transition
                     currentImage.classList.add('fade-transition');
@@ -461,7 +1035,14 @@
 
                 function handleSettingsChanged(msg) {
                     console.log('Settings changed:', msg.settings);
-                    // Settings are applied server-side, just log for now
+
+                    // Update overlay managers with new settings
+                    if (msg.settings) {
+                        clockManager.updateSettings(msg.settings);
+                        weatherManager.updateSettings(msg.settings);
+                        blurManager.updateSettings(msg.settings);
+                        layoutManager.updateSettings(msg.settings);
+                    }
                 }
 
                 function handleDisconnect(msg) {

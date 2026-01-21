@@ -21,15 +21,18 @@ from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from datetime import datetime, timezone
 from app.services.image_service import ImageService
 from app.services.sync_manager import SyncManager, SyncGroupSettings
 from app.services.immich_provider import ImmichProvider, ImmichPullConfig
+from app.services.homeassistant_provider import HomeAssistantProvider
 from app.auth.dependencies import get_current_user, get_optional_user, User, get_csrf_token, verify_csrf_token
 from app.auth.oidc import get_oidc_config
 from app.exceptions import PathSecurityError, NoImagesFoundError, error_response
 from app.utils.path_security import resolve_image_path
 from app.utils.logging import logger
 from app.utils.metrics import metrics
+from app.utils.blur import create_blur_background, should_skip_blur
 
 # Allowed WebSocket origins (comma-separated in env, empty = allow all)
 ALLOWED_WS_ORIGINS = os.environ.get("ALLOWED_WS_ORIGINS", "").split(",")
@@ -106,6 +109,127 @@ async def health_check():
         "image_count": len(image_files),
         "image_directory": str(image_service.image_dir)
     }
+
+
+# =============================================================================
+# Clock and Weather Endpoints (for overlay features)
+# =============================================================================
+
+@router.get("/api/clock", responses={
+    200: {
+        "description": "Current time from specified source",
+        "content": {
+            "application/json": {
+                "example": {"datetime": "2024-01-15T14:30:00+00:00", "source": "ntp"}
+            }
+        }
+    }
+})
+async def get_clock_data(
+    request: Request,
+    source: str = Query("client", description="Time source: client, ntp, or homeassistant")
+):
+    """
+    Get current time from specified source.
+
+    - **client**: Returns minimal response, client uses its own time
+    - **ntp**: Returns server time (NTP-synced)
+    - **homeassistant**: Fetches time from Home Assistant
+
+    The client uses this for offset-based time sync to ensure
+    accurate time display regardless of client clock drift.
+    """
+    if source == "homeassistant":
+        ha_provider = getattr(request.app.state, 'ha_provider', None)
+        if ha_provider:
+            result = await ha_provider.get_time()
+            if "error" not in result:
+                return result
+            # Fall back to server time on error
+            logger.warning(f"HA time fetch failed, falling back to server: {result.get('error')}")
+
+        # Fall back to NTP/server time if HA not configured or failed
+        return {
+            "datetime": datetime.now(timezone.utc).isoformat(),
+            "source": "ntp"
+        }
+
+    elif source == "ntp":
+        # Return server time (should be NTP-synced)
+        return {
+            "datetime": datetime.now(timezone.utc).isoformat(),
+            "source": "ntp"
+        }
+
+    else:
+        # Client mode - just acknowledge, client handles its own time
+        return {"source": "client"}
+
+
+@router.get("/api/weather", responses={
+    200: {
+        "description": "Weather data from Home Assistant",
+        "content": {
+            "application/json": {
+                "example": {
+                    "condition": "sunny",
+                    "temperature": 22,
+                    "temperature_unit": "°C",
+                    "humidity": 65,
+                    "friendly_name": "Home",
+                    "forecast": []
+                }
+            }
+        }
+    },
+    503: {"description": "Home Assistant not available"}
+})
+async def get_weather_data(
+    request: Request,
+    entity_id: str = Query(..., description="Home Assistant weather entity ID (e.g., weather.home)")
+):
+    """
+    Get weather data from Home Assistant.
+
+    Fetches current conditions and optional forecast from a Home Assistant
+    weather entity. Results are cached for 10 minutes.
+    """
+    ha_provider = getattr(request.app.state, 'ha_provider', None)
+    if not ha_provider:
+        raise HTTPException(
+            status_code=503,
+            detail="Home Assistant not configured. Set HOMEASSISTANT_URL and HOMEASSISTANT_TOKEN environment variables."
+        )
+
+    data = await ha_provider.get_weather(entity_id)
+    if "error" in data:
+        raise HTTPException(status_code=503, detail=data["error"])
+
+    return data
+
+
+@router.get("/api/homeassistant/test", responses={
+    200: {"description": "Connection test result"},
+    503: {"description": "Home Assistant not available"}
+})
+async def test_homeassistant_connection(request: Request):
+    """
+    Test connection to Home Assistant.
+
+    Returns success status and any error messages.
+    """
+    ha_provider = getattr(request.app.state, 'ha_provider', None)
+    if not ha_provider:
+        return JSONResponse(
+            status_code=503,
+            content={"success": False, "error": "Home Assistant not configured"}
+        )
+
+    result = await ha_provider.test_connection()
+    if not result.get("success"):
+        return JSONResponse(status_code=503, content=result)
+
+    return result
 
 
 @router.get("/metrics", responses={
@@ -507,6 +631,60 @@ async def serve_processed_image(
         return JSONResponse(
             status_code=500,
             content=error_response("Failed to process image")
+        )
+
+
+@router.get("/api/blur/{image_path:path}", responses={
+    200: {"description": "Blur background data URL", "content": {"application/json": {}}},
+    400: {"description": "Invalid image path"},
+    404: {"description": "Image not found"}
+})
+async def get_blur_background(
+    image_path: str,
+    blur_amount: int = Query(50, ge=0, le=100, description="Blur intensity (0-100)")
+):
+    """
+    Get a blurred version of an image as a base64 data URL.
+
+    Used for creating blurred background behind letterboxed images.
+    The blur is calculated based on image dimensions for consistent
+    appearance across different image sizes.
+
+    Returns JSON with a 'blur_url' field containing the data URL.
+    """
+    try:
+        # Decode URL-encoded path
+        image_path = unquote(image_path)
+
+        # Validate path using centralized security function
+        full_path = resolve_image_path(image_path, image_service.image_dir)
+
+        # Check file exists and is not a symlink
+        if not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
+            return JSONResponse(
+                status_code=404,
+                content=error_response("Image not found")
+            )
+
+        # Generate blur in thread pool (CPU-intensive)
+        def generate_blur():
+            img = image_service.load_image(full_path)
+            return create_blur_background(img, blur_amount=blur_amount)
+
+        blur_url = await asyncio.get_event_loop().run_in_executor(None, generate_blur)
+
+        return JSONResponse(content={"blur_url": blur_url})
+
+    except PathSecurityError:
+        return JSONResponse(
+            status_code=400,
+            content=error_response("Invalid image path")
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate blur for {image_path}: {e}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content=error_response("Failed to generate blur")
         )
 
 
@@ -1036,7 +1214,8 @@ async def sync_page(
         {
             "request": request,
             "group_id": sync,
-            "ws_url": ws_url
+            "ws_url": ws_url,
+            "settings": group.settings.to_dict()
         }
     )
 
