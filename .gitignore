@@ -58,3 +58,4 @@ dmypy.json
 
 # Config files (keep examples)
 config/sync_groups.yaml
+config/immich_pulls.yaml

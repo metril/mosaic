@@ -1,0 +1,55 @@
+# Immich Pull Configuration
+# Copy this file to immich_pulls.yaml and customize as needed.
+# Each pull fetches images from Immich and stores them locally.
+#
+# Environment variables can be used with ${VAR_NAME} syntax.
+# Example: api_key: "${IMMICH_API_KEY}"
+
+pulls:
+  # Example: Recent family photos from the last year
+  family-recent:
+    server_url: "https://immich.example.com"
+    api_key: "${IMMICH_API_KEY}"
+    target_folder: "immich/family"
+    count: 100
+    taken_after: "2024-01-01"
+    replace_existing: true
+
+  # Example: Favorite photos only
+  favorites:
+    server_url: "https://immich.example.com"
+    api_key: "${IMMICH_API_KEY}"
+    target_folder: "immich/favorites"
+    count: 50
+    is_favorite: true
+    replace_existing: true
+
+  # Example: Photos from a specific album
+  vacation-2024:
+    server_url: "https://immich.example.com"
+    api_key: "${IMMICH_API_KEY}"
+    target_folder: "immich/vacation"
+    count: 200
+    album_id: "abc123-def456-789"
+    replace_existing: true
+
+  # Example: Photos of specific people
+  kids:
+    server_url: "https://immich.example.com"
+    api_key: "${IMMICH_API_KEY}"
+    target_folder: "immich/kids"
+    count: 75
+    person_ids:
+      - "person-uuid-1"
+      - "person-uuid-2"
+    replace_existing: true
+
+  # Example: Date range query
+  summer-2024:
+    server_url: "https://immich.example.com"
+    api_key: "${IMMICH_API_KEY}"
+    target_folder: "immich/summer"
+    count: 150
+    taken_after: "2024-06-01"
+    taken_before: "2024-08-31"
+    replace_existing: true

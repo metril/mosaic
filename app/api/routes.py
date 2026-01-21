@@ -23,6 +23,7 @@ from slowapi.util import get_remote_address
 
 from app.services.image_service import ImageService
 from app.services.sync_manager import SyncManager, SyncGroupSettings
+from app.services.immich_provider import ImmichProvider, ImmichPullConfig
 from app.auth.dependencies import get_current_user, get_optional_user, User, get_csrf_token, verify_csrf_token
 from app.auth.oidc import get_oidc_config
 from app.exceptions import PathSecurityError, NoImagesFoundError, error_response
@@ -1467,3 +1468,296 @@ async def root(
         except PathSecurityError as e:
             # Security violation - return 400 Bad Request
             raise HTTPException(status_code=400, detail="Invalid folder path")
+
+
+# =============================================================================
+# Immich Provider API - Endpoints
+# =============================================================================
+
+def get_immich_provider(request: Request) -> ImmichProvider:
+    """Get the ImmichProvider from app state"""
+    return request.app.state.immich_provider
+
+
+class ImmichTestConnectionRequest(BaseModel):
+    """Request body for testing Immich connection"""
+    server_url: str = Field(..., description="Immich server URL")
+    api_key: str = Field(..., description="API key for authentication")
+
+
+class ImmichPullCreateRequest(BaseModel):
+    """Request body for creating/updating an Immich pull configuration"""
+    name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$")
+    server_url: str = Field(..., description="Immich server URL")
+    api_key: str = Field(..., description="API key for authentication")
+    target_folder: str = Field(..., description="Local folder to store images")
+    count: int = Field(50, ge=1, le=1000, description="Number of images to pull")
+    album_id: Optional[str] = Field(None, description="Pull from specific album")
+    person_ids: Optional[list[str]] = Field(None, description="Filter by people")
+    is_favorite: Optional[bool] = Field(None, description="Only favorites")
+    taken_after: Optional[str] = Field(None, description="ISO date (YYYY-MM-DD)")
+    taken_before: Optional[str] = Field(None, description="ISO date (YYYY-MM-DD)")
+    media_type: str = Field("IMAGE", description="IMAGE or VIDEO")
+    replace_existing: bool = Field(True, description="Clear folder before pulling")
+
+
+@router.get(
+    "/immich/pulls",
+    responses={
+        200: {"description": "List of configured Immich pulls"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def list_immich_pulls(
+    request: Request,
+    user: User = Depends(get_current_user)
+):
+    """
+    List all configured Immich pull operations.
+
+    Returns the list of pull configurations (API keys are masked).
+    """
+    provider = get_immich_provider(request)
+    pulls = provider.list_pulls()
+
+    # Mask API keys for security
+    for pull in pulls:
+        if pull.get("api_key"):
+            pull["api_key"] = "***" + pull["api_key"][-4:] if len(pull["api_key"]) > 4 else "***"
+
+    return JSONResponse(content={"pulls": pulls})
+
+
+@router.post(
+    "/immich/pulls",
+    responses={
+        200: {"description": "Pull configuration created/updated"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def create_immich_pull(
+    request: Request,
+    body: ImmichPullCreateRequest,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Create or update an Immich pull configuration.
+
+    Requires authentication and CSRF token.
+    """
+    provider = get_immich_provider(request)
+    logger.info(f"User {user.email} creating/updating Immich pull: {body.name}")
+
+    config = ImmichPullConfig(
+        name=body.name,
+        server_url=body.server_url,
+        api_key=body.api_key,
+        target_folder=body.target_folder,
+        count=body.count,
+        album_id=body.album_id,
+        person_ids=body.person_ids,
+        is_favorite=body.is_favorite,
+        taken_after=body.taken_after,
+        taken_before=body.taken_before,
+        media_type=body.media_type,
+        replace_existing=body.replace_existing,
+    )
+
+    provider.add_pull(config)
+    return JSONResponse(content={"message": f"Pull '{body.name}' configured"})
+
+
+@router.delete(
+    "/immich/pulls/{pull_name}",
+    responses={
+        200: {"description": "Pull configuration deleted"},
+        401: {"description": "Authentication required"},
+        404: {"description": "Pull not found"},
+    }
+)
+async def delete_immich_pull(
+    request: Request,
+    pull_name: str,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Delete an Immich pull configuration.
+
+    Requires authentication and CSRF token.
+    """
+    provider = get_immich_provider(request)
+    logger.info(f"User {user.email} deleting Immich pull: {pull_name}")
+
+    if provider.remove_pull(pull_name):
+        return JSONResponse(content={"message": f"Pull '{pull_name}' deleted"})
+    else:
+        raise HTTPException(status_code=404, detail=f"Pull '{pull_name}' not found")
+
+
+@router.post(
+    "/immich/pulls/save",
+    responses={
+        200: {"description": "Configuration saved"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def save_immich_config(
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Save current Immich pull configurations to file.
+
+    Requires authentication and CSRF token.
+    """
+    provider = get_immich_provider(request)
+    logger.info(f"User {user.email} saving Immich config")
+    saved = provider.save_config()
+    return JSONResponse(content={"saved": saved, "message": f"Saved {saved} pull configurations"})
+
+
+@router.post(
+    "/immich/pull/{pull_name}",
+    responses={
+        200: {"description": "Pull operation started"},
+        401: {"description": "Authentication required"},
+        404: {"description": "Pull not found"},
+    }
+)
+async def trigger_immich_pull(
+    request: Request,
+    pull_name: str,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Trigger an Immich pull operation.
+
+    Starts the pull in the background and returns immediately.
+    Use GET /immich/pull/{pull_name}/status to check progress.
+    """
+    provider = get_immich_provider(request)
+
+    if not provider.get_pull(pull_name):
+        raise HTTPException(status_code=404, detail=f"Pull '{pull_name}' not found")
+
+    logger.info(f"User {user.email} triggering Immich pull: {pull_name}")
+    result = await provider.start_pull(pull_name)
+
+    return JSONResponse(content={
+        "status": "started",
+        "pull_name": pull_name,
+        "result": result.to_dict(),
+    })
+
+
+@router.get(
+    "/immich/pull/{pull_name}/status",
+    responses={
+        200: {"description": "Pull operation status"},
+        401: {"description": "Authentication required"},
+        404: {"description": "Pull not found"},
+    }
+)
+async def get_immich_pull_status(
+    request: Request,
+    pull_name: str,
+    user: User = Depends(get_current_user)
+):
+    """
+    Get the status of an Immich pull operation.
+
+    Returns current progress if running, or final result if completed.
+    """
+    provider = get_immich_provider(request)
+
+    if not provider.get_pull(pull_name):
+        raise HTTPException(status_code=404, detail=f"Pull '{pull_name}' not found")
+
+    result = provider.get_pull_status(pull_name)
+    if result:
+        return JSONResponse(content=result.to_dict())
+    else:
+        return JSONResponse(content={"status": "idle", "pull_name": pull_name})
+
+
+@router.post(
+    "/immich/test-connection",
+    responses={
+        200: {"description": "Connection test result"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def test_immich_connection(
+    request: Request,
+    body: ImmichTestConnectionRequest,
+    user: User = Depends(get_current_user)
+):
+    """
+    Test connection to an Immich server.
+
+    Returns server info if successful, error message if not.
+    """
+    provider = get_immich_provider(request)
+    logger.info(f"User {user.email} testing Immich connection to: {body.server_url}")
+    result = await provider.test_connection(body.server_url, body.api_key)
+    return JSONResponse(content=result)
+
+
+@router.get(
+    "/immich/albums",
+    responses={
+        200: {"description": "List of albums from Immich"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Failed to fetch albums"},
+    }
+)
+async def list_immich_albums(
+    request: Request,
+    server_url: str = Query(..., description="Immich server URL"),
+    api_key: str = Query(..., description="API key"),
+    user: User = Depends(get_current_user)
+):
+    """
+    List available albums from an Immich server.
+
+    Useful for configuring album-based pulls.
+    """
+    provider = get_immich_provider(request)
+    try:
+        albums = await provider.list_albums(server_url, api_key)
+        return JSONResponse(content={"albums": albums})
+    except Exception as e:
+        logger.error(f"Failed to fetch Immich albums: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/immich/people",
+    responses={
+        200: {"description": "List of recognized people from Immich"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Failed to fetch people"},
+    }
+)
+async def list_immich_people(
+    request: Request,
+    server_url: str = Query(..., description="Immich server URL"),
+    api_key: str = Query(..., description="API key"),
+    user: User = Depends(get_current_user)
+):
+    """
+    List recognized people from an Immich server.
+
+    Useful for configuring person-based pulls.
+    """
+    provider = get_immich_provider(request)
+    try:
+        people = await provider.list_people(server_url, api_key)
+        return JSONResponse(content={"people": people})
+    except Exception as e:
+        logger.error(f"Failed to fetch Immich people: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

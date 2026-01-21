@@ -23,6 +23,7 @@ from app.api.routes import router, image_service
 from app.auth.routes import router as auth_router
 from app.auth.oidc import get_oidc_config
 from app.services.sync_manager import SyncManager
+from app.services.immich_provider import ImmichProvider
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException, error_response
 
@@ -111,6 +112,12 @@ async def lifespan(app: FastAPI):
         if loaded_groups > 0:
             logger.info(f"Loaded {loaded_groups} sync groups from config")
 
+        # Initialize Immich provider for pulling images from Immich servers
+        app.state.immich_provider = ImmichProvider(image_service.image_dir)
+        loaded_pulls = await app.state.immich_provider.load_config()
+        if loaded_pulls > 0:
+            logger.info(f"Loaded {loaded_pulls} Immich pull configurations")
+
         # Start cleanup task for stale browser connections
         cleanup_task = asyncio.create_task(periodic_cleanup(app.state.sync_manager))
         logger.info("Cleanup task started")
@@ -130,6 +137,11 @@ async def lifespan(app: FastAPI):
                 await cleanup_task
             except asyncio.CancelledError:
                 pass
+
+        # Close Immich provider HTTP client
+        if hasattr(app.state, 'immich_provider'):
+            await app.state.immich_provider.close()
+
         logger.info("Screensaver Application Shutting Down")
 
 
