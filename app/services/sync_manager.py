@@ -89,6 +89,15 @@ class SyncGroupSettings(BaseModel):
     background_blur_amount: int = Field(default=50, ge=0, le=100)
     image_fit: Literal['contain', 'cover'] = 'contain'
 
+    # Burn-in prevention settings
+    burn_in_protection: bool = False
+    burn_in_interval: int = Field(default=5, ge=1, le=60)  # minutes between dimming cycles
+    burn_in_duration: int = Field(default=30, ge=5, le=120)  # seconds dimmed
+    burn_in_opacity: int = Field(default=70, ge=10, le=90)  # opacity percentage when dimmed
+    burn_in_shift_enabled: bool = True  # enable pixel shifting (when burn_in_protection is on)
+    burn_in_shift_amount: int = Field(default=5, ge=1, le=20)  # pixels to shift
+    burn_in_shift_interval: int = Field(default=60, ge=10, le=300)  # seconds between shifts
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization (API responses)"""
         return self.model_dump()

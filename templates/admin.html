@@ -1001,6 +1001,46 @@
                         </div>
                     </details>
 
+                    <!-- Burn-In Prevention -->
+                    <details class="settings-section">
+                        <summary>Burn-In Prevention</summary>
+                        <div class="section-content">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="burn_in_protection" name="burn_in_protection">
+                                <label for="burn_in_protection">Enable burn-in protection</label>
+                            </div>
+                            <div class="form-row">
+                                <label for="burn_in_interval">Dimming interval (minutes)</label>
+                                <input type="number" id="burn_in_interval" name="burn_in_interval"
+                                       min="1" max="60" value="5">
+                            </div>
+                            <div class="form-row">
+                                <label for="burn_in_duration">Dimming duration (seconds)</label>
+                                <input type="number" id="burn_in_duration" name="burn_in_duration"
+                                       min="5" max="120" value="30">
+                            </div>
+                            <div class="form-row">
+                                <label for="burn_in_opacity">Dimmed opacity (%)</label>
+                                <input type="number" id="burn_in_opacity" name="burn_in_opacity"
+                                       min="10" max="90" value="70">
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="burn_in_shift_enabled" name="burn_in_shift_enabled" checked>
+                                <label for="burn_in_shift_enabled">Enable pixel shifting</label>
+                            </div>
+                            <div class="form-row">
+                                <label for="burn_in_shift_amount">Shift amount (pixels)</label>
+                                <input type="number" id="burn_in_shift_amount" name="burn_in_shift_amount"
+                                       min="1" max="20" value="5">
+                            </div>
+                            <div class="form-row">
+                                <label for="burn_in_shift_interval">Shift interval (seconds)</label>
+                                <input type="number" id="burn_in_shift_interval" name="burn_in_shift_interval"
+                                       min="10" max="300" value="60">
+                            </div>
+                        </div>
+                    </details>
+
                     <!-- Clock Settings -->
                     <details class="settings-section">
                         <summary>Clock</summary>
@@ -1363,6 +1403,14 @@
                 document.getElementById('weather_ha_entity').value = '';
                 document.getElementById('weather_position').value = 'bottom-right';
                 document.getElementById('weather_show_forecast').checked = false;
+                // Burn-in prevention defaults
+                document.getElementById('burn_in_protection').checked = false;
+                document.getElementById('burn_in_interval').value = 5;
+                document.getElementById('burn_in_duration').value = 30;
+                document.getElementById('burn_in_opacity').value = 70;
+                document.getElementById('burn_in_shift_enabled').checked = true;
+                document.getElementById('burn_in_shift_amount').value = 5;
+                document.getElementById('burn_in_shift_interval').value = 60;
             }
 
             function populateForm(settings) {
@@ -1399,6 +1447,14 @@
                 document.getElementById('weather_ha_entity').value = settings.weather_ha_entity || '';
                 document.getElementById('weather_position').value = settings.weather_position || 'bottom-right';
                 document.getElementById('weather_show_forecast').checked = settings.weather_show_forecast || false;
+                // Burn-in prevention settings
+                document.getElementById('burn_in_protection').checked = settings.burn_in_protection || false;
+                document.getElementById('burn_in_interval').value = settings.burn_in_interval ?? 5;
+                document.getElementById('burn_in_duration').value = settings.burn_in_duration ?? 30;
+                document.getElementById('burn_in_opacity').value = settings.burn_in_opacity ?? 70;
+                document.getElementById('burn_in_shift_enabled').checked = settings.burn_in_shift_enabled ?? true;
+                document.getElementById('burn_in_shift_amount').value = settings.burn_in_shift_amount ?? 5;
+                document.getElementById('burn_in_shift_interval').value = settings.burn_in_shift_interval ?? 60;
             }
 
             function getFormData() {
@@ -1450,6 +1506,15 @@
                 data.weather_ha_entity = form.weather_ha_entity.value || null;
                 data.weather_position = form.weather_position.value;
                 data.weather_show_forecast = form.weather_show_forecast.checked;
+
+                // Burn-in prevention settings
+                data.burn_in_protection = form.burn_in_protection.checked;
+                data.burn_in_interval = parseInt(form.burn_in_interval.value) || 5;
+                data.burn_in_duration = parseInt(form.burn_in_duration.value) || 30;
+                data.burn_in_opacity = parseInt(form.burn_in_opacity.value) || 70;
+                data.burn_in_shift_enabled = form.burn_in_shift_enabled.checked;
+                data.burn_in_shift_amount = parseInt(form.burn_in_shift_amount.value) || 5;
+                data.burn_in_shift_interval = parseInt(form.burn_in_shift_interval.value) || 60;
 
                 return data;
             }
