@@ -2205,7 +2205,7 @@
 
             /**
              * Helper function for Immich API calls with proper error handling.
-             * Validates response content-type and handles auth redirects gracefully.
+             * Detects auth redirects (HTML responses) and handles errors gracefully.
              */
             async function fetchImmichJson(url, options = {}) {
                 const response = await fetch(url, {
@@ -2219,14 +2219,20 @@
                 });
 
                 // Check if we got redirected to a login page (HTML instead of JSON)
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
+                const contentType = response.headers.get('content-type') || '';
+                if (contentType.includes('text/html')) {
                     throw new Error('Session expired. Please refresh the page.');
                 }
 
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.detail || `Request failed: ${response.status}`);
+                    // Try to parse error as JSON, fall back to status text
+                    try {
+                        const error = await response.json();
+                        throw new Error(error.detail || `Request failed: ${response.status}`);
+                    } catch (e) {
+                        if (e.message.includes('Request failed')) throw e;
+                        throw new Error(`Request failed: ${response.status}`);
+                    }
                 }
 
                 return response.json();
