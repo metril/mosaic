@@ -371,7 +371,15 @@
                 layout: "{{ settings.layout|default('single') }}",
                 background_blur: {{ settings.background_blur|default(false)|tojson }},
                 background_blur_amount: {{ settings.background_blur_amount|default(50) }},
-                image_fit: "{{ settings.image_fit|default('contain') }}"
+                image_fit: "{{ settings.image_fit|default('contain') }}",
+                // Burn-in prevention settings
+                burn_in_protection: {{ settings.burn_in_protection|default(false)|tojson }},
+                burn_in_interval: {{ settings.burn_in_interval|default(5) }},
+                burn_in_duration: {{ settings.burn_in_duration|default(30) }},
+                burn_in_opacity: {{ settings.burn_in_opacity|default(70) }},
+                burn_in_shift_enabled: {{ settings.burn_in_shift_enabled|default(true)|tojson }},
+                burn_in_shift_amount: {{ settings.burn_in_shift_amount|default(5) }},
+                burn_in_shift_interval: {{ settings.burn_in_shift_interval|default(60) }}
             };
 
             // =================================================================
