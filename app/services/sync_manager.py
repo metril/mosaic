@@ -45,6 +45,44 @@ class BrowserStatus(str, Enum):
     DISCONNECTED = "disconnected"
 
 
+class WebhookTrigger(str, Enum):
+    """Events that can trigger a webhook"""
+    SETTINGS_CHANGE = "settings_change"
+    IMAGE_CYCLE = "image_cycle"
+    INTERVAL = "interval"
+
+
+class WebhookPayloadOption(str, Enum):
+    """Data fields that can be included in webhook payload"""
+    GROUP_ID = "group_id"
+    EVENT_TYPE = "event_type"
+    TIMESTAMP = "timestamp"
+    SETTINGS = "settings"
+    CURRENT_IMAGE = "current_image"
+    BROWSER_COUNT = "browser_count"
+    CYCLE_NUMBER = "cycle_number"
+
+
+class WebhookConfig(BaseModel):
+    """Configuration for a single webhook"""
+    model_config = ConfigDict(extra='ignore', use_enum_values=True)
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4())[:8])
+    url: str
+    enabled: bool = True
+    triggers: List[WebhookTrigger] = Field(default_factory=list)
+    payload_fields: List[WebhookPayloadOption] = Field(
+        default_factory=lambda: [
+            WebhookPayloadOption.GROUP_ID,
+            WebhookPayloadOption.EVENT_TYPE,
+            WebhookPayloadOption.TIMESTAMP
+        ]
+    )
+    interval_minutes: Optional[int] = Field(None, ge=1, le=1440)
+    secret: Optional[str] = None
+    headers: Dict[str, str] = Field(default_factory=dict)
+
+
 class SyncGroupSettings(BaseModel):
     """All configurable parameters for a sync group"""
     model_config = ConfigDict(extra='ignore')  # Ignore unknown keys from old configs
@@ -97,6 +135,9 @@ class SyncGroupSettings(BaseModel):
     burn_in_shift_enabled: bool = True  # enable pixel shifting (when burn_in_protection is on)
     burn_in_shift_amount: int = Field(default=5, ge=1, le=20)  # pixels to shift
     burn_in_shift_interval: int = Field(default=60, ge=10, le=300)  # seconds between shifts
+
+    # Webhook settings
+    webhooks: List[WebhookConfig] = Field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization (API responses)"""
@@ -313,6 +354,7 @@ class SyncGroup:
     next_switch_time: Optional[datetime] = None
     paused: bool = False  # Pause/play state for admin controls
     _cycle_task: Optional[asyncio.Task] = field(default=None, repr=False)
+    _webhook_interval_tasks: Dict[str, asyncio.Task] = field(default_factory=dict, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -441,6 +483,145 @@ class SyncManager:
                 for ws in dead_connections:
                     self.admin_connections.discard(ws)
 
+    async def _trigger_webhooks(
+        self,
+        group: SyncGroup,
+        trigger: WebhookTrigger,
+        extra_data: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Fire webhooks for the given trigger type.
+
+        Runs asynchronously and doesn't block. Errors are logged but don't
+        propagate. Should be called outside of locks.
+        """
+        import hashlib
+        import hmac
+        import httpx
+
+        webhooks = [
+            wh for wh in group.settings.webhooks
+            if wh.enabled and trigger in wh.triggers
+        ]
+
+        if not webhooks:
+            return
+
+        extra_data = extra_data or {}
+
+        for webhook in webhooks:
+            try:
+                # Build payload based on configured fields
+                payload: Dict[str, Any] = {}
+
+                for field in webhook.payload_fields:
+                    if field == WebhookPayloadOption.GROUP_ID:
+                        payload["group_id"] = group.group_id
+                    elif field == WebhookPayloadOption.EVENT_TYPE:
+                        payload["event_type"] = trigger.value
+                    elif field == WebhookPayloadOption.TIMESTAMP:
+                        payload["timestamp"] = _utc_now().isoformat()
+                    elif field == WebhookPayloadOption.SETTINGS:
+                        payload["settings"] = group.settings.to_dict()
+                    elif field == WebhookPayloadOption.CURRENT_IMAGE:
+                        # Get current images from all browsers
+                        images = [
+                            b.current_image for b in group.browsers.values()
+                            if b.current_image
+                        ]
+                        payload["current_images"] = images
+                    elif field == WebhookPayloadOption.BROWSER_COUNT:
+                        payload["browser_count"] = len(group.browsers)
+                    elif field == WebhookPayloadOption.CYCLE_NUMBER:
+                        payload["cycle_number"] = group.current_cycle
+
+                # Add any extra data passed in
+                payload.update(extra_data)
+
+                # Build headers
+                headers = {"Content-Type": "application/json"}
+                headers.update(webhook.headers)
+
+                # Add HMAC signature if secret is configured
+                if webhook.secret:
+                    import json
+                    payload_bytes = json.dumps(payload, sort_keys=True).encode()
+                    signature = hmac.new(
+                        webhook.secret.encode(),
+                        payload_bytes,
+                        hashlib.sha256
+                    ).hexdigest()
+                    headers["X-Webhook-Signature"] = f"sha256={signature}"
+
+                # Fire webhook asynchronously (fire and forget)
+                async def send_webhook(url: str, payload: dict, headers: dict, webhook_id: str):
+                    try:
+                        async with httpx.AsyncClient(timeout=10.0) as client:
+                            response = await client.post(url, json=payload, headers=headers)
+                            if response.status_code >= 400:
+                                logger.warning(
+                                    f"Webhook {webhook_id} returned {response.status_code}: {url}"
+                                )
+                            else:
+                                logger.debug(f"Webhook {webhook_id} delivered successfully: {url}")
+                    except Exception as e:
+                        logger.warning(f"Webhook {webhook_id} failed: {e}")
+
+                asyncio.create_task(send_webhook(webhook.url, payload, headers, webhook.id))
+
+            except Exception as e:
+                logger.error(f"Error preparing webhook {webhook.id}: {e}")
+
+    def _start_webhook_interval_tasks(self, group: SyncGroup) -> None:
+        """Start interval-based webhook tasks for a group."""
+        # Cancel existing interval tasks
+        for task in group._webhook_interval_tasks.values():
+            if not task.done():
+                task.cancel()
+        group._webhook_interval_tasks.clear()
+
+        # Start new interval tasks for each webhook with interval trigger
+        for webhook in group.settings.webhooks:
+            if (
+                webhook.enabled
+                and WebhookTrigger.INTERVAL in webhook.triggers
+                and webhook.interval_minutes
+            ):
+                task = asyncio.create_task(
+                    self._run_webhook_interval(group, webhook)
+                )
+                group._webhook_interval_tasks[webhook.id] = task
+                logger.debug(
+                    f"Started interval webhook {webhook.id} for group {group.group_id} "
+                    f"every {webhook.interval_minutes} minutes"
+                )
+
+    async def _run_webhook_interval(
+        self,
+        group: SyncGroup,
+        webhook: WebhookConfig
+    ) -> None:
+        """Run a webhook on a fixed interval."""
+        interval_seconds = webhook.interval_minutes * 60
+
+        try:
+            while True:
+                await asyncio.sleep(interval_seconds)
+                # Re-check if webhook is still enabled and has interval trigger
+                current_webhook = next(
+                    (wh for wh in group.settings.webhooks if wh.id == webhook.id),
+                    None
+                )
+                if not current_webhook or not current_webhook.enabled:
+                    break
+                if WebhookTrigger.INTERVAL not in current_webhook.triggers:
+                    break
+
+                await self._trigger_webhooks(group, WebhookTrigger.INTERVAL)
+
+        except asyncio.CancelledError:
+            logger.debug(f"Interval webhook {webhook.id} cancelled for group {group.group_id}")
+            raise
+
     async def create_group(
         self,
         group_id: str,
@@ -473,6 +654,10 @@ class SyncManager:
             "type": "GROUP_CREATED",
             "group": group.to_dict()
         })
+
+        # Start webhook interval tasks if any
+        self._start_webhook_interval_tasks(group)
+
         return group
 
     async def get_group(self, group_id: str) -> Optional[SyncGroup]:
@@ -569,6 +754,18 @@ class SyncManager:
             "type": "GROUP_UPDATED",
             "group": group.to_dict()
         })
+
+        # Trigger webhooks for settings change
+        await self._trigger_webhooks(
+            group,
+            WebhookTrigger.SETTINGS_CHANGE,
+            {"changed_fields": list(updates.keys())}
+        )
+
+        # Restart webhook interval tasks if webhooks changed
+        if "webhooks" in updates:
+            self._start_webhook_interval_tasks(group)
+
         return group
 
     async def list_groups(self) -> List[Dict[str, Any]]:
@@ -912,6 +1109,9 @@ class SyncManager:
                         "timestamp": switch_timestamp,
                         "cycle": group.current_cycle
                     })
+
+                    # Trigger webhooks for image cycle
+                    await self._trigger_webhooks(group, WebhookTrigger.IMAGE_CYCLE)
 
                     logger.debug(f"Group {group.group_id} cycle {group.current_cycle} switch at {next_switch.isoformat()}")
 

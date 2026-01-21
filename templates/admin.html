@@ -415,6 +415,55 @@
                 background: rgba(0, 0, 0, 0.1);
             }
 
+            /* Webhooks */
+            .webhooks-list {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+                margin-bottom: 12px;
+            }
+            .webhook-item {
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 8px;
+                padding: 12px;
+            }
+            .webhook-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+            .webhook-url {
+                font-family: monospace;
+                font-size: 12px;
+                color: #4af;
+                word-break: break-all;
+            }
+            .webhook-triggers {
+                display: flex;
+                gap: 6px;
+                flex-wrap: wrap;
+                margin-top: 6px;
+            }
+            .webhook-trigger-tag {
+                background: rgba(74, 170, 255, 0.2);
+                color: #4af;
+                padding: 2px 8px;
+                border-radius: 4px;
+                font-size: 11px;
+            }
+            .webhook-actions {
+                display: flex;
+                gap: 6px;
+            }
+            .webhook-actions .btn {
+                padding: 4px 8px;
+                font-size: 11px;
+            }
+            .webhook-disabled {
+                opacity: 0.5;
+            }
+
             /* Loading state */
             .loading {
                 text-align: center;
@@ -1041,6 +1090,17 @@
                         </div>
                     </details>
 
+                    <!-- Webhooks -->
+                    <details class="settings-section">
+                        <summary>Webhooks</summary>
+                        <div class="section-content">
+                            <div id="webhooks-list" class="webhooks-list">
+                                <!-- Webhooks will be rendered here -->
+                            </div>
+                            <button type="button" class="btn btn-small" onclick="addWebhook()">+ Add Webhook</button>
+                        </div>
+                    </details>
+
                     <!-- Clock Settings -->
                     <details class="settings-section">
                         <summary>Clock</summary>
@@ -1265,6 +1325,7 @@
             const CSRF_TOKEN = '{{ csrf_token }}';
             let editingGroupId = null;
             let groupSettingsCache = {};
+            let currentWebhooks = [];  // Webhooks being edited in the form
             let folderTreeData = null;
             let selectedFolders = new Set();
             let folderBrowserMode = 'multi';  // 'multi' for sync groups, 'single' for immich
@@ -1411,6 +1472,9 @@
                 document.getElementById('burn_in_shift_enabled').checked = true;
                 document.getElementById('burn_in_shift_amount').value = 5;
                 document.getElementById('burn_in_shift_interval').value = 60;
+                // Webhooks
+                currentWebhooks = [];
+                renderWebhooks();
             }
 
             function populateForm(settings) {
@@ -1455,6 +1519,9 @@
                 document.getElementById('burn_in_shift_enabled').checked = settings.burn_in_shift_enabled ?? true;
                 document.getElementById('burn_in_shift_amount').value = settings.burn_in_shift_amount ?? 5;
                 document.getElementById('burn_in_shift_interval').value = settings.burn_in_shift_interval ?? 60;
+                // Webhooks
+                currentWebhooks = settings.webhooks ? JSON.parse(JSON.stringify(settings.webhooks)) : [];
+                renderWebhooks();
             }
 
             function getFormData() {
@@ -1516,6 +1583,9 @@
                 data.burn_in_shift_amount = parseInt(form.burn_in_shift_amount.value) || 5;
                 data.burn_in_shift_interval = parseInt(form.burn_in_shift_interval.value) || 60;
 
+                // Webhooks
+                data.webhooks = currentWebhooks;
+
                 return data;
             }
 
@@ -1530,6 +1600,146 @@
 
             // Set up blur slider event listener
             document.getElementById('background_blur_amount').addEventListener('input', updateBlurAmountDisplay);
+
+            // Webhook management functions
+            function renderWebhooks() {
+                const container = document.getElementById('webhooks-list');
+                if (!container) return;
+
+                if (currentWebhooks.length === 0) {
+                    container.innerHTML = '<div style="color: #888; font-size: 12px;">No webhooks configured</div>';
+                    return;
+                }
+
+                container.innerHTML = currentWebhooks.map((wh, index) => `
+                    <div class="webhook-item ${wh.enabled ? '' : 'webhook-disabled'}">
+                        <div class="webhook-header">
+                            <span class="webhook-url">${escapeHtml(wh.url)}</span>
+                            <div class="webhook-actions">
+                                <button type="button" class="btn btn-small" onclick="testWebhook(${index})">Test</button>
+                                <button type="button" class="btn btn-small" onclick="editWebhook(${index})">Edit</button>
+                                <button type="button" class="btn btn-small btn-danger" onclick="deleteWebhook(${index})">Delete</button>
+                            </div>
+                        </div>
+                        <div class="webhook-triggers">
+                            ${wh.triggers.map(t => `<span class="webhook-trigger-tag">${t}</span>`).join('')}
+                            ${wh.interval_minutes && wh.triggers.includes('interval') ? `<span class="webhook-trigger-tag">every ${wh.interval_minutes}m</span>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            function addWebhook() {
+                const url = prompt('Enter webhook URL:');
+                if (!url) return;
+
+                // Validate URL
+                try {
+                    new URL(url);
+                } catch (e) {
+                    alert('Invalid URL');
+                    return;
+                }
+
+                // Show trigger selection
+                const triggers = [];
+                if (confirm('Trigger on settings change?')) triggers.push('settings_change');
+                if (confirm('Trigger on image cycle?')) triggers.push('image_cycle');
+                if (confirm('Trigger on interval?')) {
+                    triggers.push('interval');
+                    var interval = prompt('Interval in minutes (1-1440):', '60');
+                    var intervalMinutes = parseInt(interval) || 60;
+                }
+
+                const webhook = {
+                    id: Math.random().toString(36).substr(2, 8),
+                    url: url,
+                    enabled: true,
+                    triggers: triggers,
+                    payload_fields: ['group_id', 'event_type', 'timestamp'],
+                    interval_minutes: intervalMinutes || null,
+                    secret: null,
+                    headers: {}
+                };
+
+                currentWebhooks.push(webhook);
+                renderWebhooks();
+            }
+
+            function editWebhook(index) {
+                const wh = currentWebhooks[index];
+                if (!wh) return;
+
+                const newUrl = prompt('Edit webhook URL:', wh.url);
+                if (newUrl === null) return;
+
+                try {
+                    new URL(newUrl);
+                    wh.url = newUrl;
+                } catch (e) {
+                    alert('Invalid URL');
+                    return;
+                }
+
+                // Toggle enabled
+                wh.enabled = confirm('Enable this webhook?');
+
+                // Edit triggers
+                wh.triggers = [];
+                if (confirm('Trigger on settings change?')) wh.triggers.push('settings_change');
+                if (confirm('Trigger on image cycle?')) wh.triggers.push('image_cycle');
+                if (confirm('Trigger on interval?')) {
+                    wh.triggers.push('interval');
+                    var interval = prompt('Interval in minutes (1-1440):', wh.interval_minutes || '60');
+                    wh.interval_minutes = parseInt(interval) || 60;
+                } else {
+                    wh.interval_minutes = null;
+                }
+
+                renderWebhooks();
+            }
+
+            function deleteWebhook(index) {
+                if (confirm('Delete this webhook?')) {
+                    currentWebhooks.splice(index, 1);
+                    renderWebhooks();
+                }
+            }
+
+            async function testWebhook(index) {
+                const wh = currentWebhooks[index];
+                if (!wh) return;
+
+                if (!editingGroupId) {
+                    alert('Save the group first to test webhooks');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${API_BASE}/${editingGroupId}/webhooks/${wh.id}/test`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN
+                        }
+                    });
+
+                    const result = await response.json();
+                    if (result.status === 'sent') {
+                        alert(`Webhook sent! Response: ${result.response_status}`);
+                    } else {
+                        alert(`Webhook failed: ${result.error || 'Unknown error'}`);
+                    }
+                } catch (e) {
+                    alert(`Error testing webhook: ${e.message}`);
+                }
+            }
 
             // Form submission
             document.getElementById('groupForm').addEventListener('submit', async (e) => {

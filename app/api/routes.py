@@ -11,7 +11,7 @@ import hashlib
 from email.utils import formatdate
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Literal, Dict, Any
+from typing import Optional, Literal, Dict, Any, List
 from urllib.parse import unquote
 from fastapi import APIRouter, Query, HTTPException, Path as PathParam, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response, RedirectResponse
@@ -23,7 +23,13 @@ from slowapi.util import get_remote_address
 
 from datetime import datetime, timezone
 from app.services.image_service import ImageService
-from app.services.sync_manager import SyncManager, SyncGroupSettings
+from app.services.sync_manager import (
+    SyncManager,
+    SyncGroupSettings,
+    WebhookConfig,
+    WebhookTrigger,
+    WebhookPayloadOption,
+)
 from app.services.immich_provider import ImmichProvider, ImmichPullConfig
 from app.services.homeassistant_provider import HomeAssistantProvider
 from app.auth.dependencies import get_current_user, get_optional_user, User, get_csrf_token, verify_csrf_token
@@ -753,6 +759,8 @@ class SyncGroupCreateRequest(BaseModel):
     burn_in_shift_enabled: bool = Field(True, description="Enable pixel shifting")
     burn_in_shift_amount: int = Field(5, ge=1, le=20, description="Shift amount (pixels)")
     burn_in_shift_interval: int = Field(60, ge=10, le=300, description="Shift interval (seconds)")
+    # Webhook settings
+    webhooks: List[WebhookConfig] = Field(default_factory=list, description="Webhook configurations")
 
 
 class SyncGroupUpdateRequest(BaseModel):
@@ -808,6 +816,8 @@ class SyncGroupUpdateRequest(BaseModel):
     burn_in_shift_enabled: Optional[bool] = Field(None, description="Enable pixel shifting")
     burn_in_shift_amount: Optional[int] = Field(None, ge=1, le=20, description="Shift amount (pixels)")
     burn_in_shift_interval: Optional[int] = Field(None, ge=10, le=300, description="Shift interval (seconds)")
+    # Webhook settings
+    webhooks: Optional[List[WebhookConfig]] = Field(None, description="Webhook configurations")
 
 
 # =============================================================================
@@ -1249,6 +1259,81 @@ async def jump_to_image(
         )
 
     return JSONResponse(content={"status": "jumped", "image_path": image_path})
+
+
+@router.post("/sync/admin/groups/{group_id}/webhooks/{webhook_id}/test")
+async def test_webhook(
+    group_id: str,
+    webhook_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Test a specific webhook by sending a test payload.
+
+    Requires authentication. Returns the webhook response status.
+    """
+    import httpx
+    import hashlib
+    import hmac
+    import json
+    from datetime import datetime, timezone
+
+    sync_manager = get_sync_manager(request)
+    group = await sync_manager.get_group(group_id)
+
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    # Find the webhook
+    webhook = next(
+        (wh for wh in group.settings.webhooks if wh.id == webhook_id),
+        None
+    )
+    if not webhook:
+        raise HTTPException(status_code=404, detail=f"Webhook '{webhook_id}' not found")
+
+    # Build test payload
+    payload = {
+        "group_id": group_id,
+        "event_type": "test",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "message": "This is a test webhook from the screensaver admin"
+    }
+
+    # Build headers
+    headers = {"Content-Type": "application/json"}
+    headers.update(webhook.headers)
+
+    # Add HMAC signature if secret is configured
+    if webhook.secret:
+        payload_bytes = json.dumps(payload, sort_keys=True).encode()
+        signature = hmac.new(
+            webhook.secret.encode(),
+            payload_bytes,
+            hashlib.sha256
+        ).hexdigest()
+        headers["X-Webhook-Signature"] = f"sha256={signature}"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(webhook.url, json=payload, headers=headers)
+            return JSONResponse(content={
+                "status": "sent",
+                "response_status": response.status_code,
+                "response_body": response.text[:500] if response.text else None
+            })
+    except httpx.TimeoutException:
+        return JSONResponse(
+            status_code=504,
+            content={"status": "timeout", "error": "Webhook request timed out"}
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=502,
+            content={"status": "error", "error": str(e)}
+        )
 
 
 @router.get("/sync", include_in_schema=False)
