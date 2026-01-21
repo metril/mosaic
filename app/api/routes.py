@@ -1232,249 +1232,6 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
 
 
 # =============================================================================
-# Catch-all route (MUST be last)
-# =============================================================================
-
-@router.api_route("/{folder_path:path}", methods=["GET", "HEAD"], responses={
-    200: {"description": "Random image or web interface"},
-    304: {"description": "Not Modified (conditional request)"},
-    400: {"description": "Invalid folder path"},
-    404: {"description": "No images found"}
-})
-async def root(
-    request: Request,
-    folder_path: str,
-    api: Optional[str] = Query(None, description="API mode - 'random-image' for image endpoint"),
-    width: Optional[int] = Query(None, description=f"Target width in pixels (max {MAX_IMAGE_DIMENSION})", ge=1, le=MAX_IMAGE_DIMENSION),
-    height: Optional[int] = Query(None, description=f"Target height in pixels (max {MAX_IMAGE_DIMENSION})", ge=1, le=MAX_IMAGE_DIMENSION),
-    preserve_aspect: bool = Query(True, description="Preserve aspect ratio when resizing"),
-    mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode - 'fit' or 'crop'"),
-    pad_color: str = Query("black", description="Letterbox padding color (CSS: name, hex, rgb())"),
-    eink: bool = Query(False, description="Apply Spectra-6 E-Ink color mapping"),
-    format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None, description="Output format (defaults to original format)"),
-    saturation: Optional[float] = Query(None, description=f"E-Ink saturation multiplier (default: {EINK_SATURATION})", ge=0.0, le=10.0),
-    contrast: Optional[float] = Query(None, description=f"E-Ink contrast multiplier (default: {EINK_CONTRAST})", ge=0.0, le=5.0),
-    brightness: Optional[float] = Query(None, description=f"E-Ink brightness multiplier (default: {EINK_BRIGHTNESS})", ge=0.0, le=5.0),
-    sharpen: Optional[bool] = Query(None, description=f"Apply sharpening for E-Ink preprocessing (default: {EINK_SHARPEN})"),
-    recursive: bool = Query(False, description="Recursively search subfolders (default: false)"),
-    folders: Optional[str] = Query(None, description="Comma-separated list of folder paths (alternative to path)"),
-    also: Optional[str] = Query(None, description="Comma-separated list of additional folders (use with path)"),
-    refresh: Optional[int] = Query(None, ge=5, le=3600, description="Auto-refresh interval in seconds (5-3600) for cycling through images")
-):
-    """
-    Main endpoint - serves either the web interface or random image API.
-
-    Supports path-based folder navigation:
-    - / - Root directory (top-level images only, unless recursive=true)
-    - /earth - Images from earth folder (non-recursive)
-    - /earth/folder1 - Images from earth/folder1 (non-recursive)
-
-    Query Parameters:
-    - api: Set to 'random-image' for API mode
-    - width: Target width for resizing (optional, max from MAX_IMAGE_DIMENSION env)
-    - height: Target height for resizing (optional, max from MAX_IMAGE_DIMENSION env)
-    - preserve_aspect: Whether to preserve aspect ratio (default: true)
-    - mode: Resize mode - 'fit' (letterbox) or 'crop' (fill, default: fit)
-    - eink: Apply Spectra-6 dithering for E-Ink displays (default: false)
-    - format: Output format - 'jpeg', 'png', 'webp', 'bmp', 'gif' (defaults to original)
-    - saturation: E-Ink saturation multiplier 0.0-10.0 (default from EINK_SATURATION env)
-    - contrast: E-Ink contrast multiplier 0.0-5.0 (default from EINK_CONTRAST env)
-    - brightness: E-Ink brightness multiplier 0.0-5.0 (default from EINK_BRIGHTNESS env)
-    - sharpen: Apply sharpening for E-Ink (default from EINK_SHARPEN env)
-    - recursive: Recursively search subfolders (default: false)
-    - folders: Comma-separated folder paths (e.g., folders=earth,space)
-    - also: Additional folders when using path (e.g., /earth?also=space,family)
-    - refresh: Auto-refresh interval in seconds (5-3600) for auto-cycling mode
-
-    Examples:
-    - GET / - Web interface (all images)
-    - GET /?api=random-image - Random top-level image
-    - GET /?api=random-image&recursive=true - Random from all folders
-    - GET /earth?api=random-image - Random from earth folder
-    - GET /earth?api=random-image&recursive=true - Random from earth and subfolders
-    - GET /earth/folder1?api=random-image - Random from earth/folder1
-    - GET /?folders=earth,space&api=random-image - Random from earth or space
-    - GET /earth?also=space,family&api=random-image - Random from earth, space, or family
-    - GET /earth?api=random-image&eink=true&format=png - E-Ink from earth folder
-    - GET /earth?refresh=30 - Auto-cycle through earth folder every 30 seconds
-    - GET /earth?refresh=30&eink=true&width=800 - Auto-cycle with processing
-    """
-    # Parse folder paths from URL path and query parameters
-    folder_paths_list = []
-
-    # Priority 1: Use 'folders' query param if provided
-    if folders:
-        folder_paths_list = [f.strip() for f in folders.split(',') if f.strip()]
-    # Priority 2: Use URL path + 'also' query param
-    elif folder_path or also:
-        if folder_path:
-            folder_paths_list.append(folder_path)
-        if also:
-            additional_folders = [f.strip() for f in also.split(',') if f.strip()]
-            folder_paths_list.extend(additional_folders)
-
-    # Convert empty list to None (means search base directory)
-    final_folder_paths = folder_paths_list if folder_paths_list else None
-
-    # API mode - return random image
-    if api == "random-image":
-        try:
-            # Use ENV defaults for E-Ink params if not provided
-            actual_saturation = saturation if saturation is not None else EINK_SATURATION
-            actual_contrast = contrast if contrast is not None else EINK_CONTRAST
-            actual_brightness = brightness if brightness is not None else EINK_BRIGHTNESS
-            actual_sharpen = sharpen if sharpen is not None else EINK_SHARPEN
-
-            # Run CPU-intensive image processing in thread pool to avoid blocking event loop
-            result = await asyncio.get_event_loop().run_in_executor(
-                None,  # Use default ThreadPoolExecutor
-                image_service.process_image,
-                width,
-                height,
-                preserve_aspect,
-                mode,
-                pad_color,
-                eink,
-                format,
-                actual_saturation,
-                actual_contrast,
-                actual_brightness,
-                actual_sharpen,
-                final_folder_paths,
-                recursive
-            )
-
-            if result is None:
-                return JSONResponse(
-                    status_code=404,
-                    content=error_response("No images found")
-                )
-        except PathSecurityError as e:
-            # Security violation - return 400 Bad Request with generic message
-            return JSONResponse(
-                status_code=400,
-                content=error_response("Invalid folder path")
-            )
-
-        buffer, content_type, filename, relative_path, mtime = result
-
-        # Get buffer content for ETag and length (single read, more efficient)
-        content = buffer.getvalue()
-        content_length = len(content)
-        etag = hashlib.md5(content).hexdigest()
-        buffer.seek(0)
-
-        # Build Content-Location URI for re-requesting this specific image
-        # RFC 7231: indicates a URI that can be used as an identifier for this resource
-        content_location = f"/api/image/{relative_path}"
-
-        # Format Last-Modified as RFC 7231 HTTP-date
-        last_modified = formatdate(mtime, usegmt=True)
-
-        # Check for conditional request (304 Not Modified)
-        if_none_match = request.headers.get("If-None-Match")
-        if if_none_match and if_none_match.strip('"') == etag:
-            buffer.close()
-            return Response(status_code=304)
-
-        headers = {
-            "Content-Length": str(content_length),
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-            "Content-Disposition": f'inline; filename="{filename}"',
-            "Content-Location": content_location,
-            "ETag": f'"{etag}"',
-            "Last-Modified": last_modified,
-            "Vary": "Accept",  # Response varies based on Accept header
-        }
-
-        # HEAD request - return headers only, no body (close buffer)
-        if request.method == "HEAD":
-            buffer.close()
-            return Response(status_code=200, headers=headers, media_type=content_type)
-
-        return StreamingResponse(
-            iter_buffer_with_cleanup(buffer),
-            media_type=content_type,
-            headers=headers
-        )
-
-    # Default mode - serve web interface
-    else:
-        try:
-            # Get base URL from environment or use request host
-            base_url = os.environ.get('BASE_URL', '')
-            if not base_url:
-                # Construct from request
-                base_url = f"{request.url.scheme}://{request.url.netloc}"
-
-            if refresh:
-                # Refresh mode: single random image with processing support
-                image_path = image_service.get_random_image_path(final_folder_paths, recursive)
-                if not image_path:
-                    raise HTTPException(status_code=404, detail="No images found")
-
-                # Build API URL with all processing params
-                relative_path = image_path.relative_to(image_service.image_dir)
-                params = []
-                if width:
-                    params.append(f"width={width}")
-                if height:
-                    params.append(f"height={height}")
-                if not preserve_aspect:
-                    params.append("preserve_aspect=false")
-                if mode != 'fit':
-                    params.append(f"mode={mode}")
-                if pad_color != "black":
-                    params.append(f"pad_color={pad_color}")
-                if eink:
-                    params.append("eink=true")
-                if format:
-                    params.append(f"format={format}")
-                if saturation is not None:
-                    params.append(f"saturation={saturation}")
-                if contrast is not None:
-                    params.append(f"contrast={contrast}")
-                if brightness is not None:
-                    params.append(f"brightness={brightness}")
-                if sharpen is not None:
-                    params.append(f"sharpen={str(sharpen).lower()}")
-
-                query_string = "&".join(params) if params else ""
-                image_url = f"{base_url}/api/image/{relative_path}"
-                if query_string:
-                    image_url += f"?{query_string}"
-
-                return templates.TemplateResponse(
-                    "index.html",
-                    {
-                        "request": request,
-                        "image_url": image_url,
-                        "refresh": refresh
-                    }
-                )
-            else:
-                # Original slideshow mode: all images for JavaScript rotation
-                image_files = image_service.get_image_files(final_folder_paths, recursive)
-
-                # Build image URLs
-                image_urls = [f"{base_url}/images/{file.relative_to(image_service.image_dir)}" for file in image_files]
-
-                return templates.TemplateResponse(
-                    "index.html",
-                    {
-                        "request": request,
-                        "image_urls": image_urls,
-                        "image_count": len(image_urls)
-                    }
-                )
-        except PathSecurityError as e:
-            # Security violation - return 400 Bad Request
-            raise HTTPException(status_code=400, detail="Invalid folder path")
-
-
-# =============================================================================
 # Immich Provider API - Endpoints
 # =============================================================================
 
@@ -1765,3 +1522,246 @@ async def list_immich_people(
     except Exception as e:
         logger.error(f"Failed to fetch Immich people: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Catch-all route (MUST be last)
+# =============================================================================
+
+@router.api_route("/{folder_path:path}", methods=["GET", "HEAD"], responses={
+    200: {"description": "Random image or web interface"},
+    304: {"description": "Not Modified (conditional request)"},
+    400: {"description": "Invalid folder path"},
+    404: {"description": "No images found"}
+})
+async def root(
+    request: Request,
+    folder_path: str,
+    api: Optional[str] = Query(None, description="API mode - 'random-image' for image endpoint"),
+    width: Optional[int] = Query(None, description=f"Target width in pixels (max {MAX_IMAGE_DIMENSION})", ge=1, le=MAX_IMAGE_DIMENSION),
+    height: Optional[int] = Query(None, description=f"Target height in pixels (max {MAX_IMAGE_DIMENSION})", ge=1, le=MAX_IMAGE_DIMENSION),
+    preserve_aspect: bool = Query(True, description="Preserve aspect ratio when resizing"),
+    mode: Literal['fit', 'crop'] = Query('fit', description="Resize mode - 'fit' or 'crop'"),
+    pad_color: str = Query("black", description="Letterbox padding color (CSS: name, hex, rgb())"),
+    eink: bool = Query(False, description="Apply Spectra-6 E-Ink color mapping"),
+    format: Optional[Literal['jpeg', 'png', 'webp', 'bmp', 'gif']] = Query(None, description="Output format (defaults to original format)"),
+    saturation: Optional[float] = Query(None, description=f"E-Ink saturation multiplier (default: {EINK_SATURATION})", ge=0.0, le=10.0),
+    contrast: Optional[float] = Query(None, description=f"E-Ink contrast multiplier (default: {EINK_CONTRAST})", ge=0.0, le=5.0),
+    brightness: Optional[float] = Query(None, description=f"E-Ink brightness multiplier (default: {EINK_BRIGHTNESS})", ge=0.0, le=5.0),
+    sharpen: Optional[bool] = Query(None, description=f"Apply sharpening for E-Ink preprocessing (default: {EINK_SHARPEN})"),
+    recursive: bool = Query(False, description="Recursively search subfolders (default: false)"),
+    folders: Optional[str] = Query(None, description="Comma-separated list of folder paths (alternative to path)"),
+    also: Optional[str] = Query(None, description="Comma-separated list of additional folders (use with path)"),
+    refresh: Optional[int] = Query(None, ge=5, le=3600, description="Auto-refresh interval in seconds (5-3600) for cycling through images")
+):
+    """
+    Main endpoint - serves either the web interface or random image API.
+
+    Supports path-based folder navigation:
+    - / - Root directory (top-level images only, unless recursive=true)
+    - /earth - Images from earth folder (non-recursive)
+    - /earth/folder1 - Images from earth/folder1 (non-recursive)
+
+    Query Parameters:
+    - api: Set to 'random-image' for API mode
+    - width: Target width for resizing (optional, max from MAX_IMAGE_DIMENSION env)
+    - height: Target height for resizing (optional, max from MAX_IMAGE_DIMENSION env)
+    - preserve_aspect: Whether to preserve aspect ratio (default: true)
+    - mode: Resize mode - 'fit' (letterbox) or 'crop' (fill, default: fit)
+    - eink: Apply Spectra-6 dithering for E-Ink displays (default: false)
+    - format: Output format - 'jpeg', 'png', 'webp', 'bmp', 'gif' (defaults to original)
+    - saturation: E-Ink saturation multiplier 0.0-10.0 (default from EINK_SATURATION env)
+    - contrast: E-Ink contrast multiplier 0.0-5.0 (default from EINK_CONTRAST env)
+    - brightness: E-Ink brightness multiplier 0.0-5.0 (default from EINK_BRIGHTNESS env)
+    - sharpen: Apply sharpening for E-Ink (default from EINK_SHARPEN env)
+    - recursive: Recursively search subfolders (default: false)
+    - folders: Comma-separated folder paths (e.g., folders=earth,space)
+    - also: Additional folders when using path (e.g., /earth?also=space,family)
+    - refresh: Auto-refresh interval in seconds (5-3600) for auto-cycling mode
+
+    Examples:
+    - GET / - Web interface (all images)
+    - GET /?api=random-image - Random top-level image
+    - GET /?api=random-image&recursive=true - Random from all folders
+    - GET /earth?api=random-image - Random from earth folder
+    - GET /earth?api=random-image&recursive=true - Random from earth and subfolders
+    - GET /earth/folder1?api=random-image - Random from earth/folder1
+    - GET /?folders=earth,space&api=random-image - Random from earth or space
+    - GET /earth?also=space,family&api=random-image - Random from earth, space, or family
+    - GET /earth?api=random-image&eink=true&format=png - E-Ink from earth folder
+    - GET /earth?refresh=30 - Auto-cycle through earth folder every 30 seconds
+    - GET /earth?refresh=30&eink=true&width=800 - Auto-cycle with processing
+    """
+    # Parse folder paths from URL path and query parameters
+    folder_paths_list = []
+
+    # Priority 1: Use 'folders' query param if provided
+    if folders:
+        folder_paths_list = [f.strip() for f in folders.split(',') if f.strip()]
+    # Priority 2: Use URL path + 'also' query param
+    elif folder_path or also:
+        if folder_path:
+            folder_paths_list.append(folder_path)
+        if also:
+            additional_folders = [f.strip() for f in also.split(',') if f.strip()]
+            folder_paths_list.extend(additional_folders)
+
+    # Convert empty list to None (means search base directory)
+    final_folder_paths = folder_paths_list if folder_paths_list else None
+
+    # API mode - return random image
+    if api == "random-image":
+        try:
+            # Use ENV defaults for E-Ink params if not provided
+            actual_saturation = saturation if saturation is not None else EINK_SATURATION
+            actual_contrast = contrast if contrast is not None else EINK_CONTRAST
+            actual_brightness = brightness if brightness is not None else EINK_BRIGHTNESS
+            actual_sharpen = sharpen if sharpen is not None else EINK_SHARPEN
+
+            # Run CPU-intensive image processing in thread pool to avoid blocking event loop
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,  # Use default ThreadPoolExecutor
+                image_service.process_image,
+                width,
+                height,
+                preserve_aspect,
+                mode,
+                pad_color,
+                eink,
+                format,
+                actual_saturation,
+                actual_contrast,
+                actual_brightness,
+                actual_sharpen,
+                final_folder_paths,
+                recursive
+            )
+
+            if result is None:
+                return JSONResponse(
+                    status_code=404,
+                    content=error_response("No images found")
+                )
+        except PathSecurityError as e:
+            # Security violation - return 400 Bad Request with generic message
+            return JSONResponse(
+                status_code=400,
+                content=error_response("Invalid folder path")
+            )
+
+        buffer, content_type, filename, relative_path, mtime = result
+
+        # Get buffer content for ETag and length (single read, more efficient)
+        content = buffer.getvalue()
+        content_length = len(content)
+        etag = hashlib.md5(content).hexdigest()
+        buffer.seek(0)
+
+        # Build Content-Location URI for re-requesting this specific image
+        # RFC 7231: indicates a URI that can be used as an identifier for this resource
+        content_location = f"/api/image/{relative_path}"
+
+        # Format Last-Modified as RFC 7231 HTTP-date
+        last_modified = formatdate(mtime, usegmt=True)
+
+        # Check for conditional request (304 Not Modified)
+        if_none_match = request.headers.get("If-None-Match")
+        if if_none_match and if_none_match.strip('"') == etag:
+            buffer.close()
+            return Response(status_code=304)
+
+        headers = {
+            "Content-Length": str(content_length),
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Location": content_location,
+            "ETag": f'"{etag}"',
+            "Last-Modified": last_modified,
+            "Vary": "Accept",  # Response varies based on Accept header
+        }
+
+        # HEAD request - return headers only, no body (close buffer)
+        if request.method == "HEAD":
+            buffer.close()
+            return Response(status_code=200, headers=headers, media_type=content_type)
+
+        return StreamingResponse(
+            iter_buffer_with_cleanup(buffer),
+            media_type=content_type,
+            headers=headers
+        )
+
+    # Default mode - serve web interface
+    else:
+        try:
+            # Get base URL from environment or use request host
+            base_url = os.environ.get('BASE_URL', '')
+            if not base_url:
+                # Construct from request
+                base_url = f"{request.url.scheme}://{request.url.netloc}"
+
+            if refresh:
+                # Refresh mode: single random image with processing support
+                image_path = image_service.get_random_image_path(final_folder_paths, recursive)
+                if not image_path:
+                    raise HTTPException(status_code=404, detail="No images found")
+
+                # Build API URL with all processing params
+                relative_path = image_path.relative_to(image_service.image_dir)
+                params = []
+                if width:
+                    params.append(f"width={width}")
+                if height:
+                    params.append(f"height={height}")
+                if not preserve_aspect:
+                    params.append("preserve_aspect=false")
+                if mode != 'fit':
+                    params.append(f"mode={mode}")
+                if pad_color != "black":
+                    params.append(f"pad_color={pad_color}")
+                if eink:
+                    params.append("eink=true")
+                if format:
+                    params.append(f"format={format}")
+                if saturation is not None:
+                    params.append(f"saturation={saturation}")
+                if contrast is not None:
+                    params.append(f"contrast={contrast}")
+                if brightness is not None:
+                    params.append(f"brightness={brightness}")
+                if sharpen is not None:
+                    params.append(f"sharpen={str(sharpen).lower()}")
+
+                query_string = "&".join(params) if params else ""
+                image_url = f"{base_url}/api/image/{relative_path}"
+                if query_string:
+                    image_url += f"?{query_string}"
+
+                return templates.TemplateResponse(
+                    "index.html",
+                    {
+                        "request": request,
+                        "image_url": image_url,
+                        "refresh": refresh
+                    }
+                )
+            else:
+                # Original slideshow mode: all images for JavaScript rotation
+                image_files = image_service.get_image_files(final_folder_paths, recursive)
+
+                # Build image URLs
+                image_urls = [f"{base_url}/images/{file.relative_to(image_service.image_dir)}" for file in image_files]
+
+                return templates.TemplateResponse(
+                    "index.html",
+                    {
+                        "request": request,
+                        "image_urls": image_urls,
+                        "image_count": len(image_urls)
+                    }
+                )
+        except PathSecurityError as e:
+            # Security violation - return 400 Bad Request
+            raise HTTPException(status_code=400, detail="Invalid folder path")
