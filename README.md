@@ -9,6 +9,11 @@ A modern image screensaver service built with Python/FastAPI, featuring image pr
 - **E-Ink Color Mapping**: Floyd-Steinberg dithering for 6-color Spectra displays
 - **Web Interface**: Auto-rotating image slideshow (30-second intervals)
 - **Synchronized Multi-Browser**: Display unique images across 100+ browsers in sync
+- **Clock & Weather Overlays**: Display time, date, and weather from Home Assistant
+- **Layout Modes**: Single image, split view portrait/landscape
+- **Background Blur**: Blurred letterbox backgrounds for non-filling images
+- **Burn-in Prevention**: Periodic dimming and pixel shifting for display protection
+- **Webhooks**: Trigger external services on image cycles, settings changes, or intervals
 - **Docker-based**: Easy deployment with Docker Compose
 - **Modern Stack**: Python 3.11 + FastAPI + Pillow
 - **Security Hardened**: Non-root container, security headers, path traversal protection
@@ -171,14 +176,167 @@ DELETE /sync/admin/groups/living-room
 | `width` | int | null | Target width |
 | `height` | int | null | Target height |
 | `preserve_aspect` | bool | true | Preserve aspect ratio |
-| `mode` | string | "fit" | "fit" or "crop" |
+| `mode` | string | "fit" | "fit", "fill", or "stretch" |
 | `pad_color` | string | "black" | Letterbox color |
-| `eink` | bool | false | E-Ink color mapping |
 | `format` | string | null | Output format |
-| `saturation` | float | 2.5 | E-Ink saturation |
-| `contrast` | float | 1.2 | E-Ink contrast |
-| `brightness` | float | 1.1 | E-Ink brightness |
+| **E-Ink Settings** ||||
+| `eink` | bool | false | E-Ink color mapping |
+| `saturation` | float | 2.5 | E-Ink saturation (0-10) |
+| `contrast` | float | 1.2 | E-Ink contrast (0-5) |
+| `brightness` | float | 1.1 | E-Ink brightness (0-5) |
 | `sharpen` | bool | true | E-Ink sharpening |
+| **Clock Settings** ||||
+| `show_time` | bool | false | Display time overlay |
+| `show_date` | bool | false | Display date overlay |
+| `time_format` | string | "24" | "12" or "24" hour format |
+| `date_format` | string | "DDDD, MMMM DD" | Date format string |
+| `clock_source` | string | "client" | "client", "ntp", or "homeassistant" |
+| `clock_position` | string | "bottom-left" | Corner position |
+| **Weather Settings** ||||
+| `show_weather` | bool | false | Display weather overlay |
+| `weather_position` | string | "bottom-right" | Corner position |
+| `weather_ha_entity` | string | null | Home Assistant weather entity ID |
+| `weather_show_forecast` | bool | false | Show forecast data |
+| **Layout Settings** ||||
+| `layout` | string | "single" | "single", "splitview", "splitview-landscape" |
+| **Background Settings** ||||
+| `background_blur` | bool | false | Blur background for letterboxed images |
+| `background_blur_amount` | int | 50 | Blur intensity (0-100) |
+| `image_fit` | string | "contain" | "contain" or "cover" |
+| **Burn-in Prevention** ||||
+| `burn_in_protection` | bool | false | Enable burn-in prevention |
+| `burn_in_interval` | int | 5 | Minutes between dimming (1-60) |
+| `burn_in_duration` | int | 30 | Seconds dimmed (5-120) |
+| `burn_in_opacity` | int | 70 | Opacity when dimmed (10-90%) |
+| `burn_in_shift_enabled` | bool | true | Enable pixel shifting |
+| `burn_in_shift_amount` | int | 5 | Pixels to shift (1-20) |
+| `burn_in_shift_interval` | int | 60 | Seconds between shifts (10-300) |
+| **Webhooks** ||||
+| `webhooks` | array | [] | Webhook configurations (see below) |
+
+### Clock & Weather Overlays
+
+Display time, date, and weather information on the screensaver.
+
+**Clock Features:**
+- 12 or 24-hour time format
+- Customizable date format using Immich Kiosk tokens:
+  - `DDDD` - Full weekday name (Monday)
+  - `DDD` - Short weekday (Mon)
+  - `DD` - Day of month (01-31)
+  - `MMMM` - Full month name (January)
+  - `MMM` - Short month (Jan)
+  - `MM` - Month number (01-12)
+  - `YYYY` - Full year (2026)
+  - `YY` - Short year (26)
+- Time sources: client browser, NTP server, or Home Assistant
+
+**Weather Features:**
+- Requires Home Assistant integration
+- Displays current condition and temperature
+- Optional forecast display
+- Configure via `weather_ha_entity` (e.g., "weather.home")
+
+**Position Options:** `bottom-left`, `bottom-right`, `top-left`, `top-right`
+
+### Layouts
+
+Control how images are displayed across the screen.
+
+| Layout | Description |
+|--------|-------------|
+| `single` | One image fills the screen |
+| `splitview` | Two images side by side (portrait orientation) |
+| `splitview-landscape` | Two images stacked (landscape orientation) |
+
+### Background Blur
+
+When images don't fill the entire screen (letterboxed), a blurred version of the image can be shown as the background instead of solid black.
+
+- **`background_blur`**: Enable/disable the feature
+- **`background_blur_amount`**: Blur intensity (0-100, default 50)
+- **`image_fit`**: `contain` (letterbox) or `cover` (fill, may crop)
+
+Blur is only visible when `image_fit` is set to `contain`.
+
+### Burn-in Prevention
+
+Protect displays (especially OLED/E-Ink) from burn-in with periodic dimming and pixel shifting.
+
+**Dimming:** Periodically reduces screen brightness to prevent static elements from burning in.
+- `burn_in_interval`: How often to dim (minutes)
+- `burn_in_duration`: How long to stay dimmed (seconds)
+- `burn_in_opacity`: How dim (lower = darker)
+
+**Pixel Shifting:** Subtly moves content to prevent static pixels.
+- `burn_in_shift_enabled`: Enable/disable shifting
+- `burn_in_shift_amount`: Pixels to shift each cycle
+- `burn_in_shift_interval`: Seconds between shifts
+
+### Webhooks
+
+Sync groups can trigger webhooks on various events. Configure webhooks via the admin dashboard or API.
+
+**Webhook Configuration:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Webhook endpoint URL |
+| `enabled` | bool | no | Enable/disable (default: true) |
+| `triggers` | array | no | Events: `settings_change`, `image_cycle`, `interval` |
+| `payload_fields` | array | no | Data fields to include |
+| `interval_minutes` | int | no | Minutes between triggers (1-1440) |
+| `secret` | string | no | HMAC-SHA256 signing secret |
+| `headers` | object | no | Custom HTTP headers |
+
+**Trigger Types:**
+- `settings_change`: When group settings are updated
+- `image_cycle`: When images rotate
+- `interval`: At fixed time intervals
+
+**Payload Fields:**
+- `group_id`: Sync group identifier
+- `event_type`: Trigger type that fired
+- `timestamp`: ISO 8601 timestamp
+- `settings`: Full group settings object
+- `current_image`: Currently displayed image paths
+- `browser_count`: Number of connected browsers
+- `cycle_number`: Current cycle count
+
+**Example Payload:**
+```json
+{
+  "group_id": "living-room",
+  "event_type": "image_cycle",
+  "timestamp": "2026-01-21T12:34:56+00:00",
+  "browser_count": 3,
+  "cycle_number": 42
+}
+```
+
+**HMAC Signature:**
+When `secret` is set, webhooks include `X-Webhook-Signature: sha256=<hex>` computed over the JSON payload.
+
+**Webhook API Example:**
+```bash
+# Create group with webhook
+POST /sync/admin/groups
+{
+    "group_id": "living-room",
+    "duration": 30,
+    "folders": "photos",
+    "webhooks": [{
+        "url": "https://example.com/webhook",
+        "triggers": ["image_cycle"],
+        "payload_fields": ["group_id", "event_type", "timestamp"],
+        "secret": "my-secret",
+        "headers": {"Authorization": "Bearer token"}
+    }]
+}
+
+# Test a webhook
+POST /sync/admin/groups/{group_id}/webhooks/{webhook_id}/test
+```
 
 ### Random Image API
 
