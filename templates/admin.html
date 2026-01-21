@@ -464,22 +464,22 @@
                 opacity: 0.5;
             }
             .webhook-form {
-                background: #2a2a2a;
-                border: 1px solid #444;
-                border-radius: 4px;
+                background: #1a1a2e;
+                border: 1px solid #0f3460;
+                border-radius: 6px;
                 padding: 12px;
                 margin-bottom: 10px;
             }
             .webhook-form .form-fieldset {
-                border: 1px solid #444;
-                border-radius: 4px;
-                padding: 8px;
-                margin: 8px 0;
+                border: 1px solid #0f3460;
+                border-radius: 6px;
+                padding: 10px;
+                margin: 12px 0;
             }
             .webhook-form .form-fieldset legend {
-                padding: 0 6px;
+                padding: 0 8px;
                 font-size: 12px;
-                color: #888;
+                color: #999;
             }
             .webhook-form-actions {
                 display: flex;
@@ -489,14 +489,29 @@
             .webhook-header-row {
                 display: flex;
                 gap: 8px;
-                margin-bottom: 6px;
+                margin-bottom: 8px;
                 align-items: center;
             }
             .webhook-header-row input {
                 flex: 1;
+                min-width: 0;
+                padding: 8px 10px;
+                border: 1px solid #0f3460;
+                border-radius: 6px;
+                background: #1a1a2e;
+                color: #eee;
+                font-size: 13px;
+            }
+            .webhook-header-row input:focus {
+                outline: none;
+                border-color: #e94560;
+            }
+            .webhook-header-row input::placeholder {
+                color: #555;
             }
             .webhook-header-row .btn-remove {
-                padding: 2px 8px;
+                flex-shrink: 0;
+                padding: 6px 10px;
                 font-size: 14px;
             }
 
