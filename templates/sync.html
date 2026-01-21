@@ -920,34 +920,15 @@
                     updateDebug('Cycle', currentCycle);
                     updateDebug('CurrentImage', msg.image_id);
 
-                    // Fetch blur first (if enabled), then load image
-                    if (blurManager.enabled && msg.image_id) {
-                        var blurAmount = blurManager.settings.background_blur_amount || 50;
-                        var url = '/api/blur/' + msg.image_id + '?blur_amount=' + blurAmount;
-                        console.log('Fetching blur for assign:', msg.image_id);
-
-                        fetch(url)
-                            .then(function(r) { return r.json(); })
-                            .then(function(data) {
-                                if (data.blur_url) {
-                                    blurManager.update(data.blur_url);
-                                }
-                            })
-                            .catch(function(err) {
-                                console.warn('Failed to fetch blur:', err);
-                            })
-                            .finally(function() {
-                                // Load image after blur fetch completes (or fails)
-                                loadImage(currentImage, msg.image_url, function() {
-                                    sendReady();
-                                });
-                            });
-                    } else {
-                        // No blur enabled, load image directly
-                        loadImage(currentImage, msg.image_url, function() {
-                            sendReady();
-                        });
+                    // Apply blur immediately if provided (no fetch needed)
+                    if (msg.blur_url && blurManager.enabled) {
+                        blurManager.update(msg.blur_url);
                     }
+
+                    // Load image directly
+                    loadImage(currentImage, msg.image_url, function() {
+                        sendReady();
+                    });
                 }
 
                 // Store pending blur URL for next image switch
@@ -964,39 +945,13 @@
                     const timeUntilSwitch = Math.max(0, msg.switch_at - now);
                     updateDebug('NextSwitch', Math.round(timeUntilSwitch / 1000) + 's');
 
-                    // Reset pending blur
-                    pendingBlurUrl = null;
+                    // Store blur for switch (already a data URL from server, no fetch needed)
+                    pendingBlurUrl = (blurManager.enabled && msg.blur_url) ? msg.blur_url : null;
 
                     // Preload the image
                     loadImage(preloadImage, msg.image_url, function() {
-                        // If blur is enabled, fetch blur background in parallel
-                        if (blurManager.enabled && msg.image_id) {
-                            fetchBlurBackground(msg.image_id);
-                        }
                         sendPreloadReady();
                     });
-                }
-
-                // Fetch blur background from API
-                function fetchBlurBackground(imagePath) {
-                    const blurAmount = blurManager.settings.background_blur_amount || 50;
-                    const url = '/api/blur/' + imagePath + '?blur_amount=' + blurAmount;
-                    console.log('Fetching blur:', imagePath, 'URL:', url);
-
-                    fetch(url)
-                        .then(function(response) {
-                            if (!response.ok) throw new Error('Failed to fetch blur');
-                            return response.json();
-                        })
-                        .then(function(data) {
-                            if (data.blur_url) {
-                                pendingBlurUrl = data.blur_url;
-                                console.log('Blur background fetched');
-                            }
-                        })
-                        .catch(function(err) {
-                            console.warn('Failed to fetch blur background:', err);
-                        });
                 }
 
                 function handleSwitch(msg) {

@@ -1425,9 +1425,14 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
                 browser.current_image,
                 group.settings
             )
+            blur_url = sync_manager.build_blur_url(
+                browser.current_image,
+                group.settings
+            )
             await websocket.send_json({
                 "type": "ASSIGN",
                 "image_url": image_url,
+                "blur_url": blur_url,
                 "image_id": browser.current_image,
                 "cycle": group.current_cycle
             })

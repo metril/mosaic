@@ -19,8 +19,10 @@ from typing import Dict, List, Optional, Set, Any
 from fastapi import WebSocket
 
 from app.services.image_service import ImageService
+from app.utils.blur import create_blur_background
 from app.utils.logging import logger
 from app.utils.metrics import metrics
+from app.utils.path_security import resolve_image_path
 
 # Constants
 PRELOAD_LEAD_TIME_SECONDS = 5  # Time before switch to send preload command (P9)
@@ -798,6 +800,23 @@ class SyncManager:
             url += "?" + "&".join(params)
         return url
 
+    def build_blur_url(self, image_path: str, settings: SyncGroupSettings) -> Optional[str]:
+        """Generate blur data URL for image if blur is enabled.
+
+        Returns a base64 data URL of the blurred image, or None if blur is disabled
+        or generation fails.
+        """
+        if not settings.background_blur or settings.image_fit == 'cover':
+            return None
+
+        try:
+            full_path = resolve_image_path(image_path, self.image_service.image_dir)
+            img = self.image_service.load_image(full_path)
+            return create_blur_background(img, settings.background_blur_amount)
+        except Exception as e:
+            logger.warning(f"Failed to generate blur for {image_path}: {e}")
+            return None
+
     async def _send_to_browser(
         self,
         browser_id: str,
@@ -903,11 +922,13 @@ class SyncManager:
                         if next_image:
                             # Build URL once per image (#25 - partially, each browser gets unique image)
                             image_url = self.build_image_url(next_image, settings)
+                            blur_url = self.build_blur_url(next_image, settings)
                             try:
                                 await asyncio.wait_for(
                                     browser.websocket.send_json({
                                         "type": "PRELOAD",
                                         "image_url": image_url,
+                                        "blur_url": blur_url,
                                         "image_id": next_image,
                                         "switch_at": switch_at
                                     }),
@@ -1159,11 +1180,13 @@ class SyncManager:
         settings = group.settings
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
+            blur_url = self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
                         "type": "ASSIGN",
                         "image_url": image_url,
+                        "blur_url": blur_url,
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
@@ -1229,11 +1252,13 @@ class SyncManager:
         settings = group.settings
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
+            blur_url = self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
                         "type": "ASSIGN",
                         "image_url": image_url,
+                        "blur_url": blur_url,
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
@@ -1319,11 +1344,13 @@ class SyncManager:
 
         # Send ASSIGN
         image_url = self.build_image_url(image_path, group.settings)
+        blur_url = self.build_blur_url(image_path, group.settings)
         try:
             await asyncio.wait_for(
                 browser.websocket.send_json({
                     "type": "ASSIGN",
                     "image_url": image_url,
+                    "blur_url": blur_url,
                     "image_id": image_path,
                     "cycle": group.current_cycle
                 }),
@@ -1368,11 +1395,13 @@ class SyncManager:
 
             # Send preload
             image_url = self.build_image_url(next_image, settings)
+            blur_url = self.build_blur_url(next_image, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
                         "type": "PRELOAD",
                         "image_url": image_url,
+                        "blur_url": blur_url,
                         "image_id": next_image,
                         "switch_at": switch_at
                     }),
@@ -1420,11 +1449,13 @@ class SyncManager:
         # Send ASSIGNs outside the lock
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
+            blur_url = self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
                         "type": "ASSIGN",
                         "image_url": image_url,
+                        "blur_url": blur_url,
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
@@ -1482,11 +1513,13 @@ class SyncManager:
         # Send ASSIGNs outside the lock to avoid holding it during network I/O
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
+            blur_url = self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
                         "type": "ASSIGN",
                         "image_url": image_url,
+                        "blur_url": blur_url,
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
