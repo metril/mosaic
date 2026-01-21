@@ -1012,7 +1012,11 @@
                             </div>
                             <div class="form-row">
                                 <label for="immichApiKey">API Key *</label>
-                                <input type="password" id="immichApiKey" name="api_key" required placeholder="Your Immich API key">
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <input type="password" id="immichApiKey" name="api_key" required placeholder="Your Immich API key" style="flex: 1;">
+                                    <button type="button" id="clearApiKeyBtn" class="btn btn-secondary" style="display: none; padding: 8px 12px;" onclick="clearApiKeyField()">Clear</button>
+                                </div>
+                                <small id="apiKeyStatus" style="color: #4caf50; display: none; margin-top: 4px;">✓ API key configured</small>
                             </div>
                             <div class="form-row">
                                 <button type="button" class="btn btn-secondary" onclick="testImmichConnection()" id="testConnectionBtn">
@@ -2572,6 +2576,9 @@
                     submitBtn.textContent = 'Update Pull';
                     nameRow.style.display = 'none';
 
+                    // Remove required for editing since key may already exist
+                    document.getElementById('immichApiKey').removeAttribute('required');
+
                     // Find the pull and populate form
                     const pull = immichPulls.find(p => p.name === pullName);
                     if (pull) {
@@ -2581,6 +2588,11 @@
                     title.textContent = 'Create Pull';
                     submitBtn.textContent = 'Create Pull';
                     nameRow.style.display = 'block';
+
+                    // Require API key for new pulls
+                    document.getElementById('immichApiKey').setAttribute('required', 'required');
+                    document.getElementById('clearApiKeyBtn').style.display = 'none';
+                    document.getElementById('apiKeyStatus').style.display = 'none';
                 }
 
                 panel.classList.add('open');
@@ -2595,9 +2607,24 @@
 
             function populateImmichForm(pull) {
                 document.getElementById('immichServerUrl').value = pull.server_url || '';
-                // API key is masked, so we show a placeholder
-                document.getElementById('immichApiKey').value = '';
-                document.getElementById('immichApiKey').placeholder = pull.api_key ? 'Keep existing (leave blank)' : 'Your Immich API key';
+
+                // API key handling - show status indicator if key exists
+                const apiKeyInput = document.getElementById('immichApiKey');
+                const clearBtn = document.getElementById('clearApiKeyBtn');
+                const statusEl = document.getElementById('apiKeyStatus');
+
+                apiKeyInput.value = '';
+                if (pull.api_key) {
+                    // Key exists - show status and clear button
+                    apiKeyInput.placeholder = 'Leave blank to keep existing';
+                    statusEl.style.display = 'block';
+                    clearBtn.style.display = 'block';
+                } else {
+                    apiKeyInput.placeholder = 'Your Immich API key';
+                    statusEl.style.display = 'none';
+                    clearBtn.style.display = 'none';
+                }
+
                 document.getElementById('immichTargetFolder').value = pull.target_folder || '';
                 document.getElementById('immichCount').value = pull.count || 50;
                 document.getElementById('immichReplaceExisting').checked = pull.replace_existing !== false;
@@ -2615,6 +2642,21 @@
                     opt.selected = true;
                     albumSelect.appendChild(opt);
                 }
+            }
+
+            function clearApiKeyField() {
+                const apiKeyInput = document.getElementById('immichApiKey');
+                const statusEl = document.getElementById('apiKeyStatus');
+                const clearBtn = document.getElementById('clearApiKeyBtn');
+
+                apiKeyInput.value = '';
+                apiKeyInput.placeholder = 'Enter new API key';
+                apiKeyInput.focus();
+                statusEl.style.display = 'none';
+                clearBtn.style.display = 'none';
+
+                // Mark that we need a new key
+                apiKeyInput.setAttribute('required', 'required');
             }
 
             function getImmichFormData() {
