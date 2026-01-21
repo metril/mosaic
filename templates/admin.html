@@ -2203,14 +2203,38 @@
             let immichPulls = [];
             let pollIntervals = {};
 
+            /**
+             * Helper function for Immich API calls with proper error handling.
+             * Validates response content-type and handles auth redirects gracefully.
+             */
+            async function fetchImmichJson(url, options = {}) {
+                const response = await fetch(url, {
+                    credentials: 'same-origin',
+                    ...options,
+                    headers: {
+                        'X-CSRF-Token': CSRF_TOKEN,
+                        'Accept': 'application/json',
+                        ...options.headers
+                    }
+                });
+
+                // Check if we got redirected to a login page (HTML instead of JSON)
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    throw new Error('Session expired. Please refresh the page.');
+                }
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || `Request failed: ${response.status}`);
+                }
+
+                return response.json();
+            }
+
             async function loadImmichPulls() {
                 try {
-                    const response = await fetch(`${IMMICH_API_BASE}/pulls`, {
-                        credentials: 'same-origin',
-                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
-                    });
-                    if (!response.ok) throw new Error('Failed to load pulls');
-                    const data = await response.json();
+                    const data = await fetchImmichJson(`${IMMICH_API_BASE}/pulls`);
                     immichPulls = data.pulls || [];
                     renderPullCards(immichPulls);
                     document.getElementById('pullCount').textContent = immichPulls.length;
@@ -2287,13 +2311,9 @@
                 }
 
                 try {
-                    const response = await fetch(`${IMMICH_API_BASE}/pull/${encodeURIComponent(pullName)}`, {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    await fetchImmichJson(`${IMMICH_API_BASE}/pull/${encodeURIComponent(pullName)}`, {
+                        method: 'POST'
                     });
-
-                    if (!response.ok) throw new Error('Failed to start pull');
 
                     showImmichMessage('Pull started: ' + pullName, 'success');
                     pollPullStatus(pullName);
@@ -2327,12 +2347,7 @@
 
             async function checkPullStatus(pullName) {
                 try {
-                    const response = await fetch(`${IMMICH_API_BASE}/pull/${encodeURIComponent(pullName)}/status`, {
-                        credentials: 'same-origin'
-                    });
-                    if (!response.ok) return true;
-
-                    const status = await response.json();
+                    const status = await fetchImmichJson(`${IMMICH_API_BASE}/pull/${encodeURIComponent(pullName)}/status`);
                     updatePullCardStatus(pullName, status);
 
                     return status.status !== 'running';
@@ -2397,13 +2412,9 @@
                 if (!confirm(`Delete pull "${pullName}"?`)) return;
 
                 try {
-                    const response = await fetch(`${IMMICH_API_BASE}/pulls/${encodeURIComponent(pullName)}`, {
-                        method: 'DELETE',
-                        credentials: 'same-origin',
-                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    await fetchImmichJson(`${IMMICH_API_BASE}/pulls/${encodeURIComponent(pullName)}`, {
+                        method: 'DELETE'
                     });
-
-                    if (!response.ok) throw new Error('Failed to delete pull');
 
                     showImmichMessage('Pull deleted: ' + pullName, 'success');
                     loadImmichPulls();
@@ -2418,15 +2429,10 @@
                 btn.textContent = 'Saving...';
 
                 try {
-                    const response = await fetch(`${IMMICH_API_BASE}/pulls/save`, {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    const data = await fetchImmichJson(`${IMMICH_API_BASE}/pulls/save`, {
+                        method: 'POST'
                     });
 
-                    if (!response.ok) throw new Error('Failed to save config');
-
-                    const data = await response.json();
                     showImmichMessage(data.message || 'Config saved', 'success');
                 } catch (err) {
                     showImmichMessage('Error: ' + err.message, 'error');
@@ -2577,20 +2583,11 @@
                 submitBtn.textContent = editingPullName ? 'Updating...' : 'Creating...';
 
                 try {
-                    const response = await fetch(`${IMMICH_API_BASE}/pulls`, {
+                    await fetchImmichJson(`${IMMICH_API_BASE}/pulls`, {
                         method: 'POST',
-                        credentials: 'same-origin',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-Token': CSRF_TOKEN
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(data)
                     });
-
-                    if (!response.ok) {
-                        const err = await response.json();
-                        throw new Error(err.detail || 'Failed to save pull');
-                    }
 
                     showImmichMessage(editingPullName ? 'Pull updated' : 'Pull created', 'success');
                     closeImmichPanel();
@@ -2630,17 +2627,11 @@
                 statusEl.textContent = '';
 
                 try {
-                    const response = await fetch(`${IMMICH_API_BASE}/test-connection`, {
+                    const result = await fetchImmichJson(`${IMMICH_API_BASE}/test-connection`, {
                         method: 'POST',
-                        credentials: 'same-origin',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-Token': CSRF_TOKEN
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ server_url: serverUrl, api_key: apiKey })
                     });
-
-                    const result = await response.json();
 
                     if (result.success) {
                         statusEl.textContent = `✓ Connected (v${result.server_version}, ${result.album_count} albums)`;
@@ -2663,26 +2654,13 @@
 
             async function loadAlbumsAndPeople(serverUrl, apiKey) {
                 try {
-                    const [albumsRes, peopleRes] = await Promise.all([
-                        fetch(`${IMMICH_API_BASE}/albums?server_url=${encodeURIComponent(serverUrl)}&api_key=${encodeURIComponent(apiKey)}`, {
-                            credentials: 'same-origin',
-                            headers: { 'X-CSRF-Token': CSRF_TOKEN }
-                        }),
-                        fetch(`${IMMICH_API_BASE}/people?server_url=${encodeURIComponent(serverUrl)}&api_key=${encodeURIComponent(apiKey)}`, {
-                            credentials: 'same-origin',
-                            headers: { 'X-CSRF-Token': CSRF_TOKEN }
-                        })
+                    const [albumsData, peopleData] = await Promise.all([
+                        fetchImmichJson(`${IMMICH_API_BASE}/albums?server_url=${encodeURIComponent(serverUrl)}&api_key=${encodeURIComponent(apiKey)}`),
+                        fetchImmichJson(`${IMMICH_API_BASE}/people?server_url=${encodeURIComponent(serverUrl)}&api_key=${encodeURIComponent(apiKey)}`)
                     ]);
 
-                    if (albumsRes.ok) {
-                        const albumsData = await albumsRes.json();
-                        populateAlbumDropdown(albumsData.albums || []);
-                    }
-
-                    if (peopleRes.ok) {
-                        const peopleData = await peopleRes.json();
-                        populatePeopleMultiselect(peopleData.people || []);
-                    }
+                    populateAlbumDropdown(albumsData.albums || []);
+                    populatePeopleMultiselect(peopleData.people || []);
                 } catch (err) {
                     console.error('Error loading albums/people:', err);
                 }
