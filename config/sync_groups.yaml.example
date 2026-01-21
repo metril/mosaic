@@ -18,11 +18,12 @@ groups:
   bedroom-eink:
     duration: 300
     folders: "/photos/art"
-    eink: true                  # Enable E-Ink color mapping
-    saturation: 2.5             # E-Ink saturation (default: 2.5)
-    contrast: 1.2               # E-Ink contrast (default: 1.2)
-    brightness: 1.1             # E-Ink brightness (default: 1.1)
-    sharpen: true               # E-Ink sharpening
+    eink:
+      enabled: true             # Enable E-Ink color mapping
+      saturation: 2.5           # Saturation boost (default: 2.5)
+      contrast: 1.2             # Contrast boost (default: 1.2)
+      brightness: 1.1           # Brightness boost (default: 1.1)
+      sharpen: true             # Apply sharpening (default: true)
 
   # Example: Kitchen display with quick rotation
   kitchen:

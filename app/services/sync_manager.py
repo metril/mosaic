@@ -66,7 +66,19 @@ class SyncGroupSettings:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SyncGroupSettings":
-        """Create from dictionary"""
+        """Create from dictionary, handling nested eink section"""
+        # Make a copy to avoid mutating the original
+        data = data.copy()
+
+        # Handle nested eink section from YAML config
+        if "eink" in data and isinstance(data["eink"], dict):
+            eink_settings = data.pop("eink")
+            data["eink"] = eink_settings.get("enabled", True)
+            data["saturation"] = eink_settings.get("saturation", 2.5)
+            data["contrast"] = eink_settings.get("contrast", 1.2)
+            data["brightness"] = eink_settings.get("brightness", 1.1)
+            data["sharpen"] = eink_settings.get("sharpen", True)
+
         # Filter out any unknown keys
         valid_keys = {f.name for f in cls.__dataclass_fields__.values()}
         filtered_data = {k: v for k, v in data.items() if k in valid_keys}
@@ -333,8 +345,42 @@ class SyncManager:
 
         config: Dict[str, Any] = {"groups": {}}
         for group_id, group in self.groups.items():
-            # Filter out None values for cleaner output
-            settings_dict = {k: v for k, v in group.settings.to_dict().items() if v is not None}
+            settings = group.settings
+            settings_dict: Dict[str, Any] = {}
+
+            # Basic settings (only include non-default/non-None values)
+            if settings.duration != 30:
+                settings_dict["duration"] = settings.duration
+            if settings.folders:
+                settings_dict["folders"] = settings.folders
+            if settings.recursive:
+                settings_dict["recursive"] = settings.recursive
+            if settings.width:
+                settings_dict["width"] = settings.width
+            if settings.height:
+                settings_dict["height"] = settings.height
+            if not settings.preserve_aspect:
+                settings_dict["preserve_aspect"] = settings.preserve_aspect
+            if settings.mode != "fit":
+                settings_dict["mode"] = settings.mode
+            if settings.pad_color != "black":
+                settings_dict["pad_color"] = settings.pad_color
+            if settings.format:
+                settings_dict["format"] = settings.format
+
+            # Nest e-ink settings if enabled or any e-ink param differs from default
+            if settings.eink or settings.saturation != 2.5 or settings.contrast != 1.2 or settings.brightness != 1.1 or not settings.sharpen:
+                eink_dict: Dict[str, Any] = {"enabled": settings.eink}
+                if settings.saturation != 2.5:
+                    eink_dict["saturation"] = settings.saturation
+                if settings.contrast != 1.2:
+                    eink_dict["contrast"] = settings.contrast
+                if settings.brightness != 1.1:
+                    eink_dict["brightness"] = settings.brightness
+                if not settings.sharpen:
+                    eink_dict["sharpen"] = settings.sharpen
+                settings_dict["eink"] = eink_dict
+
             config["groups"][group_id] = settings_dict
 
         # Ensure config directory exists
