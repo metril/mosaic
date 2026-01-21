@@ -4,7 +4,7 @@
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <link rel="icon" type="image/x-icon" href="/favicon.ico">
-        <title>Sync Admin</title>
+        <title>Admin</title>
         <style type="text/css">
             * {
                 margin: 0;
@@ -614,6 +614,150 @@
                 font-weight: bold;
             }
 
+            /* Tab Navigation */
+            .tab-nav {
+                display: flex;
+                gap: 0;
+                padding: 0 24px;
+                background: #16213e;
+                border-bottom: 1px solid #0f3460;
+            }
+            .tab-btn {
+                padding: 14px 28px;
+                background: transparent;
+                border: none;
+                color: #888;
+                cursor: pointer;
+                border-bottom: 3px solid transparent;
+                font-size: 14px;
+                font-weight: 500;
+                transition: all 0.2s;
+            }
+            .tab-btn:hover { color: #ccc; }
+            .tab-btn.active {
+                color: #e94560;
+                border-bottom-color: #e94560;
+            }
+            .tab-content { display: block; }
+            .tab-content.hidden { display: none; }
+            .tab-actions {
+                margin-left: auto;
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                padding-right: 0;
+            }
+
+            /* Pull Cards (Immich) */
+            .pulls-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+                gap: 16px;
+            }
+            .pull-card {
+                background: #16213e;
+                border: 1px solid #0f3460;
+                border-radius: 10px;
+                padding: 20px;
+                transition: border-color 0.2s;
+            }
+            .pull-card:hover { border-color: #1a4a7a; }
+            .pull-card.running { border-color: #ffc107; }
+            .pull-card.completed { border-color: #4caf50; }
+            .pull-card.failed { border-color: #e94560; }
+            .pull-name {
+                font-size: 18px;
+                font-weight: 600;
+                color: #e94560;
+                margin-bottom: 4px;
+            }
+            .pull-meta {
+                font-size: 13px;
+                color: #888;
+                margin-bottom: 8px;
+                display: flex;
+                gap: 16px;
+            }
+            .pull-server {
+                font-size: 12px;
+                color: #666;
+                margin-bottom: 8px;
+            }
+            .pull-filters {
+                font-size: 12px;
+                color: #aaa;
+                background: rgba(0, 0, 0, 0.2);
+                padding: 8px 10px;
+                border-radius: 4px;
+                margin-bottom: 12px;
+            }
+            .pull-status {
+                display: inline-block;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                padding: 4px 10px;
+                border-radius: 12px;
+                margin-bottom: 12px;
+            }
+            .pull-status.idle { background: #0f3460; color: #888; }
+            .pull-status.running { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
+            .pull-status.completed { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
+            .pull-status.failed { background: rgba(233, 69, 96, 0.2); color: #e94560; }
+            .pull-progress {
+                background: #0f3460;
+                border-radius: 4px;
+                height: 24px;
+                margin: 10px 0;
+                overflow: hidden;
+                position: relative;
+            }
+            .pull-progress-bar {
+                background: linear-gradient(90deg, #4caf50, #81c784);
+                height: 100%;
+                transition: width 0.3s;
+            }
+            .pull-progress-text {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+                font-weight: 600;
+                color: #fff;
+            }
+            .pull-actions {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+            }
+            .btn-trigger {
+                background: #4caf50;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            .btn-trigger:hover { background: #43a047; }
+            .btn-trigger:disabled {
+                background: #666;
+                cursor: not-allowed;
+            }
+            .empty-state {
+                text-align: center;
+                padding: 60px 20px;
+                color: #666;
+            }
+            .empty-state h3 {
+                font-size: 18px;
+                margin-bottom: 8px;
+                color: #888;
+            }
+
             /* Responsive */
             @media (max-width: 500px) {
                 .panel {
@@ -624,19 +768,37 @@
                     gap: 16px;
                     text-align: center;
                 }
+                .tab-nav {
+                    flex-wrap: wrap;
+                    padding: 0 12px;
+                }
+                .tab-btn {
+                    padding: 12px 16px;
+                }
             }
         </style>
     </head>
     <body>
         <header class="header">
-            <h1>Sync Admin</h1>
-            <div style="display: flex; gap: 8px;">
+            <h1>Admin</h1>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="sync" onclick="switchTab('sync')">Sync Groups</button>
+            <button class="tab-btn" data-tab="immich" onclick="switchTab('immich')">Immich</button>
+            <div class="tab-actions" id="syncTabActions">
                 <button class="btn btn-secondary" onclick="saveConfig()" id="saveConfigBtn">Save Config</button>
                 <button class="btn btn-primary" onclick="openPanel('create')">+ Create Group</button>
             </div>
-        </header>
+            <div class="tab-actions hidden" id="immichTabActions">
+                <button class="btn btn-secondary" onclick="saveImmichConfig()" id="saveImmichConfigBtn">Save Config</button>
+                <button class="btn btn-primary" onclick="openImmichPanel('create')">+ Create Pull</button>
+            </div>
+        </nav>
 
-        <main class="main">
+        <!-- Sync Groups Tab -->
+        <main class="main tab-content" id="tab-sync">
             <div id="message"></div>
 
             <div class="section-header">
@@ -646,6 +808,20 @@
 
             <div id="groupsList" class="groups-grid">
                 <div class="loading">Loading groups...</div>
+            </div>
+        </main>
+
+        <!-- Immich Tab -->
+        <main class="main tab-content hidden" id="tab-immich">
+            <div id="immichMessage"></div>
+
+            <div class="section-header">
+                <span class="section-title">Immich Pulls</span>
+                <span class="section-count" id="pullCount">0</span>
+            </div>
+
+            <div id="pullsList" class="pulls-grid">
+                <div class="loading">Loading pulls...</div>
             </div>
         </main>
 
@@ -788,6 +964,113 @@
                     <button type="button" class="btn btn-ghost" onclick="closeFolderModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="applyFolderSelection()">Apply Selection</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Immich Panel overlay -->
+        <div class="panel-overlay" id="immichPanelOverlay" onclick="closeImmichPanel()"></div>
+
+        <!-- Immich Slide-in panel -->
+        <div class="panel" id="immichPanel">
+            <div class="panel-header">
+                <span class="panel-title" id="immichPanelTitle">Create Pull</span>
+                <button class="panel-close" onclick="closeImmichPanel()">&times;</button>
+            </div>
+            <div class="panel-body">
+                <form id="immichForm">
+                    <!-- Connection Settings -->
+                    <details class="settings-section" open>
+                        <summary>Connection</summary>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <label for="immichServerUrl">Server URL *</label>
+                                <input type="url" id="immichServerUrl" name="server_url" required placeholder="https://immich.example.com">
+                            </div>
+                            <div class="form-row">
+                                <label for="immichApiKey">API Key *</label>
+                                <input type="password" id="immichApiKey" name="api_key" required placeholder="Your Immich API key">
+                            </div>
+                            <div class="form-row">
+                                <button type="button" class="btn btn-secondary" onclick="testImmichConnection()" id="testConnectionBtn">
+                                    Test Connection
+                                </button>
+                                <span id="connectionStatus" style="margin-left: 12px; font-size: 13px;"></span>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Target Settings -->
+                    <details class="settings-section" open>
+                        <summary>Target</summary>
+                        <div class="section-content">
+                            <div class="form-row" id="pullNameRow">
+                                <label for="immichPullName">Pull Name *</label>
+                                <input type="text" id="immichPullName" name="name" required
+                                       pattern="^[a-zA-Z0-9_\-]+$" placeholder="my-pull-name"
+                                       title="Alphanumeric, dash, and underscore only">
+                            </div>
+                            <div class="form-row">
+                                <label for="immichTargetFolder">Target Folder *</label>
+                                <input type="text" id="immichTargetFolder" name="target_folder" required
+                                       placeholder="immich/my-photos">
+                                <small>Folder path relative to image directory</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="immichCount">Image Count</label>
+                                <input type="number" id="immichCount" name="count" value="50" min="1" max="1000">
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="immichReplaceExisting" name="replace_existing" checked>
+                                <label for="immichReplaceExisting">Clear folder before pulling</label>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Filter Criteria -->
+                    <details class="settings-section">
+                        <summary>Filters</summary>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <label for="immichAlbumId">Album</label>
+                                <select id="immichAlbumId" name="album_id">
+                                    <option value="">All photos (no album filter)</option>
+                                </select>
+                                <small>Test connection to load albums</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="immichPersonIds">People</label>
+                                <select id="immichPersonIds" name="person_ids" multiple size="4">
+                                </select>
+                                <small>Hold Ctrl/Cmd to select multiple. Test connection to load people.</small>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="immichIsFavorite" name="is_favorite">
+                                <label for="immichIsFavorite">Favorites only</label>
+                            </div>
+                            <div class="form-row-inline">
+                                <div class="form-row">
+                                    <label for="immichTakenAfter">Taken After</label>
+                                    <input type="date" id="immichTakenAfter" name="taken_after">
+                                </div>
+                                <div class="form-row">
+                                    <label for="immichTakenBefore">Taken Before</label>
+                                    <input type="date" id="immichTakenBefore" name="taken_before">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label for="immichMediaType">Media Type</label>
+                                <select id="immichMediaType" name="media_type">
+                                    <option value="IMAGE">Images only</option>
+                                    <option value="VIDEO">Videos only</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
+                </form>
+            </div>
+            <div class="panel-footer">
+                <button type="button" class="btn btn-ghost" onclick="closeImmichPanel()">Cancel</button>
+                <button type="submit" form="immichForm" class="btn btn-primary" id="immichSubmitBtn">Create Pull</button>
             </div>
         </div>
 
@@ -1877,6 +2160,571 @@
                     setInterval(loadGroups, 5000);
                 }
             }, 3000);
+
+
+            // =================================================================
+            // Tab Switching
+            // =================================================================
+
+            let currentTab = 'sync';
+            let immichPullsLoaded = false;
+
+            function switchTab(tab) {
+                currentTab = tab;
+
+                // Update tab buttons
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.tab === tab);
+                });
+
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.toggle('hidden', content.id !== `tab-${tab}`);
+                });
+
+                // Update tab actions
+                document.getElementById('syncTabActions').classList.toggle('hidden', tab !== 'sync');
+                document.getElementById('immichTabActions').classList.toggle('hidden', tab !== 'immich');
+
+                // Load Immich pulls on first switch
+                if (tab === 'immich' && !immichPullsLoaded) {
+                    loadImmichPulls();
+                    immichPullsLoaded = true;
+                }
+            }
+
+
+            // =================================================================
+            // Immich Pull Management
+            // =================================================================
+
+            const IMMICH_API_BASE = '/immich';
+            let editingPullName = null;
+            let immichPulls = [];
+            let pollIntervals = {};
+
+            async function loadImmichPulls() {
+                try {
+                    const response = await fetch(`${IMMICH_API_BASE}/pulls`, {
+                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    });
+                    if (!response.ok) throw new Error('Failed to load pulls');
+                    const data = await response.json();
+                    immichPulls = data.pulls || [];
+                    renderPullCards(immichPulls);
+                    document.getElementById('pullCount').textContent = immichPulls.length;
+                } catch (err) {
+                    console.error('Error loading pulls:', err);
+                    document.getElementById('pullsList').innerHTML =
+                        '<div class="empty-state"><h3>Error loading pulls</h3><p>' + escapeHtml(err.message) + '</p></div>';
+                }
+            }
+
+            function renderPullCards(pulls) {
+                const container = document.getElementById('pullsList');
+
+                if (pulls.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No Immich Pulls Configured</h3>
+                            <p>Click "+ Create Pull" to add an Immich pull configuration.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                container.innerHTML = pulls.map(pull => {
+                    const nameSafe = escapeHtml(pull.name);
+                    const targetSafe = escapeHtml(pull.target_folder);
+                    const serverSafe = escapeHtml(pull.server_url || '');
+
+                    // Build filter summary
+                    const filters = [];
+                    if (pull.album_id) filters.push('Album filter');
+                    if (pull.person_ids && pull.person_ids.length) filters.push(`${pull.person_ids.length} people`);
+                    if (pull.is_favorite) filters.push('Favorites only');
+                    if (pull.taken_after) filters.push(`After ${pull.taken_after}`);
+                    if (pull.taken_before) filters.push(`Before ${pull.taken_before}`);
+                    const filterSummary = filters.length ? filters.join(' • ') : 'No filters';
+
+                    return `
+                        <div class="pull-card" data-pull="${nameSafe}" id="pull-card-${nameSafe}">
+                            <div class="pull-name">${nameSafe}</div>
+                            <div class="pull-meta">
+                                <span>→ ${targetSafe}</span>
+                                <span>${pull.count || 50} images</span>
+                            </div>
+                            <div class="pull-server">${serverSafe}</div>
+                            <div class="pull-filters">${escapeHtml(filterSummary)}</div>
+                            <div class="pull-status idle" id="pull-status-${nameSafe}">Idle</div>
+                            <div class="pull-progress" id="pull-progress-${nameSafe}" style="display: none;">
+                                <div class="pull-progress-bar" id="pull-progress-bar-${nameSafe}"></div>
+                                <span class="pull-progress-text" id="pull-progress-text-${nameSafe}">0/0</span>
+                            </div>
+                            <div class="pull-actions">
+                                <button class="btn-trigger" onclick="triggerPull('${nameSafe}')" id="pull-trigger-${nameSafe}">
+                                    ▶ Pull Now
+                                </button>
+                                <button class="btn btn-secondary" onclick="openImmichPanel('edit', '${nameSafe}')">Edit</button>
+                                <button class="btn btn-ghost" onclick="deletePull('${nameSafe}')">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Check status for any running pulls
+                pulls.forEach(pull => {
+                    checkPullStatus(pull.name);
+                });
+            }
+
+            async function triggerPull(pullName) {
+                const triggerBtn = document.getElementById(`pull-trigger-${pullName}`);
+                if (triggerBtn) {
+                    triggerBtn.disabled = true;
+                    triggerBtn.textContent = 'Starting...';
+                }
+
+                try {
+                    const response = await fetch(`${IMMICH_API_BASE}/pull/${encodeURIComponent(pullName)}`, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    });
+
+                    if (!response.ok) throw new Error('Failed to start pull');
+
+                    showImmichMessage('Pull started: ' + pullName, 'success');
+                    pollPullStatus(pullName);
+                } catch (err) {
+                    showImmichMessage('Error: ' + err.message, 'error');
+                    if (triggerBtn) {
+                        triggerBtn.disabled = false;
+                        triggerBtn.textContent = '▶ Pull Now';
+                    }
+                }
+            }
+
+            function pollPullStatus(pullName) {
+                // Clear any existing poll for this pull
+                if (pollIntervals[pullName]) {
+                    clearInterval(pollIntervals[pullName]);
+                }
+
+                // Poll every second
+                pollIntervals[pullName] = setInterval(async () => {
+                    const done = await checkPullStatus(pullName);
+                    if (done) {
+                        clearInterval(pollIntervals[pullName]);
+                        delete pollIntervals[pullName];
+                    }
+                }, 1000);
+
+                // Also check immediately
+                checkPullStatus(pullName);
+            }
+
+            async function checkPullStatus(pullName) {
+                try {
+                    const response = await fetch(`${IMMICH_API_BASE}/pull/${encodeURIComponent(pullName)}/status`);
+                    if (!response.ok) return true;
+
+                    const status = await response.json();
+                    updatePullCardStatus(pullName, status);
+
+                    return status.status !== 'running';
+                } catch (err) {
+                    console.error('Error checking pull status:', err);
+                    return true;
+                }
+            }
+
+            function updatePullCardStatus(pullName, status) {
+                const card = document.getElementById(`pull-card-${pullName}`);
+                const statusEl = document.getElementById(`pull-status-${pullName}`);
+                const progressEl = document.getElementById(`pull-progress-${pullName}`);
+                const progressBar = document.getElementById(`pull-progress-bar-${pullName}`);
+                const progressText = document.getElementById(`pull-progress-text-${pullName}`);
+                const triggerBtn = document.getElementById(`pull-trigger-${pullName}`);
+
+                if (!card) return;
+
+                // Update card class
+                card.className = 'pull-card ' + (status.status || 'idle');
+
+                // Update status badge
+                if (statusEl) {
+                    statusEl.className = 'pull-status ' + (status.status || 'idle');
+                    statusEl.textContent = (status.status || 'idle').charAt(0).toUpperCase() +
+                                          (status.status || 'idle').slice(1);
+                }
+
+                // Update progress
+                if (progressEl && progressBar && progressText) {
+                    if (status.status === 'running') {
+                        progressEl.style.display = 'block';
+                        const percent = status.total > 0 ? (status.downloaded / status.total * 100) : 0;
+                        progressBar.style.width = percent + '%';
+                        progressText.textContent = `${status.downloaded || 0}/${status.total || 0}`;
+                    } else {
+                        progressEl.style.display = 'none';
+                    }
+                }
+
+                // Update trigger button
+                if (triggerBtn) {
+                    if (status.status === 'running') {
+                        triggerBtn.disabled = true;
+                        triggerBtn.textContent = 'Running...';
+                    } else {
+                        triggerBtn.disabled = false;
+                        triggerBtn.textContent = '▶ Pull Now';
+                    }
+                }
+
+                // Show completion message
+                if (status.status === 'completed' && status.downloaded !== undefined) {
+                    showImmichMessage(`Pull "${pullName}" completed: ${status.downloaded}/${status.total} images`, 'success');
+                } else if (status.status === 'failed' && status.errors && status.errors.length) {
+                    showImmichMessage(`Pull "${pullName}" failed: ${status.errors[0]}`, 'error');
+                }
+            }
+
+            async function deletePull(pullName) {
+                if (!confirm(`Delete pull "${pullName}"?`)) return;
+
+                try {
+                    const response = await fetch(`${IMMICH_API_BASE}/pulls/${encodeURIComponent(pullName)}`, {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    });
+
+                    if (!response.ok) throw new Error('Failed to delete pull');
+
+                    showImmichMessage('Pull deleted: ' + pullName, 'success');
+                    loadImmichPulls();
+                } catch (err) {
+                    showImmichMessage('Error: ' + err.message, 'error');
+                }
+            }
+
+            async function saveImmichConfig() {
+                const btn = document.getElementById('saveImmichConfigBtn');
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+
+                try {
+                    const response = await fetch(`${IMMICH_API_BASE}/pulls/save`, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    });
+
+                    if (!response.ok) throw new Error('Failed to save config');
+
+                    const data = await response.json();
+                    showImmichMessage(data.message || 'Config saved', 'success');
+                } catch (err) {
+                    showImmichMessage('Error: ' + err.message, 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Save Config';
+                }
+            }
+
+
+            // =================================================================
+            // Immich Panel (Create/Edit)
+            // =================================================================
+
+            function openImmichPanel(mode, pullName = null) {
+                editingPullName = pullName;
+                const panel = document.getElementById('immichPanel');
+                const overlay = document.getElementById('immichPanelOverlay');
+                const title = document.getElementById('immichPanelTitle');
+                const submitBtn = document.getElementById('immichSubmitBtn');
+                const nameRow = document.getElementById('pullNameRow');
+                const form = document.getElementById('immichForm');
+
+                form.reset();
+
+                // Clear album/people dropdowns
+                document.getElementById('immichAlbumId').innerHTML =
+                    '<option value="">All photos (no album filter)</option>';
+                document.getElementById('immichPersonIds').innerHTML = '';
+                document.getElementById('connectionStatus').textContent = '';
+
+                if (mode === 'edit' && pullName) {
+                    title.textContent = 'Edit Pull';
+                    submitBtn.textContent = 'Update Pull';
+                    nameRow.style.display = 'none';
+
+                    // Find the pull and populate form
+                    const pull = immichPulls.find(p => p.name === pullName);
+                    if (pull) {
+                        populateImmichForm(pull);
+                    }
+                } else {
+                    title.textContent = 'Create Pull';
+                    submitBtn.textContent = 'Create Pull';
+                    nameRow.style.display = 'block';
+                }
+
+                panel.classList.add('open');
+                overlay.classList.add('visible');
+            }
+
+            function closeImmichPanel() {
+                document.getElementById('immichPanel').classList.remove('open');
+                document.getElementById('immichPanelOverlay').classList.remove('visible');
+                editingPullName = null;
+            }
+
+            function populateImmichForm(pull) {
+                document.getElementById('immichServerUrl').value = pull.server_url || '';
+                // API key is masked, so we show a placeholder
+                document.getElementById('immichApiKey').value = '';
+                document.getElementById('immichApiKey').placeholder = pull.api_key ? 'Keep existing (leave blank)' : 'Your Immich API key';
+                document.getElementById('immichTargetFolder').value = pull.target_folder || '';
+                document.getElementById('immichCount').value = pull.count || 50;
+                document.getElementById('immichReplaceExisting').checked = pull.replace_existing !== false;
+                document.getElementById('immichIsFavorite').checked = pull.is_favorite || false;
+                document.getElementById('immichTakenAfter').value = pull.taken_after || '';
+                document.getElementById('immichTakenBefore').value = pull.taken_before || '';
+                document.getElementById('immichMediaType').value = pull.media_type || 'IMAGE';
+
+                // Album and people need to be loaded via test connection
+                if (pull.album_id) {
+                    const albumSelect = document.getElementById('immichAlbumId');
+                    const opt = document.createElement('option');
+                    opt.value = pull.album_id;
+                    opt.textContent = `Album: ${pull.album_id}`;
+                    opt.selected = true;
+                    albumSelect.appendChild(opt);
+                }
+            }
+
+            function getImmichFormData() {
+                const form = document.getElementById('immichForm');
+                const data = {
+                    server_url: form.server_url.value.trim(),
+                    target_folder: form.target_folder.value.trim(),
+                    count: parseInt(form.count.value) || 50,
+                    replace_existing: form.replace_existing.checked,
+                    media_type: form.media_type.value,
+                };
+
+                // Only include name for create
+                if (!editingPullName) {
+                    data.name = form.name.value.trim();
+                } else {
+                    data.name = editingPullName;
+                }
+
+                // Only include API key if provided (for updates, blank means keep existing)
+                const apiKey = form.api_key.value.trim();
+                if (apiKey || !editingPullName) {
+                    data.api_key = apiKey;
+                }
+
+                // Optional filters
+                const albumId = form.album_id.value;
+                if (albumId) data.album_id = albumId;
+
+                const personIds = Array.from(form.person_ids.selectedOptions).map(o => o.value);
+                if (personIds.length) data.person_ids = personIds;
+
+                if (form.is_favorite.checked) data.is_favorite = true;
+
+                const takenAfter = form.taken_after.value;
+                if (takenAfter) data.taken_after = takenAfter;
+
+                const takenBefore = form.taken_before.value;
+                if (takenBefore) data.taken_before = takenBefore;
+
+                return data;
+            }
+
+            document.getElementById('immichForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const data = getImmichFormData();
+
+                // Validate required fields
+                if (!data.name) {
+                    showImmichMessage('Pull name is required', 'error');
+                    return;
+                }
+                if (!data.server_url) {
+                    showImmichMessage('Server URL is required', 'error');
+                    return;
+                }
+                if (!data.api_key && !editingPullName) {
+                    showImmichMessage('API key is required', 'error');
+                    return;
+                }
+                if (!data.target_folder) {
+                    showImmichMessage('Target folder is required', 'error');
+                    return;
+                }
+
+                const submitBtn = document.getElementById('immichSubmitBtn');
+                submitBtn.disabled = true;
+                submitBtn.textContent = editingPullName ? 'Updating...' : 'Creating...';
+
+                try {
+                    const response = await fetch(`${IMMICH_API_BASE}/pulls`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN
+                        },
+                        body: JSON.stringify(data)
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.detail || 'Failed to save pull');
+                    }
+
+                    showImmichMessage(editingPullName ? 'Pull updated' : 'Pull created', 'success');
+                    closeImmichPanel();
+                    loadImmichPulls();
+                } catch (err) {
+                    showImmichMessage('Error: ' + err.message, 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = editingPullName ? 'Update Pull' : 'Create Pull';
+                }
+            });
+
+
+            // =================================================================
+            // Immich Connection Test
+            // =================================================================
+
+            async function testImmichConnection() {
+                const serverUrl = document.getElementById('immichServerUrl').value.trim();
+                const apiKey = document.getElementById('immichApiKey').value.trim();
+                const statusEl = document.getElementById('connectionStatus');
+                const btn = document.getElementById('testConnectionBtn');
+
+                if (!serverUrl) {
+                    statusEl.textContent = 'Enter server URL';
+                    statusEl.style.color = '#e94560';
+                    return;
+                }
+                if (!apiKey && !editingPullName) {
+                    statusEl.textContent = 'Enter API key';
+                    statusEl.style.color = '#e94560';
+                    return;
+                }
+
+                btn.disabled = true;
+                btn.textContent = 'Testing...';
+                statusEl.textContent = '';
+
+                try {
+                    const response = await fetch(`${IMMICH_API_BASE}/test-connection`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN
+                        },
+                        body: JSON.stringify({ server_url: serverUrl, api_key: apiKey })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        statusEl.textContent = `✓ Connected (v${result.server_version}, ${result.album_count} albums)`;
+                        statusEl.style.color = '#4caf50';
+
+                        // Load albums and people
+                        await loadAlbumsAndPeople(serverUrl, apiKey);
+                    } else {
+                        statusEl.textContent = '✗ ' + (result.error || 'Connection failed');
+                        statusEl.style.color = '#e94560';
+                    }
+                } catch (err) {
+                    statusEl.textContent = '✗ ' + err.message;
+                    statusEl.style.color = '#e94560';
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Test Connection';
+                }
+            }
+
+            async function loadAlbumsAndPeople(serverUrl, apiKey) {
+                try {
+                    const [albumsRes, peopleRes] = await Promise.all([
+                        fetch(`${IMMICH_API_BASE}/albums?server_url=${encodeURIComponent(serverUrl)}&api_key=${encodeURIComponent(apiKey)}`),
+                        fetch(`${IMMICH_API_BASE}/people?server_url=${encodeURIComponent(serverUrl)}&api_key=${encodeURIComponent(apiKey)}`)
+                    ]);
+
+                    if (albumsRes.ok) {
+                        const albumsData = await albumsRes.json();
+                        populateAlbumDropdown(albumsData.albums || []);
+                    }
+
+                    if (peopleRes.ok) {
+                        const peopleData = await peopleRes.json();
+                        populatePeopleMultiselect(peopleData.people || []);
+                    }
+                } catch (err) {
+                    console.error('Error loading albums/people:', err);
+                }
+            }
+
+            function populateAlbumDropdown(albums) {
+                const select = document.getElementById('immichAlbumId');
+                const currentValue = select.value;
+
+                select.innerHTML = '<option value="">All photos (no album filter)</option>';
+                albums.forEach(album => {
+                    const opt = document.createElement('option');
+                    opt.value = album.id;
+                    opt.textContent = `${album.name} (${album.asset_count} items)`;
+                    if (album.id === currentValue) opt.selected = true;
+                    select.appendChild(opt);
+                });
+            }
+
+            function populatePeopleMultiselect(people) {
+                const select = document.getElementById('immichPersonIds');
+                select.innerHTML = '';
+
+                people.forEach(person => {
+                    const opt = document.createElement('option');
+                    opt.value = person.id;
+                    opt.textContent = person.name || 'Unknown';
+                    select.appendChild(opt);
+                });
+            }
+
+
+            // =================================================================
+            // Immich Messages
+            // =================================================================
+
+            function showImmichMessage(text, type = 'info') {
+                const container = document.getElementById('immichMessage');
+                if (!container) return;
+
+                const colors = {
+                    success: '#4caf50',
+                    error: '#e94560',
+                    info: '#2196f3'
+                };
+
+                container.innerHTML = `
+                    <div style="padding: 12px 16px; background: ${colors[type]}22; border: 1px solid ${colors[type]}; border-radius: 6px; margin-bottom: 16px; color: ${colors[type]};">
+                        ${escapeHtml(text)}
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    container.innerHTML = '';
+                }, 5000);
+            }
         </script>
     </body>
 </html>

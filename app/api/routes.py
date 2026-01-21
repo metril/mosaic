@@ -589,16 +589,14 @@ def get_sync_manager(request: Request) -> SyncManager:
     return request.app.state.sync_manager
 
 
-@router.get("/sync/admin", include_in_schema=False)
-async def sync_admin_page(request: Request, user: Optional[User] = Depends(get_optional_user)):
+@router.get("/admin", include_in_schema=False)
+async def admin_page(request: Request, user: Optional[User] = Depends(get_optional_user)):
     """
-    Serve the admin dashboard for managing sync groups.
+    Serve the unified admin dashboard.
 
-    This HTML page allows administrators to:
-    - View all active sync groups
-    - Create new sync groups with settings
-    - Update group settings (duration, image processing params)
-    - Delete groups (disconnects all browsers)
+    This HTML page provides tabbed access to:
+    - Sync Groups: Manage synchronized browser displays
+    - Immich: Configure and trigger image pulls from Immich servers
 
     Requires authentication if OIDC is configured.
     """
@@ -606,19 +604,25 @@ async def sync_admin_page(request: Request, user: Optional[User] = Depends(get_o
 
     # If OIDC enabled but user not authenticated, redirect to login
     if config.enabled and user is None:
-        return RedirectResponse(url="/auth/login?redirect=/sync/admin")
+        return RedirectResponse(url="/auth/login?redirect=/admin")
 
     # Generate CSRF token for the page
     csrf_token = get_csrf_token(request)
 
     return templates.TemplateResponse(
-        "sync_admin.html",
+        "admin.html",
         {
             "request": request,
             "user": user,
             "csrf_token": csrf_token,
         }
     )
+
+
+@router.get("/sync/admin", include_in_schema=False)
+async def sync_admin_redirect():
+    """Redirect old sync admin URL to new unified admin page."""
+    return RedirectResponse(url="/admin", status_code=302)
 
 
 @router.get("/sync/admin/groups", responses={
