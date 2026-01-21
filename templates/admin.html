@@ -2576,20 +2576,25 @@
                     submitBtn.textContent = 'Update Pull';
                     nameRow.style.display = 'none';
 
-                    // Remove required for editing since key may already exist
+                    // Remove required from hidden name field and API key field
+                    document.getElementById('immichPullName').removeAttribute('required');
                     document.getElementById('immichApiKey').removeAttribute('required');
 
                     // Find the pull and populate form
                     const pull = immichPulls.find(p => p.name === pullName);
                     if (pull) {
                         populateImmichForm(pull);
+
+                        // Auto-load albums and people using stored API key
+                        loadAlbumsAndPeople(pull.server_url, '');
                     }
                 } else {
                     title.textContent = 'Create Pull';
                     submitBtn.textContent = 'Create Pull';
                     nameRow.style.display = 'block';
 
-                    // Require API key for new pulls
+                    // Require name and API key for new pulls
+                    document.getElementById('immichPullName').setAttribute('required', 'required');
                     document.getElementById('immichApiKey').setAttribute('required', 'required');
                     document.getElementById('clearApiKeyBtn').style.display = 'none';
                     document.getElementById('apiKeyStatus').style.display = 'none';
