@@ -727,6 +727,24 @@ class SyncGroupCreateRequest(BaseModel):
     contrast: float = Field(EINK_CONTRAST, ge=0.0, le=5.0, description="E-Ink contrast")
     brightness: float = Field(EINK_BRIGHTNESS, ge=0.0, le=5.0, description="E-Ink brightness")
     sharpen: bool = Field(EINK_SHARPEN, description="Apply sharpening")
+    # Clock settings
+    show_time: bool = Field(False, description="Show time overlay")
+    show_date: bool = Field(False, description="Show date overlay")
+    time_format: Literal['12', '24'] = Field('24', description="Time format (12/24 hour)")
+    date_format: str = Field('DDDD, MMMM DD', max_length=100, description="Date format (Immich Kiosk tokens)")
+    clock_source: Literal['client', 'ntp', 'homeassistant'] = Field('client', description="Clock time source")
+    clock_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = Field('bottom-left', description="Clock position")
+    # Weather settings
+    show_weather: bool = Field(False, description="Show weather overlay")
+    weather_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = Field('bottom-right', description="Weather position")
+    weather_ha_entity: Optional[str] = Field(None, max_length=100, description="Home Assistant weather entity ID")
+    weather_show_forecast: bool = Field(False, description="Show weather forecast")
+    # Layout settings
+    layout: Literal['single', 'splitview', 'splitview-landscape'] = Field('single', description="Display layout")
+    # Background blur settings
+    background_blur: bool = Field(False, description="Enable background blur")
+    background_blur_amount: int = Field(50, ge=0, le=100, description="Blur intensity (0-100)")
+    image_fit: Literal['contain', 'cover'] = Field('contain', description="Image fit mode")
 
 
 class SyncGroupUpdateRequest(BaseModel):
