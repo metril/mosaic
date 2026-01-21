@@ -911,6 +911,10 @@
                                     <option value="crop">Crop (fill)</option>
                                 </select>
                             </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="preserve_aspect" name="preserve_aspect" checked>
+                                <label for="preserve_aspect">Preserve aspect ratio</label>
+                            </div>
                             <div class="form-row">
                                 <label for="pad_color">Padding Color</label>
                                 <input type="text" id="pad_color" name="pad_color" value="black" placeholder="black">
@@ -1338,6 +1342,7 @@
                 document.getElementById('contrast').value = 1.2;
                 document.getElementById('brightness').value = 1.1;
                 document.getElementById('sharpen').checked = true;
+                document.getElementById('preserve_aspect').checked = true;
                 // Layout & Background defaults
                 document.getElementById('layout').value = 'single';
                 document.getElementById('image_fit').value = 'contain';
@@ -1373,6 +1378,7 @@
                 document.getElementById('contrast').value = settings.contrast ?? 1.2;
                 document.getElementById('brightness').value = settings.brightness ?? 1.1;
                 document.getElementById('sharpen').checked = settings.sharpen ?? true;
+                document.getElementById('preserve_aspect').checked = settings.preserve_aspect ?? true;
                 // Layout & Background
                 document.getElementById('layout').value = settings.layout || 'single';
                 document.getElementById('image_fit').value = settings.image_fit || 'contain';
@@ -1421,6 +1427,7 @@
                 data.contrast = parseFloat(form.contrast.value) || 1.2;
                 data.brightness = parseFloat(form.brightness.value) || 1.1;
                 data.sharpen = form.sharpen.checked;
+                data.preserve_aspect = form.preserve_aspect.checked;
 
                 // Layout & Background
                 data.layout = form.layout.value;
