@@ -119,13 +119,24 @@ class ImagePool:
         self._shown_images: Set[str] = set()  # Images shown this complete cycle
         self._assigned_images: Dict[str, str] = {}  # browser_id -> image path
         self._lock = asyncio.Lock()  # Lock for atomic assignment (#1)
+        self.error: Optional[str] = None  # Error message if folders invalid
         self._refresh_images()
 
     def _refresh_images(self) -> None:
         """Reload the list of available images based on settings"""
+        self.error = None  # Reset error state
         folder_paths = None
         if self.settings.folders:
             folder_paths = [f.strip() for f in self.settings.folders.split(",") if f.strip()]
+            # Check for missing folders
+            missing = []
+            for folder in folder_paths:
+                full_path = self.image_service.image_dir / folder.lstrip("/")
+                if not full_path.exists():
+                    missing.append(folder)
+            if missing:
+                self.error = f"Folders not found: {', '.join(missing)}"
+                logger.error(f"ImagePool error: {self.error}")
 
         self._all_images = self.image_service.get_image_files(
             folder_paths=folder_paths,
@@ -244,6 +255,7 @@ class SyncGroup:
         """Convert to dictionary for JSON serialization"""
         return {
             "group_id": self.group_id,
+            "error": self.image_pool.error,
             "browser_count": len(self.browsers),
             "current_cycle": self.current_cycle,
             "paused": self.paused,

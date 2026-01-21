@@ -55,3 +55,6 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Config files (keep examples)
+config/sync_groups.yaml

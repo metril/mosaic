@@ -79,6 +79,17 @@
             .group-card:hover {
                 border-color: #1a4a7a;
             }
+            .group-card.has-error {
+                border-color: #e94560;
+            }
+            .group-error {
+                font-size: 12px;
+                color: #ff6b6b;
+                background: rgba(233, 69, 96, 0.15);
+                padding: 6px 10px;
+                border-radius: 4px;
+                margin-bottom: 8px;
+            }
             .group-name {
                 font-size: 18px;
                 font-weight: 600;
@@ -1062,6 +1073,11 @@
                     // Status indicator
                     const statusText = isPaused ? ' (Paused)' : '';
 
+                    // Error indicator
+                    const errorHtml = group.error
+                        ? `<div class="group-error" title="${escapeHtml(group.error)}">⚠️ ${escapeHtml(group.error)}</div>`
+                        : '';
+
                     // Build history strip for each browser
                     const browserHistoryHtml = group.browsers.map(browser => {
                         const historyCount = browser.history_count || 0;
@@ -1117,8 +1133,9 @@
                         `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
 
                     return `
-                        <div class="group-card">
+                        <div class="group-card${group.error ? ' has-error' : ''}">
                             <div class="group-name">${groupIdSafe}${statusText}</div>
+                            ${errorHtml}
                             <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
                             ${countdownHtml}
                             <div class="group-controls">
