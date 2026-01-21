@@ -745,6 +745,14 @@ class SyncGroupCreateRequest(BaseModel):
     background_blur: bool = Field(False, description="Enable background blur")
     background_blur_amount: int = Field(50, ge=0, le=100, description="Blur intensity (0-100)")
     image_fit: Literal['contain', 'cover'] = Field('contain', description="Image fit mode")
+    # Burn-in prevention settings
+    burn_in_protection: bool = Field(False, description="Enable burn-in protection")
+    burn_in_interval: int = Field(5, ge=1, le=60, description="Dimming interval (minutes)")
+    burn_in_duration: int = Field(30, ge=5, le=120, description="Dimming duration (seconds)")
+    burn_in_opacity: int = Field(70, ge=10, le=90, description="Dimmed opacity (%)")
+    burn_in_shift_enabled: bool = Field(True, description="Enable pixel shifting")
+    burn_in_shift_amount: int = Field(5, ge=1, le=20, description="Shift amount (pixels)")
+    burn_in_shift_interval: int = Field(60, ge=10, le=300, description="Shift interval (seconds)")
 
 
 class SyncGroupUpdateRequest(BaseModel):
@@ -792,6 +800,14 @@ class SyncGroupUpdateRequest(BaseModel):
     background_blur: Optional[bool] = Field(None, description="Enable background blur")
     background_blur_amount: Optional[int] = Field(None, ge=0, le=100, description="Blur intensity (0-100)")
     image_fit: Optional[Literal['contain', 'cover']] = Field(None, description="Image fit mode")
+    # Burn-in prevention settings
+    burn_in_protection: Optional[bool] = Field(None, description="Enable burn-in protection")
+    burn_in_interval: Optional[int] = Field(None, ge=1, le=60, description="Dimming interval (minutes)")
+    burn_in_duration: Optional[int] = Field(None, ge=5, le=120, description="Dimming duration (seconds)")
+    burn_in_opacity: Optional[int] = Field(None, ge=10, le=90, description="Dimmed opacity (%)")
+    burn_in_shift_enabled: Optional[bool] = Field(None, description="Enable pixel shifting")
+    burn_in_shift_amount: Optional[int] = Field(None, ge=1, le=20, description="Shift amount (pixels)")
+    burn_in_shift_interval: Optional[int] = Field(None, ge=10, le=300, description="Shift interval (seconds)")
 
 
 # =============================================================================
