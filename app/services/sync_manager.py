@@ -11,12 +11,13 @@ import math
 import os
 import random
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any
+from typing import Dict, List, Optional, Set, Any, Literal
 from fastapi import WebSocket
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.image_service import ImageService
 from app.utils.blur import create_blur_background
@@ -44,69 +45,87 @@ class BrowserStatus(str, Enum):
     DISCONNECTED = "disconnected"
 
 
-@dataclass
-class SyncGroupSettings:
+class SyncGroupSettings(BaseModel):
     """All configurable parameters for a sync group"""
-    duration: int = 30  # Cycle duration in seconds (5-3600)
-    folders: Optional[str] = None  # Comma-separated folder paths
-    recursive: bool = False  # Search subfolders
-    width: Optional[int] = None  # Target width
-    height: Optional[int] = None  # Target height
-    preserve_aspect: bool = True  # Preserve aspect ratio
-    mode: str = "fit"  # "fit" or "crop"
-    pad_color: str = "black"  # Letterbox padding color
-    eink: bool = False  # E-Ink color mapping
-    format: Optional[str] = None  # Output format
-    saturation: float = 2.5  # E-Ink saturation
-    contrast: float = 1.2  # E-Ink contrast
-    brightness: float = 1.1  # E-Ink brightness
-    sharpen: bool = True  # E-Ink sharpening
+    model_config = ConfigDict(extra='ignore')  # Ignore unknown keys from old configs
+
+    # Basic settings
+    duration: int = Field(default=30, ge=5, le=3600)
+    folders: Optional[str] = None
+    recursive: bool = False
+    width: Optional[int] = Field(default=None, ge=1)
+    height: Optional[int] = Field(default=None, ge=1)
+    preserve_aspect: bool = True
+    mode: Literal['fit', 'fill', 'stretch'] = 'fit'
+    pad_color: str = 'black'
+    format: Optional[str] = None
+
+    # E-Ink settings
+    eink: bool = False
+    saturation: float = Field(default=2.5, ge=0.0, le=10.0)
+    contrast: float = Field(default=1.2, ge=0.0, le=5.0)
+    brightness: float = Field(default=1.1, ge=0.0, le=5.0)
+    sharpen: bool = True
 
     # Clock settings
-    show_time: bool = False  # Display time overlay
-    show_date: bool = False  # Display date overlay
-    time_format: str = "24"  # "12" or "24" hour format
-    date_format: str = "DDDD, MMMM DD"  # Immich Kiosk token format
-    clock_source: str = "client"  # "client", "ntp", or "homeassistant"
-    clock_position: str = "bottom-left"  # "top-left", "top-right", "bottom-left", "bottom-right"
+    show_time: bool = False
+    show_date: bool = False
+    time_format: Literal['12', '24'] = '24'
+    date_format: str = 'DDDD, MMMM DD'
+    clock_source: Literal['client', 'ntp', 'homeassistant'] = 'client'
+    clock_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = 'bottom-left'
 
     # Weather settings
-    show_weather: bool = False  # Display weather overlay
-    weather_position: str = "bottom-right"  # Position for weather display
-    weather_ha_entity: Optional[str] = None  # Home Assistant weather entity ID
-    weather_show_forecast: bool = False  # Show 3-day forecast
+    show_weather: bool = False
+    weather_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = 'bottom-right'
+    weather_ha_entity: Optional[str] = None
+    weather_show_forecast: bool = False
 
     # Layout settings
-    layout: str = "single"  # "single", "splitview", "splitview-landscape"
+    layout: Literal['single', 'splitview', 'splitview-landscape'] = 'single'
 
     # Background blur settings
-    background_blur: bool = False  # Enable blurred background for letterboxed images
-    background_blur_amount: int = 50  # Blur intensity (0-100)
-    image_fit: str = "contain"  # "contain" or "cover"
+    background_blur: bool = False
+    background_blur_amount: int = Field(default=50, ge=0, le=100)
+    image_fit: Literal['contain', 'cover'] = 'contain'
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization"""
-        return asdict(self)
+        """Convert to dictionary for JSON serialization (API responses)"""
+        return self.model_dump()
+
+    def to_config_dict(self) -> Dict[str, Any]:
+        """Convert to dict for YAML config, with nested eink structure."""
+        data = self.model_dump(exclude_defaults=True)
+
+        # Nest eink params for cleaner YAML
+        eink_keys = ['saturation', 'contrast', 'brightness', 'sharpen']
+        eink_vals = {k: data.pop(k) for k in eink_keys if k in data}
+        if 'eink' in data or eink_vals:
+            eink_dict = {'enabled': data.pop('eink', False)}
+            eink_dict.update(eink_vals)
+            # Only include eink section if it has non-default values
+            if eink_dict != {'enabled': False}:
+                data['eink'] = eink_dict
+
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SyncGroupSettings":
-        """Create from dictionary, handling nested eink section"""
-        # Make a copy to avoid mutating the original
+        """Create from dictionary, handling nested eink section (alias for from_config_dict)"""
+        return cls.from_config_dict(data)
+
+    @classmethod
+    def from_config_dict(cls, data: Dict[str, Any]) -> "SyncGroupSettings":
+        """Create from YAML config dict, handling nested eink section."""
         data = data.copy()
-
-        # Handle nested eink section from YAML config
-        if "eink" in data and isinstance(data["eink"], dict):
-            eink_settings = data.pop("eink")
-            data["eink"] = eink_settings.get("enabled", True)
-            data["saturation"] = eink_settings.get("saturation", 2.5)
-            data["contrast"] = eink_settings.get("contrast", 1.2)
-            data["brightness"] = eink_settings.get("brightness", 1.1)
-            data["sharpen"] = eink_settings.get("sharpen", True)
-
-        # Filter out any unknown keys
-        valid_keys = {f.name for f in cls.__dataclass_fields__.values()}
-        filtered_data = {k: v for k, v in data.items() if k in valid_keys}
-        return cls(**filtered_data)
+        if 'eink' in data and isinstance(data['eink'], dict):
+            eink = data.pop('eink')
+            data['eink'] = eink.get('enabled', True)
+            data['saturation'] = eink.get('saturation', 2.5)
+            data['contrast'] = eink.get('contrast', 1.2)
+            data['brightness'] = eink.get('brightness', 1.1)
+            data['sharpen'] = eink.get('sharpen', True)
+        return cls.model_validate(data)
 
 
 def _utc_now() -> datetime:
@@ -367,85 +386,14 @@ class SyncManager:
         """
         import yaml
 
-        config: Dict[str, Any] = {"groups": {}}
-        for group_id, group in self.groups.items():
-            settings = group.settings
-            settings_dict: Dict[str, Any] = {}
+        config = {
+            "groups": {
+                group_id: group.settings.to_config_dict()
+                for group_id, group in self.groups.items()
+            }
+        }
 
-            # Basic settings (only include non-default/non-None values)
-            if settings.duration != 30:
-                settings_dict["duration"] = settings.duration
-            if settings.folders:
-                settings_dict["folders"] = settings.folders
-            if settings.recursive:
-                settings_dict["recursive"] = settings.recursive
-            if settings.width:
-                settings_dict["width"] = settings.width
-            if settings.height:
-                settings_dict["height"] = settings.height
-            if not settings.preserve_aspect:
-                settings_dict["preserve_aspect"] = settings.preserve_aspect
-            if settings.mode != "fit":
-                settings_dict["mode"] = settings.mode
-            if settings.pad_color != "black":
-                settings_dict["pad_color"] = settings.pad_color
-            if settings.format:
-                settings_dict["format"] = settings.format
-
-            # Nest e-ink settings if enabled or any e-ink param differs from default
-            if settings.eink or settings.saturation != 2.5 or settings.contrast != 1.2 or settings.brightness != 1.1 or not settings.sharpen:
-                eink_dict: Dict[str, Any] = {"enabled": settings.eink}
-                if settings.saturation != 2.5:
-                    eink_dict["saturation"] = settings.saturation
-                if settings.contrast != 1.2:
-                    eink_dict["contrast"] = settings.contrast
-                if settings.brightness != 1.1:
-                    eink_dict["brightness"] = settings.brightness
-                if not settings.sharpen:
-                    eink_dict["sharpen"] = settings.sharpen
-                settings_dict["eink"] = eink_dict
-
-            # Clock settings
-            if settings.show_time:
-                settings_dict["show_time"] = settings.show_time
-            if settings.show_date:
-                settings_dict["show_date"] = settings.show_date
-            if settings.time_format != "24":
-                settings_dict["time_format"] = settings.time_format
-            if settings.date_format != "DDDD, MMMM DD":
-                settings_dict["date_format"] = settings.date_format
-            if settings.clock_source != "client":
-                settings_dict["clock_source"] = settings.clock_source
-            if settings.clock_position != "bottom-left":
-                settings_dict["clock_position"] = settings.clock_position
-
-            # Weather settings
-            if settings.show_weather:
-                settings_dict["show_weather"] = settings.show_weather
-            if settings.weather_position != "bottom-right":
-                settings_dict["weather_position"] = settings.weather_position
-            if settings.weather_ha_entity:
-                settings_dict["weather_ha_entity"] = settings.weather_ha_entity
-            if settings.weather_show_forecast:
-                settings_dict["weather_show_forecast"] = settings.weather_show_forecast
-
-            # Layout settings
-            if settings.layout != "single":
-                settings_dict["layout"] = settings.layout
-
-            # Blur settings
-            if settings.background_blur:
-                settings_dict["background_blur"] = settings.background_blur
-            if settings.background_blur_amount != 50:
-                settings_dict["background_blur_amount"] = settings.background_blur_amount
-            if settings.image_fit != "contain":
-                settings_dict["image_fit"] = settings.image_fit
-
-            config["groups"][group_id] = settings_dict
-
-        # Ensure config directory exists
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
-
         with open(self.config_path, "w") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
