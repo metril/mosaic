@@ -925,6 +925,21 @@
 
                     // Load the assigned image
                     loadImage(currentImage, msg.image_url, function() {
+                        // Fetch and apply blur for initial image
+                        if (blurManager.enabled && msg.image_id) {
+                            var blurAmount = blurManager.settings.background_blur_amount || 50;
+                            var url = '/api/blur/' + encodeURIComponent(msg.image_id) + '?blur_amount=' + blurAmount;
+                            fetch(url)
+                                .then(function(r) { return r.json(); })
+                                .then(function(data) {
+                                    if (data.blur_url) {
+                                        blurManager.update(data.blur_url);
+                                    }
+                                })
+                                .catch(function(err) {
+                                    console.warn('Failed to fetch initial blur:', err);
+                                });
+                        }
                         sendReady();
                     });
                 }
