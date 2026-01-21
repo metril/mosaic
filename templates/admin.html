@@ -546,6 +546,14 @@
                 border-left: 1px solid #0f3460;
                 padding-left: 8px;
             }
+            .folder-create-row {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 12px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid #0f3460;
+            }
+            .folder-create-row input { flex: 1; }
 
             /* History details (collapsible) */
             .history-details {
@@ -953,16 +961,20 @@
         <div class="modal" id="folderModal">
             <div class="modal-content modal-lg">
                 <div class="modal-header">
-                    <span class="modal-title">Select Folders</span>
+                    <span class="modal-title" id="folderModalTitle">Select Folders</span>
                     <button class="modal-close" onclick="closeFolderModal()">&times;</button>
                 </div>
                 <div class="modal-body">
+                    <div class="folder-create-row hidden" id="folderCreateRow">
+                        <input type="text" id="newFolderName" placeholder="New folder name (created in selected folder or root)">
+                        <button type="button" class="btn btn-secondary" onclick="createFolder()">Create</button>
+                    </div>
                     <div class="folder-stats" id="folderStats">Loading...</div>
                     <div class="folder-tree" id="folderTree"></div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-ghost" onclick="closeFolderModal()">Cancel</button>
-                    <button type="button" class="btn btn-primary" onclick="applyFolderSelection()">Apply Selection</button>
+                    <button type="button" class="btn btn-primary" id="folderApplyBtn" onclick="applyFolderSelection()">Apply Selection</button>
                 </div>
             </div>
         </div>
@@ -1011,9 +1023,12 @@
                             </div>
                             <div class="form-row">
                                 <label for="immichTargetFolder">Target Folder *</label>
-                                <input type="text" id="immichTargetFolder" name="target_folder" required
-                                       placeholder="immich/my-photos">
-                                <small>Folder path relative to image directory</small>
+                                <div class="input-with-button">
+                                    <input type="text" id="immichTargetFolder" name="target_folder" required
+                                           placeholder="immich/my-photos">
+                                    <button type="button" class="btn btn-secondary" onclick="openFolderBrowser('single', 'immichTargetFolder')">Browse</button>
+                                </div>
+                                <small>Select an existing folder or create a new one</small>
                             </div>
                             <div class="form-row">
                                 <label for="immichCount">Image Count</label>
@@ -1081,6 +1096,8 @@
             let groupSettingsCache = {};
             let folderTreeData = null;
             let selectedFolders = new Set();
+            let folderBrowserMode = 'multi';  // 'multi' for sync groups, 'single' for immich
+            let folderBrowserTarget = null;   // input element to populate
 
             // Countdown timer management
             const countdownTimers = {};
@@ -1580,14 +1597,28 @@
             }
 
             // Folder browser
-            async function openFolderBrowser() {
+            async function openFolderBrowser(mode = 'multi', targetInputId = 'folders') {
+                folderBrowserMode = mode;
+                folderBrowserTarget = document.getElementById(targetInputId);
+
+                // Update modal UI based on mode
+                document.getElementById('folderModalTitle').textContent =
+                    mode === 'single' ? 'Select Target Folder' : 'Select Folders';
+                document.getElementById('folderApplyBtn').textContent =
+                    mode === 'single' ? 'Select' : 'Apply Selection';
+                document.getElementById('folderCreateRow').classList.toggle('hidden', mode !== 'single');
+
                 document.getElementById('folderModal').classList.add('visible');
 
                 // Parse current selection from input
-                const currentFolders = document.getElementById('folders').value;
-                selectedFolders = new Set(
-                    currentFolders ? currentFolders.split(',').map(f => f.trim()).filter(f => f) : []
-                );
+                const currentValue = folderBrowserTarget.value;
+                if (mode === 'single') {
+                    selectedFolders = new Set(currentValue ? [currentValue.trim()] : []);
+                } else {
+                    selectedFolders = new Set(
+                        currentValue ? currentValue.split(',').map(f => f.trim()).filter(f => f) : []
+                    );
+                }
 
                 // Fetch folder tree if not cached
                 if (!folderTreeData) {
@@ -1634,10 +1665,14 @@
                 const totalFiles = node.file_count || fileCount;
                 const pathAttr = escapeHtml(node.path);
 
+                // Use radio for single mode, checkbox for multi
+                const inputType = folderBrowserMode === 'single' ? 'radio' : 'checkbox';
+                const inputName = folderBrowserMode === 'single' ? 'name="folderSelect"' : '';
+
                 return '<div class="folder-item">' +
                     '<div class="folder-row">' +
                         (hasChildren ? '<span class="folder-toggle" onclick="toggleFolderExpand(this)">▶</span>' : '<span class="folder-toggle"></span>') +
-                        '<input type="checkbox" data-path="' + pathAttr + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleFolderSelection(this)">' +
+                        '<input type="' + inputType + '" ' + inputName + ' data-path="' + pathAttr + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleFolderSelection(this)">' +
                         '<span class="folder-name">' + escapeHtml(node.name) + '</span>' +
                         '<span class="folder-count">' + totalFiles + '</span>' +
                     '</div>' +
@@ -1655,23 +1690,66 @@
                 }
             }
 
-            function toggleFolderSelection(checkbox) {
-                const path = checkbox.dataset.path;
-                if (checkbox.checked) {
+            function toggleFolderSelection(input) {
+                const path = input.dataset.path;
+                if (folderBrowserMode === 'single') {
+                    selectedFolders.clear();
                     selectedFolders.add(path);
                 } else {
-                    selectedFolders.delete(path);
+                    if (input.checked) {
+                        selectedFolders.add(path);
+                    } else {
+                        selectedFolders.delete(path);
+                    }
                 }
             }
 
             function applyFolderSelection() {
-                const folders = Array.from(selectedFolders).join(',');
-                document.getElementById('folders').value = folders;
+                const value = folderBrowserMode === 'single'
+                    ? Array.from(selectedFolders)[0] || ''
+                    : Array.from(selectedFolders).join(',');
+                folderBrowserTarget.value = value;
                 closeFolderModal();
             }
 
             function closeFolderModal() {
                 document.getElementById('folderModal').classList.remove('visible');
+            }
+
+            async function createFolder() {
+                const nameInput = document.getElementById('newFolderName');
+                const name = nameInput.value.trim();
+                if (!name) return;
+
+                // Validate folder name
+                if (name.includes('/') || name.includes('\\') || name.includes('..')) {
+                    showImmichMessage('Invalid folder name', 'error');
+                    return;
+                }
+
+                // Determine parent path (selected folder or root)
+                const parentPath = Array.from(selectedFolders)[0] || '';
+                const newPath = parentPath ? `${parentPath}/${name}` : name;
+
+                try {
+                    await fetchImmichJson('/immich/create-folder', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: newPath })
+                    });
+
+                    // Refresh tree and select new folder
+                    selectedFolders.clear();
+                    selectedFolders.add(newPath);
+                    nameInput.value = '';
+                    folderTreeData = null;
+
+                    const response = await fetch('/browse?format=json');
+                    folderTreeData = await response.json();
+                    renderFolderTree();
+                } catch (err) {
+                    showImmichMessage('Error: ' + err.message, 'error');
+                }
             }
 
             // Keyboard shortcuts

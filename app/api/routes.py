@@ -1524,6 +1524,64 @@ async def list_immich_people(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class CreateFolderRequest(BaseModel):
+    """Request model for creating a folder."""
+    path: str = Field(..., description="Folder path relative to image directory")
+
+
+@router.post(
+    "/immich/create-folder",
+    responses={
+        200: {"description": "Folder created successfully"},
+        400: {"description": "Invalid folder path"},
+        401: {"description": "Authentication required"},
+        500: {"description": "Failed to create folder"},
+    }
+)
+async def create_folder(
+    request: Request,
+    body: CreateFolderRequest,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Create a new folder in the image directory.
+
+    Used by the folder browser when setting up Immich pull target folders.
+    """
+    folder_path = body.path.strip()
+
+    # Validate folder path
+    if not folder_path:
+        raise HTTPException(status_code=400, detail="Folder path is required")
+
+    if ".." in folder_path or folder_path.startswith("/"):
+        raise HTTPException(status_code=400, detail="Invalid folder path")
+
+    # Get base image directory
+    base_dir = Path(os.environ.get("IMAGE_DIR", "/www/images"))
+
+    try:
+        # Resolve and validate the path
+        full_path = (base_dir / folder_path).resolve()
+
+        # Ensure the path is within the base directory (security check)
+        if not str(full_path).startswith(str(base_dir.resolve())):
+            raise HTTPException(status_code=400, detail="Invalid folder path")
+
+        # Create the folder
+        full_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created folder: {folder_path}")
+
+        return JSONResponse(content={"success": True, "path": folder_path})
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create folder {folder_path}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # =============================================================================
 # Catch-all route (MUST be last)
 # =============================================================================
