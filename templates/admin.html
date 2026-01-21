@@ -1665,14 +1665,11 @@
                 const totalFiles = node.file_count || fileCount;
                 const pathAttr = escapeHtml(node.path);
 
-                // Use radio for single mode, checkbox for multi
-                const inputType = folderBrowserMode === 'single' ? 'radio' : 'checkbox';
-                const inputName = folderBrowserMode === 'single' ? 'name="folderSelect"' : '';
-
+                // Always use checkbox, handle single-select logic in JS
                 return '<div class="folder-item">' +
                     '<div class="folder-row">' +
                         (hasChildren ? '<span class="folder-toggle" onclick="toggleFolderExpand(this)">▶</span>' : '<span class="folder-toggle"></span>') +
-                        '<input type="' + inputType + '" ' + inputName + ' data-path="' + pathAttr + '" ' + (isChecked ? 'checked' : '') + ' onchange="toggleFolderSelection(this)">' +
+                        '<input type="checkbox" data-path="' + pathAttr + '" ' + (isChecked ? 'checked' : '') + ' onclick="toggleFolderSelection(this)">' +
                         '<span class="folder-name">' + escapeHtml(node.name) + '</span>' +
                         '<span class="folder-count">' + totalFiles + '</span>' +
                     '</div>' +
@@ -1693,8 +1690,18 @@
             function toggleFolderSelection(input) {
                 const path = input.dataset.path;
                 if (folderBrowserMode === 'single') {
-                    selectedFolders.clear();
-                    selectedFolders.add(path);
+                    if (selectedFolders.has(path)) {
+                        // Clicking already-selected item deselects it
+                        selectedFolders.clear();
+                        input.checked = false;
+                    } else {
+                        // Select new item, uncheck all others
+                        selectedFolders.clear();
+                        selectedFolders.add(path);
+                        document.querySelectorAll('#folderTree input[type="checkbox"]').forEach(cb => {
+                            cb.checked = (cb.dataset.path === path);
+                        });
+                    }
                 } else {
                     if (input.checked) {
                         selectedFolders.add(path);
