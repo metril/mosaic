@@ -427,6 +427,9 @@ class ImmichProvider:
                 # Update status for progress tracking
                 self._pull_results[pull_name] = result
 
+                # Yield to event loop to allow status polling requests
+                await asyncio.sleep(0)
+
             result.status = PullStatus.COMPLETED
             result.completed_at = datetime.now(timezone.utc)
             logger.info(f"Pull completed: {pull_name} - {result.downloaded}/{result.total} images")
