@@ -463,6 +463,42 @@
             .webhook-disabled {
                 opacity: 0.5;
             }
+            .webhook-form {
+                background: #2a2a2a;
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 12px;
+                margin-bottom: 10px;
+            }
+            .webhook-form .form-fieldset {
+                border: 1px solid #444;
+                border-radius: 4px;
+                padding: 8px;
+                margin: 8px 0;
+            }
+            .webhook-form .form-fieldset legend {
+                padding: 0 6px;
+                font-size: 12px;
+                color: #888;
+            }
+            .webhook-form-actions {
+                display: flex;
+                gap: 8px;
+                margin-top: 12px;
+            }
+            .webhook-header-row {
+                display: flex;
+                gap: 8px;
+                margin-bottom: 6px;
+                align-items: center;
+            }
+            .webhook-header-row input {
+                flex: 1;
+            }
+            .webhook-header-row .btn-remove {
+                padding: 2px 8px;
+                font-size: 14px;
+            }
 
             /* Loading state */
             .loading {
@@ -1097,7 +1133,86 @@
                             <div id="webhooks-list" class="webhooks-list">
                                 <!-- Webhooks will be rendered here -->
                             </div>
-                            <button type="button" class="btn btn-small" onclick="addWebhook()">+ Add Webhook</button>
+
+                            <!-- Inline webhook form (hidden by default) -->
+                            <div id="webhook-form" class="webhook-form" style="display: none;">
+                                <div class="form-row">
+                                    <label for="webhook_url">URL *</label>
+                                    <input type="url" id="webhook_url" placeholder="https://example.com/webhook">
+                                </div>
+                                <div class="checkbox-row">
+                                    <input type="checkbox" id="webhook_enabled" checked>
+                                    <label for="webhook_enabled">Enabled</label>
+                                </div>
+                                <fieldset class="form-fieldset">
+                                    <legend>Triggers</legend>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="webhook_trigger_settings">
+                                        <label for="webhook_trigger_settings">Settings change</label>
+                                    </div>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="webhook_trigger_cycle">
+                                        <label for="webhook_trigger_cycle">Image cycle</label>
+                                    </div>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="webhook_trigger_interval">
+                                        <label for="webhook_trigger_interval">Interval</label>
+                                    </div>
+                                    <div class="form-row" id="webhook_interval_row" style="display: none;">
+                                        <label for="webhook_interval_minutes">Interval (minutes)</label>
+                                        <input type="number" id="webhook_interval_minutes" min="1" max="1440" value="60">
+                                    </div>
+                                </fieldset>
+                                <fieldset class="form-fieldset">
+                                    <legend>Payload Fields</legend>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="payload_group_id" checked>
+                                        <label for="payload_group_id">Group ID</label>
+                                    </div>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="payload_event_type" checked>
+                                        <label for="payload_event_type">Event type</label>
+                                    </div>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="payload_timestamp" checked>
+                                        <label for="payload_timestamp">Timestamp</label>
+                                    </div>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="payload_settings">
+                                        <label for="payload_settings">Settings</label>
+                                    </div>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="payload_current_image">
+                                        <label for="payload_current_image">Current image</label>
+                                    </div>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="payload_browser_count">
+                                        <label for="payload_browser_count">Browser count</label>
+                                    </div>
+                                    <div class="checkbox-row">
+                                        <input type="checkbox" id="payload_cycle_number">
+                                        <label for="payload_cycle_number">Cycle number</label>
+                                    </div>
+                                </fieldset>
+                                <div class="form-row">
+                                    <label for="webhook_secret">Secret (optional)</label>
+                                    <input type="text" id="webhook_secret" placeholder="HMAC signing secret">
+                                    <small>Used for HMAC-SHA256 signature in X-Webhook-Signature header</small>
+                                </div>
+                                <fieldset class="form-fieldset">
+                                    <legend>Custom Headers</legend>
+                                    <div id="webhook-headers-list">
+                                        <!-- Header rows added dynamically -->
+                                    </div>
+                                    <button type="button" class="btn btn-small" onclick="addWebhookHeader()">+ Add Header</button>
+                                </fieldset>
+                                <div class="webhook-form-actions">
+                                    <button type="button" class="btn btn-small" onclick="saveWebhook()">Save</button>
+                                    <button type="button" class="btn btn-small" onclick="cancelWebhookForm()">Cancel</button>
+                                </div>
+                            </div>
+
+                            <button type="button" class="btn btn-small" id="add-webhook-btn" onclick="showWebhookForm()">+ Add Webhook</button>
                         </div>
                     </details>
 
@@ -1601,6 +1716,11 @@
             // Set up blur slider event listener
             document.getElementById('background_blur_amount').addEventListener('input', updateBlurAmountDisplay);
 
+            // Set up webhook interval checkbox toggle
+            document.getElementById('webhook_trigger_interval').addEventListener('change', function() {
+                document.getElementById('webhook_interval_row').style.display = this.checked ? 'block' : 'none';
+            });
+
             // Webhook management functions
             function renderWebhooks() {
                 const container = document.getElementById('webhooks-list');
@@ -1635,11 +1755,74 @@
                 return div.innerHTML;
             }
 
-            function addWebhook() {
-                const url = prompt('Enter webhook URL:');
-                if (!url) return;
+            let editingWebhookIndex = null;  // null = adding new, number = editing existing
+
+            function showWebhookForm(index = null) {
+                editingWebhookIndex = index;
+                const form = document.getElementById('webhook-form');
+                const addBtn = document.getElementById('add-webhook-btn');
+
+                // Reset form
+                document.getElementById('webhook_url').value = '';
+                document.getElementById('webhook_enabled').checked = true;
+                document.getElementById('webhook_trigger_settings').checked = false;
+                document.getElementById('webhook_trigger_cycle').checked = false;
+                document.getElementById('webhook_trigger_interval').checked = false;
+                document.getElementById('webhook_interval_minutes').value = 60;
+                document.getElementById('webhook_interval_row').style.display = 'none';
+                document.getElementById('payload_group_id').checked = true;
+                document.getElementById('payload_event_type').checked = true;
+                document.getElementById('payload_timestamp').checked = true;
+                document.getElementById('payload_settings').checked = false;
+                document.getElementById('payload_current_image').checked = false;
+                document.getElementById('payload_browser_count').checked = false;
+                document.getElementById('payload_cycle_number').checked = false;
+                document.getElementById('webhook_secret').value = '';
+                renderWebhookHeaders({});
+
+                // Populate if editing
+                if (index !== null) {
+                    const wh = currentWebhooks[index];
+                    document.getElementById('webhook_url').value = wh.url;
+                    document.getElementById('webhook_enabled').checked = wh.enabled;
+                    document.getElementById('webhook_trigger_settings').checked = wh.triggers.includes('settings_change');
+                    document.getElementById('webhook_trigger_cycle').checked = wh.triggers.includes('image_cycle');
+                    document.getElementById('webhook_trigger_interval').checked = wh.triggers.includes('interval');
+                    if (wh.triggers.includes('interval')) {
+                        document.getElementById('webhook_interval_row').style.display = 'block';
+                        document.getElementById('webhook_interval_minutes').value = wh.interval_minutes || 60;
+                    }
+                    // Payload fields
+                    const pf = wh.payload_fields || [];
+                    document.getElementById('payload_group_id').checked = pf.includes('group_id');
+                    document.getElementById('payload_event_type').checked = pf.includes('event_type');
+                    document.getElementById('payload_timestamp').checked = pf.includes('timestamp');
+                    document.getElementById('payload_settings').checked = pf.includes('settings');
+                    document.getElementById('payload_current_image').checked = pf.includes('current_image');
+                    document.getElementById('payload_browser_count').checked = pf.includes('browser_count');
+                    document.getElementById('payload_cycle_number').checked = pf.includes('cycle_number');
+                    document.getElementById('webhook_secret').value = wh.secret || '';
+                    renderWebhookHeaders(wh.headers || {});
+                }
+
+                form.style.display = 'block';
+                addBtn.style.display = 'none';
+            }
+
+            function cancelWebhookForm() {
+                document.getElementById('webhook-form').style.display = 'none';
+                document.getElementById('add-webhook-btn').style.display = 'inline-block';
+                editingWebhookIndex = null;
+            }
+
+            function saveWebhook() {
+                const url = document.getElementById('webhook_url').value.trim();
 
                 // Validate URL
+                if (!url) {
+                    alert('URL is required');
+                    return;
+                }
                 try {
                     new URL(url);
                 } catch (e) {
@@ -1647,62 +1830,88 @@
                     return;
                 }
 
-                // Show trigger selection
+                // Collect triggers
                 const triggers = [];
-                if (confirm('Trigger on settings change?')) triggers.push('settings_change');
-                if (confirm('Trigger on image cycle?')) triggers.push('image_cycle');
-                if (confirm('Trigger on interval?')) {
-                    triggers.push('interval');
-                    var interval = prompt('Interval in minutes (1-1440):', '60');
-                    var intervalMinutes = parseInt(interval) || 60;
-                }
+                if (document.getElementById('webhook_trigger_settings').checked) triggers.push('settings_change');
+                if (document.getElementById('webhook_trigger_cycle').checked) triggers.push('image_cycle');
+                if (document.getElementById('webhook_trigger_interval').checked) triggers.push('interval');
+
+                // Collect payload fields
+                const payload_fields = [];
+                if (document.getElementById('payload_group_id').checked) payload_fields.push('group_id');
+                if (document.getElementById('payload_event_type').checked) payload_fields.push('event_type');
+                if (document.getElementById('payload_timestamp').checked) payload_fields.push('timestamp');
+                if (document.getElementById('payload_settings').checked) payload_fields.push('settings');
+                if (document.getElementById('payload_current_image').checked) payload_fields.push('current_image');
+                if (document.getElementById('payload_browser_count').checked) payload_fields.push('browser_count');
+                if (document.getElementById('payload_cycle_number').checked) payload_fields.push('cycle_number');
 
                 const webhook = {
-                    id: Math.random().toString(36).substr(2, 8),
+                    id: editingWebhookIndex !== null ? currentWebhooks[editingWebhookIndex].id : Math.random().toString(36).substr(2, 8),
                     url: url,
-                    enabled: true,
+                    enabled: document.getElementById('webhook_enabled').checked,
                     triggers: triggers,
-                    payload_fields: ['group_id', 'event_type', 'timestamp'],
-                    interval_minutes: intervalMinutes || null,
-                    secret: null,
-                    headers: {}
+                    payload_fields: payload_fields,
+                    interval_minutes: triggers.includes('interval') ? parseInt(document.getElementById('webhook_interval_minutes').value) || 60 : null,
+                    secret: document.getElementById('webhook_secret').value.trim() || null,
+                    headers: collectWebhookHeaders()
                 };
 
-                currentWebhooks.push(webhook);
+                if (editingWebhookIndex !== null) {
+                    currentWebhooks[editingWebhookIndex] = webhook;
+                } else {
+                    currentWebhooks.push(webhook);
+                }
+
+                cancelWebhookForm();
                 renderWebhooks();
             }
 
+            // Custom headers management
+            function renderWebhookHeaders(headers = {}) {
+                const container = document.getElementById('webhook-headers-list');
+                container.innerHTML = '';
+
+                Object.entries(headers).forEach(([key, value]) => {
+                    addWebhookHeaderRow(key, value);
+                });
+            }
+
+            function addWebhookHeader() {
+                addWebhookHeaderRow('', '');
+            }
+
+            function addWebhookHeaderRow(key = '', value = '') {
+                const container = document.getElementById('webhook-headers-list');
+                const row = document.createElement('div');
+                row.className = 'webhook-header-row';
+                row.innerHTML = `
+                    <input type="text" placeholder="Header name (e.g. Authorization)" value="${escapeHtml(key)}" class="header-key">
+                    <input type="text" placeholder="Header value" value="${escapeHtml(value)}" class="header-value">
+                    <button type="button" class="btn btn-small btn-remove" onclick="this.parentElement.remove()">×</button>
+                `;
+                container.appendChild(row);
+            }
+
+            function collectWebhookHeaders() {
+                const headers = {};
+                document.querySelectorAll('#webhook-headers-list .webhook-header-row').forEach(row => {
+                    const key = row.querySelector('.header-key').value.trim();
+                    const value = row.querySelector('.header-value').value.trim();
+                    if (key) {
+                        headers[key] = value;
+                    }
+                });
+                return headers;
+            }
+
+            // Alias functions for existing calls
+            function addWebhook() {
+                showWebhookForm();
+            }
+
             function editWebhook(index) {
-                const wh = currentWebhooks[index];
-                if (!wh) return;
-
-                const newUrl = prompt('Edit webhook URL:', wh.url);
-                if (newUrl === null) return;
-
-                try {
-                    new URL(newUrl);
-                    wh.url = newUrl;
-                } catch (e) {
-                    alert('Invalid URL');
-                    return;
-                }
-
-                // Toggle enabled
-                wh.enabled = confirm('Enable this webhook?');
-
-                // Edit triggers
-                wh.triggers = [];
-                if (confirm('Trigger on settings change?')) wh.triggers.push('settings_change');
-                if (confirm('Trigger on image cycle?')) wh.triggers.push('image_cycle');
-                if (confirm('Trigger on interval?')) {
-                    wh.triggers.push('interval');
-                    var interval = prompt('Interval in minutes (1-1440):', wh.interval_minutes || '60');
-                    wh.interval_minutes = parseInt(interval) || 60;
-                } else {
-                    wh.interval_minutes = null;
-                }
-
-                renderWebhooks();
+                showWebhookForm(index);
             }
 
             function deleteWebhook(index) {
