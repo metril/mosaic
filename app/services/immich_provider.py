@@ -286,13 +286,37 @@ class ImmichProvider:
     async def search_assets(self, config: ImmichPullConfig) -> List[Dict[str, Any]]:
         """Search Immich for assets matching criteria"""
         client = await self._get_client()
-        url = f"{config.server_url.rstrip('/')}/api/search/metadata"
-        headers = {
-            "x-api-key": config.api_key,
-            "Content-Type": "application/json",
-        }
+        headers = {"x-api-key": config.api_key}
 
-        # Build search body
+        # If album_id is specified, start with album assets directly
+        if config.album_id:
+            album_url = f"{config.server_url.rstrip('/')}/api/albums/{config.album_id}"
+            album_response = await client.get(album_url, headers=headers)
+            album_response.raise_for_status()
+            album_data = album_response.json()
+            assets = album_data.get("assets", [])
+
+            # Apply additional filters if specified
+            if config.is_favorite is not None:
+                assets = [a for a in assets if a.get("isFavorite") == config.is_favorite]
+
+            if config.taken_after:
+                taken_after = f"{config.taken_after}T00:00:00.000Z"
+                assets = [a for a in assets if a.get("fileCreatedAt", "") >= taken_after]
+
+            if config.taken_before:
+                taken_before = f"{config.taken_before}T23:59:59.999Z"
+                assets = [a for a in assets if a.get("fileCreatedAt", "") <= taken_before]
+
+            if config.media_type and config.media_type != "ALL":
+                assets = [a for a in assets if a.get("type") == config.media_type]
+
+            return assets[:config.count]
+
+        # No album specified - use metadata search
+        url = f"{config.server_url.rstrip('/')}/api/search/metadata"
+        headers["Content-Type"] = "application/json"
+
         body: Dict[str, Any] = {
             "type": config.media_type,
             "size": config.count,
@@ -303,7 +327,6 @@ class ImmichProvider:
             body["isFavorite"] = config.is_favorite
 
         if config.taken_after:
-            # Convert YYYY-MM-DD to ISO format
             body["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
 
         if config.taken_before:
@@ -318,21 +341,7 @@ class ImmichProvider:
         response.raise_for_status()
         data = response.json()
 
-        # Response has {"assets": {"items": [...], "total": n, ...}}
         assets = data.get("assets", {}).get("items", [])
-
-        # If album_id is specified, filter to only assets in that album
-        if config.album_id:
-            # Get album assets
-            album_url = f"{config.server_url.rstrip('/')}/api/albums/{config.album_id}"
-            album_response = await client.get(album_url, headers={"x-api-key": config.api_key})
-            album_response.raise_for_status()
-            album_data = album_response.json()
-            album_asset_ids = {asset["id"] for asset in album_data.get("assets", [])}
-
-            # Filter search results to only include album assets
-            assets = [a for a in assets if a["id"] in album_asset_ids]
-
         return assets[:config.count]
 
     async def download_asset(
