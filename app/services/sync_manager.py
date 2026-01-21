@@ -1328,48 +1328,46 @@ class SyncManager:
     async def _advance_browsers(self, group: SyncGroup) -> None:
         """Immediately advance all browsers to next image."""
         settings = group.settings
-        switch_at = _utc_now().timestamp() * 1000 + 500  # 500ms delay for preload
+        browsers_to_assign = []
 
-        for browser in list(group.browsers.values()):
-            # Note: History push happens in SWITCH_COMPLETE handler, not here
-            # Assign new image
-            async with group._lock:
+        async with group._lock:
+            for browser in list(group.browsers.values()):
                 next_image = group.image_pool.assign_unique_image(browser.browser_id)
-            if not next_image:
-                continue
+                if not next_image:
+                    continue
 
-            browser.next_image = next_image
-            browser.status = BrowserStatus.PRELOADING
+                # Push current to history
+                if browser.current_image:
+                    browser.image_history.append(browser.current_image)
+                    if len(browser.image_history) > MAX_IMAGE_HISTORY:
+                        browser.image_history.pop(0)
 
-            # Send preload
-            image_url = self.build_image_url(next_image, settings)
-            blur_url = self.build_blur_url(next_image, settings)
+                browser.current_image = next_image
+                browser.next_image = None
+                browser.status = BrowserStatus.READY
+                browsers_to_assign.append((browser, next_image))
+
+        # Increment cycle
+        group.current_cycle = (group.current_cycle + 1) % MAX_CYCLE_COUNT
+        metrics.record_cycle()
+
+        # Send ASSIGNs (blur applied immediately on client)
+        for browser, image_path in browsers_to_assign:
+            image_url = self.build_image_url(image_path, settings)
+            blur_url = self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
-                        "type": "PRELOAD",
+                        "type": "ASSIGN",
                         "image_url": image_url,
                         "blur_url": blur_url,
-                        "image_id": next_image,
-                        "switch_at": switch_at
+                        "image_id": image_path,
+                        "cycle": group.current_cycle
                     }),
                     timeout=5.0
                 )
             except Exception as e:
-                logger.warning(f"Failed to send preload to {browser.browser_id}: {e}")
-
-        # Brief delay then send switch
-        await asyncio.sleep(0.5)
-
-        group.current_cycle = (group.current_cycle + 1) % MAX_CYCLE_COUNT
-        metrics.record_cycle()
-        switch_timestamp = _utc_now().timestamp() * 1000
-
-        await self._broadcast_to_group(group, {
-            "type": "SWITCH",
-            "timestamp": switch_timestamp,
-            "cycle": group.current_cycle
-        })
+                logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
 
     async def _forward_browsers(self, group: SyncGroup) -> None:
         """Move forward through forward_history (replay previously seen images)."""
