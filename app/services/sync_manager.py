@@ -64,7 +64,7 @@ class SyncGroupSettings:
     show_time: bool = False  # Display time overlay
     show_date: bool = False  # Display date overlay
     time_format: str = "24"  # "12" or "24" hour format
-    date_format: str = "%A, %B %d"  # strftime format for date
+    date_format: str = "DDDD, MMMM DD"  # Immich Kiosk token format
     clock_source: str = "client"  # "client", "ntp", or "homeassistant"
     clock_position: str = "bottom-left"  # "top-left", "top-right", "bottom-left", "bottom-right"
 

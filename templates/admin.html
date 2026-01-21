@@ -1018,9 +1018,9 @@
                             </div>
                             <div class="form-row">
                                 <label for="date_format">Date Format</label>
-                                <input type="text" id="date_format" name="date_format" value="%A, %B %d"
-                                       placeholder="%A, %B %d">
-                                <small>Python strftime format (e.g., %A = weekday, %B = month, %d = day)</small>
+                                <input type="text" id="date_format" name="date_format" value="DDDD, MMMM DD"
+                                       placeholder="DDDD, MMMM DD">
+                                <small>Immich Kiosk format (DDDD=weekday, MMMM=month, DD=day, YYYY=year)</small>
                             </div>
                             <div class="form-row">
                                 <label for="clock_source">Time Source</label>
@@ -1348,7 +1348,7 @@
                 document.getElementById('show_time').checked = false;
                 document.getElementById('show_date').checked = false;
                 document.getElementById('time_format').value = '24';
-                document.getElementById('date_format').value = '%A, %B %d';
+                document.getElementById('date_format').value = 'DDDD, MMMM DD';
                 document.getElementById('clock_source').value = 'client';
                 document.getElementById('clock_position').value = 'bottom-left';
                 // Weather defaults
@@ -1383,7 +1383,7 @@
                 document.getElementById('show_time').checked = settings.show_time || false;
                 document.getElementById('show_date').checked = settings.show_date || false;
                 document.getElementById('time_format').value = settings.time_format || '24';
-                document.getElementById('date_format').value = settings.date_format || '%A, %B %d';
+                document.getElementById('date_format').value = settings.date_format || 'DDDD, MMMM DD';
                 document.getElementById('clock_source').value = settings.clock_source || 'client';
                 document.getElementById('clock_position').value = settings.clock_position || 'bottom-left';
                 // Weather settings
@@ -1432,7 +1432,7 @@
                 data.show_time = form.show_time.checked;
                 data.show_date = form.show_date.checked;
                 data.time_format = form.time_format.value;
-                data.date_format = form.date_format.value || '%A, %B %d';
+                data.date_format = form.date_format.value || 'DDDD, MMMM DD';
                 data.clock_source = form.clock_source.value;
                 data.clock_position = form.clock_position.value;
 

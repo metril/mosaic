@@ -468,14 +468,29 @@
                 }
 
                 formatDate(date) {
-                    // Convert Python strftime to JS options
-                    // Common formats: %A = weekday, %B = month, %d = day
-                    const options = {
-                        weekday: 'long',
-                        month: 'long',
-                        day: 'numeric'
+                    // Immich Kiosk token-based date formatting
+                    const format = this.settings.date_format || 'DDDD, MMMM DD';
+
+                    const tokens = {
+                        'YYYY': date.getFullYear(),
+                        'YY': String(date.getFullYear()).slice(-2),
+                        'MMMM': date.toLocaleDateString('en-US', { month: 'long' }),
+                        'MMM': date.toLocaleDateString('en-US', { month: 'short' }),
+                        'MM': String(date.getMonth() + 1).padStart(2, '0'),
+                        'M': date.getMonth() + 1,
+                        'DDDD': date.toLocaleDateString('en-US', { weekday: 'long' }),
+                        'DDD': date.toLocaleDateString('en-US', { weekday: 'short' }),
+                        'DD': String(date.getDate()).padStart(2, '0'),
+                        'D': date.getDate()
                     };
-                    return date.toLocaleDateString(undefined, options);
+
+                    // Replace tokens longest-first to avoid partial matches
+                    let result = format;
+                    const sortedTokens = Object.keys(tokens).sort((a, b) => b.length - a.length);
+                    for (const token of sortedTokens) {
+                        result = result.replace(new RegExp(token, 'g'), tokens[token]);
+                    }
+                    return result;
                 }
 
                 stop() {
