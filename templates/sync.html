@@ -920,13 +920,14 @@
                     updateDebug('Cycle', currentCycle);
                     updateDebug('CurrentImage', msg.image_id);
 
-                    // Apply blur immediately if provided (no fetch needed)
-                    if (msg.blur_url && blurManager.enabled) {
-                        blurManager.update(msg.blur_url);
-                    }
+                    // Store blur_url for application after image loads
+                    var blurUrl = (blurManager.enabled && msg.blur_url) ? msg.blur_url : null;
 
-                    // Load image directly
+                    // Load image, then apply blur together so they appear in sync
                     loadImage(currentImage, msg.image_url, function() {
+                        if (blurUrl) {
+                            blurManager.update(blurUrl);
+                        }
                         sendReady();
                     });
                 }
