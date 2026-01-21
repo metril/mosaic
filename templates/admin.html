@@ -1312,11 +1312,13 @@
                     title.textContent = 'Edit: ' + groupId;
                     submitBtn.textContent = 'Save Changes';
                     groupIdRow.style.display = 'none';
+                    document.getElementById('group_id').removeAttribute('required');
                     populateForm(groupSettingsCache[groupId]);
                 } else {
                     title.textContent = 'Create Group';
                     submitBtn.textContent = 'Create Group';
                     groupIdRow.style.display = 'block';
+                    document.getElementById('group_id').setAttribute('required', '');
                     resetForm();
                 }
 
