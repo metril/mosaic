@@ -672,9 +672,12 @@
                     this.shiftAmount = settings.burn_in_shift_amount || 5;
                     this.shiftInterval = settings.burn_in_shift_interval || 60;
 
+                    console.log('Burn-in protection:', this.enabled, 'shift:', this.shiftEnabled);
+
                     if (this.enabled) {
                         this.startDimming();
                         if (this.shiftEnabled) {
+                            this.shiftCycle();  // Run first shift immediately
                             this.startShifting();
                         }
                     }
