@@ -1250,7 +1250,7 @@ class ImmichPullCreateRequest(BaseModel):
     """Request body for creating/updating an Immich pull configuration"""
     name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9_\-]+$")
     server_url: str = Field(..., description="Immich server URL")
-    api_key: str = Field(..., description="API key for authentication")
+    api_key: Optional[str] = Field(None, description="API key (omit to keep existing when updating)")
     target_folder: str = Field(..., description="Local folder to store images")
     count: int = Field(50, ge=1, le=1000, description="Number of images to pull")
     album_id: Optional[str] = Field(None, description="Pull from specific album")
@@ -1310,10 +1310,19 @@ async def create_immich_pull(
     provider = get_immich_provider(request)
     logger.info(f"User {user.email} creating/updating Immich pull: {body.name}")
 
+    # Get existing config to preserve API key if not provided
+    api_key = body.api_key
+    if not api_key:
+        existing = provider.get_pull(body.name)
+        if existing:
+            api_key = existing.api_key
+        else:
+            raise HTTPException(status_code=400, detail="API key is required for new pulls")
+
     config = ImmichPullConfig(
         name=body.name,
         server_url=body.server_url,
-        api_key=body.api_key,
+        api_key=api_key,
         target_folder=body.target_folder,
         count=body.count,
         album_id=body.album_id,
