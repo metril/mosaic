@@ -925,7 +925,8 @@
                         // Fetch and apply blur for initial image
                         if (blurManager.enabled && msg.image_id) {
                             var blurAmount = blurManager.settings.background_blur_amount || 50;
-                            var url = '/api/blur/' + encodeURIComponent(msg.image_id) + '?blur_amount=' + blurAmount;
+                            var url = '/api/blur/' + msg.image_id + '?blur_amount=' + blurAmount;
+                            console.log('Fetching initial blur:', msg.image_id, 'URL:', url);
                             fetch(url)
                                 .then(function(r) { return r.json(); })
                                 .then(function(data) {
@@ -971,7 +972,8 @@
                 // Fetch blur background from API
                 function fetchBlurBackground(imagePath) {
                     const blurAmount = blurManager.settings.background_blur_amount || 50;
-                    const url = '/api/blur/' + encodeURIComponent(imagePath) + '?blur_amount=' + blurAmount;
+                    const url = '/api/blur/' + imagePath + '?blur_amount=' + blurAmount;
+                    console.log('Fetching blur:', imagePath, 'URL:', url);
 
                     fetch(url)
                         .then(function(response) {
