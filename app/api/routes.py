@@ -913,7 +913,25 @@ async def create_sync_group(
         saturation=body.saturation,
         contrast=body.contrast,
         brightness=body.brightness,
-        sharpen=body.sharpen
+        sharpen=body.sharpen,
+        # Clock settings
+        show_time=body.show_time,
+        show_date=body.show_date,
+        time_format=body.time_format,
+        date_format=body.date_format,
+        clock_source=body.clock_source,
+        clock_position=body.clock_position,
+        # Weather settings
+        show_weather=body.show_weather,
+        weather_position=body.weather_position,
+        weather_ha_entity=body.weather_ha_entity,
+        weather_show_forecast=body.weather_show_forecast,
+        # Layout settings
+        layout=body.layout,
+        # Blur settings
+        background_blur=body.background_blur,
+        background_blur_amount=body.background_blur_amount,
+        image_fit=body.image_fit,
     )
 
     try:

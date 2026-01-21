@@ -403,6 +403,42 @@ class SyncManager:
                     eink_dict["sharpen"] = settings.sharpen
                 settings_dict["eink"] = eink_dict
 
+            # Clock settings
+            if settings.show_time:
+                settings_dict["show_time"] = settings.show_time
+            if settings.show_date:
+                settings_dict["show_date"] = settings.show_date
+            if settings.time_format != "24":
+                settings_dict["time_format"] = settings.time_format
+            if settings.date_format != "DDDD, MMMM DD":
+                settings_dict["date_format"] = settings.date_format
+            if settings.clock_source != "client":
+                settings_dict["clock_source"] = settings.clock_source
+            if settings.clock_position != "bottom-left":
+                settings_dict["clock_position"] = settings.clock_position
+
+            # Weather settings
+            if settings.show_weather:
+                settings_dict["show_weather"] = settings.show_weather
+            if settings.weather_position != "bottom-right":
+                settings_dict["weather_position"] = settings.weather_position
+            if settings.weather_ha_entity:
+                settings_dict["weather_ha_entity"] = settings.weather_ha_entity
+            if settings.weather_show_forecast:
+                settings_dict["weather_show_forecast"] = settings.weather_show_forecast
+
+            # Layout settings
+            if settings.layout != "single":
+                settings_dict["layout"] = settings.layout
+
+            # Blur settings
+            if settings.background_blur:
+                settings_dict["background_blur"] = settings.background_blur
+            if settings.background_blur_amount != 50:
+                settings_dict["background_blur_amount"] = settings.background_blur_amount
+            if settings.image_fit != "contain":
+                settings_dict["image_fit"] = settings.image_fit
+
             config["groups"][group_id] = settings_dict
 
         # Ensure config directory exists
