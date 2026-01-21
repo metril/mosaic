@@ -1243,7 +1243,8 @@ def get_immich_provider(request: Request) -> ImmichProvider:
 class ImmichTestConnectionRequest(BaseModel):
     """Request body for testing Immich connection"""
     server_url: str = Field(..., description="Immich server URL")
-    api_key: str = Field(..., description="API key for authentication")
+    api_key: Optional[str] = Field(None, description="API key for authentication")
+    pull_name: Optional[str] = Field(None, description="Pull name to use stored API key")
 
 
 class ImmichPullCreateRequest(BaseModel):
@@ -1470,10 +1471,22 @@ async def test_immich_connection(
     Test connection to an Immich server.
 
     Returns server info if successful, error message if not.
+    If api_key is not provided, looks up stored key from pull_name.
     """
     provider = get_immich_provider(request)
+
+    # Get API key - use provided key or look up from stored pull
+    api_key = body.api_key
+    if not api_key and body.pull_name:
+        existing = provider.get_pull(body.pull_name)
+        if existing:
+            api_key = existing.api_key
+
+    if not api_key:
+        return JSONResponse(content={"success": False, "error": "API key required"})
+
     logger.info(f"User {user.email} testing Immich connection to: {body.server_url}")
-    result = await provider.test_connection(body.server_url, body.api_key)
+    result = await provider.test_connection(body.server_url, api_key)
     return JSONResponse(content=result)
 
 
@@ -1488,17 +1501,30 @@ async def test_immich_connection(
 async def list_immich_albums(
     request: Request,
     server_url: str = Query(..., description="Immich server URL"),
-    api_key: str = Query(..., description="API key"),
+    api_key: Optional[str] = Query(None, description="API key"),
+    pull_name: Optional[str] = Query(None, description="Pull name to use stored API key"),
     user: User = Depends(get_current_user)
 ):
     """
     List available albums from an Immich server.
 
     Useful for configuring album-based pulls.
+    If api_key is not provided, looks up stored key from pull_name.
     """
     provider = get_immich_provider(request)
+
+    # Get API key - use provided key or look up from stored pull
+    actual_key = api_key
+    if not actual_key and pull_name:
+        existing = provider.get_pull(pull_name)
+        if existing:
+            actual_key = existing.api_key
+
+    if not actual_key:
+        raise HTTPException(status_code=400, detail="API key required")
+
     try:
-        albums = await provider.list_albums(server_url, api_key)
+        albums = await provider.list_albums(server_url, actual_key)
         return JSONResponse(content={"albums": albums})
     except Exception as e:
         logger.error(f"Failed to fetch Immich albums: {e}")
@@ -1516,17 +1542,30 @@ async def list_immich_albums(
 async def list_immich_people(
     request: Request,
     server_url: str = Query(..., description="Immich server URL"),
-    api_key: str = Query(..., description="API key"),
+    api_key: Optional[str] = Query(None, description="API key"),
+    pull_name: Optional[str] = Query(None, description="Pull name to use stored API key"),
     user: User = Depends(get_current_user)
 ):
     """
     List recognized people from an Immich server.
 
     Useful for configuring person-based pulls.
+    If api_key is not provided, looks up stored key from pull_name.
     """
     provider = get_immich_provider(request)
+
+    # Get API key - use provided key or look up from stored pull
+    actual_key = api_key
+    if not actual_key and pull_name:
+        existing = provider.get_pull(pull_name)
+        if existing:
+            actual_key = existing.api_key
+
+    if not actual_key:
+        raise HTTPException(status_code=400, detail="API key required")
+
     try:
-        people = await provider.list_people(server_url, api_key)
+        people = await provider.list_people(server_url, actual_key)
         return JSONResponse(content={"people": people})
     except Exception as e:
         logger.error(f"Failed to fetch Immich people: {e}")

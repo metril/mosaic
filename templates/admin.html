@@ -2730,10 +2730,18 @@
                 statusEl.textContent = '';
 
                 try {
+                    // Build payload - use pull_name to look up stored API key if no key provided
+                    const payload = { server_url: serverUrl };
+                    if (apiKey) {
+                        payload.api_key = apiKey;
+                    } else if (editingPullName) {
+                        payload.pull_name = editingPullName;
+                    }
+
                     const result = await fetchImmichJson(`${IMMICH_API_BASE}/test-connection`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ server_url: serverUrl, api_key: apiKey })
+                        body: JSON.stringify(payload)
                     });
 
                     if (result.success) {
@@ -2757,9 +2765,17 @@
 
             async function loadAlbumsAndPeople(serverUrl, apiKey) {
                 try {
+                    // Build query params - use pull_name to look up stored API key if no key provided
+                    let params = `server_url=${encodeURIComponent(serverUrl)}`;
+                    if (apiKey) {
+                        params += `&api_key=${encodeURIComponent(apiKey)}`;
+                    } else if (editingPullName) {
+                        params += `&pull_name=${encodeURIComponent(editingPullName)}`;
+                    }
+
                     const [albumsData, peopleData] = await Promise.all([
-                        fetchImmichJson(`${IMMICH_API_BASE}/albums?server_url=${encodeURIComponent(serverUrl)}&api_key=${encodeURIComponent(apiKey)}`),
-                        fetchImmichJson(`${IMMICH_API_BASE}/people?server_url=${encodeURIComponent(serverUrl)}&api_key=${encodeURIComponent(apiKey)}`)
+                        fetchImmichJson(`${IMMICH_API_BASE}/albums?${params}`),
+                        fetchImmichJson(`${IMMICH_API_BASE}/people?${params}`)
                     ]);
 
                     populateAlbumDropdown(albumsData.albums || []);
