@@ -697,13 +697,30 @@
                     var overlays = document.querySelectorAll('.overlay');
                     var self = this;
 
-                    // Random shift within range [-amount, +amount]
-                    this.currentShiftX = Math.floor(Math.random() * (this.shiftAmount * 2 + 1)) - this.shiftAmount;
-                    this.currentShiftY = Math.floor(Math.random() * (this.shiftAmount * 2 + 1)) - this.shiftAmount;
-
                     overlays.forEach(function(el) {
+                        // Generate random shift magnitudes [0, amount]
+                        var randX = Math.floor(Math.random() * (self.shiftAmount + 1));
+                        var randY = Math.floor(Math.random() * (self.shiftAmount + 1));
+
+                        var shiftX = 0, shiftY = 0;
+
+                        // Apply direction based on position to shift INWARD only (away from edges)
+                        if (el.classList.contains('position-bottom-left')) {
+                            shiftX = randX;      // Move right (away from left edge)
+                            shiftY = -randY;     // Move up (away from bottom edge)
+                        } else if (el.classList.contains('position-bottom-right')) {
+                            shiftX = -randX;     // Move left (away from right edge)
+                            shiftY = -randY;     // Move up (away from bottom edge)
+                        } else if (el.classList.contains('position-top-left')) {
+                            shiftX = randX;      // Move right (away from left edge)
+                            shiftY = randY;      // Move down (away from top edge)
+                        } else if (el.classList.contains('position-top-right')) {
+                            shiftX = -randX;     // Move left (away from right edge)
+                            shiftY = randY;      // Move down (away from top edge)
+                        }
+
                         el.style.transition = 'transform 0.5s ease';
-                        el.style.transform = 'translate(' + self.currentShiftX + 'px, ' + self.currentShiftY + 'px)';
+                        el.style.transform = 'translate(' + shiftX + 'px, ' + shiftY + 'px)';
                     });
                 },
 
