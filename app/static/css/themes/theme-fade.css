@@ -1,0 +1,92 @@
+/* =================================================================
+   THEME: FADE - Radial gradient background
+   Matches Immich Kiosk's theme-fade.css (clock/weather portion)
+   ================================================================= */
+
+/* Clock with fade theme */
+.clock-overlay.clock--theme-fade {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-radius: 0;
+}
+
+.clock-overlay.clock--theme-fade::before {
+    content: "";
+    position: absolute;
+    width: 150%;
+    height: 200%;
+    z-index: -1;
+}
+
+.clock-overlay.clock--theme-fade.position-top-left::before {
+    top: 0;
+    left: 0;
+    background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
+}
+
+.clock-overlay.clock--theme-fade.position-top-right::before {
+    top: 0;
+    right: 0;
+    left: unset;
+    background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
+}
+
+.clock-overlay.clock--theme-fade.position-bottom-left::before {
+    bottom: 0;
+    left: 0;
+    top: unset;
+    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
+}
+
+.clock-overlay.clock--theme-fade.position-bottom-right::before {
+    bottom: 0;
+    right: 0;
+    top: unset;
+    left: unset;
+    background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
+}
+
+/* Weather with fade theme */
+.weather-overlay.weather--theme-fade {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-radius: 0;
+}
+
+.weather-overlay.weather--theme-fade::before {
+    content: "";
+    position: absolute;
+    width: 150%;
+    height: 200%;
+    z-index: -1;
+}
+
+.weather-overlay.weather--theme-fade.position-top-left::before {
+    top: 0;
+    left: 0;
+    background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
+}
+
+.weather-overlay.weather--theme-fade.position-top-right::before {
+    top: 0;
+    right: 0;
+    left: unset;
+    background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
+}
+
+.weather-overlay.weather--theme-fade.position-bottom-left::before {
+    bottom: 0;
+    left: 0;
+    top: unset;
+    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
+}
+
+.weather-overlay.weather--theme-fade.position-bottom-right::before {
+    bottom: 0;
+    right: 0;
+    top: unset;
+    left: unset;
+    background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
+}

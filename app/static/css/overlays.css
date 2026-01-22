@@ -1,0 +1,153 @@
+/* =================================================================
+   Base Overlay Styles for Clock and Weather
+   Matches Immich Kiosk's clock.css and weather.css patterns
+   ================================================================= */
+
+/* Base overlay container */
+.overlay {
+    position: fixed;
+    z-index: 100;
+    padding: 1rem;
+    transition: opacity var(--burn-in-fade, 10s) ease-in-out;
+}
+
+.overlay.hidden {
+    display: none !important;
+}
+
+/* =================================================================
+   Position Classes
+   ================================================================= */
+
+.position-bottom-left {
+    bottom: 30px;
+    left: 30px;
+}
+
+.position-bottom-right {
+    bottom: 30px;
+    right: 30px;
+}
+
+.position-top-left {
+    top: 30px;
+    left: 30px;
+}
+
+.position-top-right {
+    top: 30px;
+    right: 30px;
+}
+
+/* =================================================================
+   Clock Overlay Styles
+   ================================================================= */
+
+.clock-overlay {
+    text-align: left;
+}
+
+.clock-time {
+    position: relative;
+    z-index: 1;
+    font-size: 3rem;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.6);
+    line-height: 1.2;
+    font-family: system-ui, -apple-system, sans-serif;
+    letter-spacing: 0.0625rem;
+}
+
+.clock-date {
+    position: relative;
+    z-index: 1;
+    font-size: 1.5rem;
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.6);
+    margin-top: 4px;
+    font-family: system-ui, -apple-system, sans-serif;
+    text-transform: capitalize;
+    letter-spacing: 0.0625rem;
+}
+
+/* =================================================================
+   Weather Overlay Styles
+   ================================================================= */
+
+.weather-overlay {
+    text-align: right;
+}
+
+.weather-icon {
+    position: relative;
+    z-index: 1;
+    font-size: 3rem;
+    margin-bottom: 8px;
+}
+
+.weather-temp {
+    position: relative;
+    z-index: 1;
+    font-size: 3rem;
+    font-weight: bold;
+    color: white;
+    text-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.6);
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+.weather-condition {
+    position: relative;
+    z-index: 1;
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.6);
+    text-transform: capitalize;
+    margin-top: 4px;
+}
+
+/* Weather Forecast */
+.weather-forecast {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    justify-content: flex-end;
+}
+
+.forecast-day {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    font-size: 0.85rem;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.forecast-day .forecast-icon {
+    font-size: 1.5rem;
+    margin: 4px 0;
+}
+
+.forecast-day .forecast-temp {
+    white-space: nowrap;
+}
+
+.forecast-day .precip {
+    font-size: 0.7em;
+    opacity: 0.8;
+    color: #6af;
+    margin-top: 2px;
+}
+
+/* =================================================================
+   Burn-in Protection
+   ================================================================= */
+
+body.burn-in-dim .overlay {
+    opacity: var(--burn-in-opacity, 0.7);
+}

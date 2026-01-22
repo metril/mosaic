@@ -1,0 +1,112 @@
+/* =================================================================
+   THEME: BLUR - Fade gradient with backdrop blur
+   Matches Immich Kiosk's theme-blur.css (clock/weather portion)
+   ================================================================= */
+
+/* Clock with blur theme */
+.clock-overlay.clock--theme-blur {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-radius: 0;
+}
+
+.clock-overlay.clock--theme-blur::before {
+    content: "";
+    position: absolute;
+    width: 150%;
+    height: 200%;
+    z-index: -1;
+    backdrop-filter: blur(0.5rem);
+    -webkit-backdrop-filter: blur(0.5rem);
+}
+
+.clock-overlay.clock--theme-blur.position-top-left::before {
+    top: 0;
+    left: 0;
+    mask-image: radial-gradient(100% 100% at 0% 0%, black 60%, transparent 100%);
+    -webkit-mask-image: radial-gradient(100% 100% at 0% 0%, black 60%, transparent 100%);
+    background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
+}
+
+.clock-overlay.clock--theme-blur.position-top-right::before {
+    top: 0;
+    right: 0;
+    left: unset;
+    mask-image: radial-gradient(100% 100% at 100% 0%, black 60%, transparent 100%);
+    -webkit-mask-image: radial-gradient(100% 100% at 100% 0%, black 60%, transparent 100%);
+    background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
+}
+
+.clock-overlay.clock--theme-blur.position-bottom-left::before {
+    bottom: 0;
+    left: 0;
+    top: unset;
+    mask-image: radial-gradient(100% 100% at 0% 100%, black 60%, transparent 100%);
+    -webkit-mask-image: radial-gradient(100% 100% at 0% 100%, black 60%, transparent 100%);
+    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
+}
+
+.clock-overlay.clock--theme-blur.position-bottom-right::before {
+    bottom: 0;
+    right: 0;
+    top: unset;
+    left: unset;
+    mask-image: radial-gradient(100% 100% at 100% 100%, black 60%, transparent 100%);
+    -webkit-mask-image: radial-gradient(100% 100% at 100% 100%, black 60%, transparent 100%);
+    background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
+}
+
+/* Weather with blur theme */
+.weather-overlay.weather--theme-blur {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-radius: 0;
+}
+
+.weather-overlay.weather--theme-blur::before {
+    content: "";
+    position: absolute;
+    width: 150%;
+    height: 200%;
+    z-index: -1;
+    backdrop-filter: blur(0.5rem);
+    -webkit-backdrop-filter: blur(0.5rem);
+}
+
+.weather-overlay.weather--theme-blur.position-top-left::before {
+    top: 0;
+    left: 0;
+    mask-image: radial-gradient(100% 100% at 0% 0%, black 60%, transparent 100%);
+    -webkit-mask-image: radial-gradient(100% 100% at 0% 0%, black 60%, transparent 100%);
+    background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
+}
+
+.weather-overlay.weather--theme-blur.position-top-right::before {
+    top: 0;
+    right: 0;
+    left: unset;
+    mask-image: radial-gradient(100% 100% at 100% 0%, black 60%, transparent 100%);
+    -webkit-mask-image: radial-gradient(100% 100% at 100% 0%, black 60%, transparent 100%);
+    background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
+}
+
+.weather-overlay.weather--theme-blur.position-bottom-left::before {
+    bottom: 0;
+    left: 0;
+    top: unset;
+    mask-image: radial-gradient(100% 100% at 0% 100%, black 60%, transparent 100%);
+    -webkit-mask-image: radial-gradient(100% 100% at 0% 100%, black 60%, transparent 100%);
+    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
+}
+
+.weather-overlay.weather--theme-blur.position-bottom-right::before {
+    bottom: 0;
+    right: 0;
+    top: unset;
+    left: unset;
+    mask-image: radial-gradient(100% 100% at 100% 100%, black 60%, transparent 100%);
+    -webkit-mask-image: radial-gradient(100% 100% at 100% 100%, black 60%, transparent 100%);
+    background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
+}

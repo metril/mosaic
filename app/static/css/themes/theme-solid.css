@@ -1,0 +1,53 @@
+/* =================================================================
+   THEME: SOLID - Solid background with rounded corner
+   Matches Immich Kiosk's theme-solid.css (clock/weather portion)
+   ================================================================= */
+
+/* Clock with solid theme */
+.clock-overlay.clock--theme-solid {
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+/* Rounded corner faces toward screen center */
+.clock-overlay.clock--theme-solid.position-top-left {
+    border-radius: 0 0 2rem 0;
+}
+
+.clock-overlay.clock--theme-solid.position-top-right {
+    border-radius: 0 0 0 2rem;
+}
+
+.clock-overlay.clock--theme-solid.position-bottom-left {
+    border-radius: 0 2rem 0 0;
+}
+
+.clock-overlay.clock--theme-solid.position-bottom-right {
+    border-radius: 2rem 0 0 0;
+}
+
+/* Weather with solid theme */
+.weather-overlay.weather--theme-solid {
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    align-self: start;
+}
+
+/* Rounded corner faces toward screen center */
+.weather-overlay.weather--theme-solid.position-top-left {
+    border-radius: 0 0 2rem 0;
+}
+
+.weather-overlay.weather--theme-solid.position-top-right {
+    border-radius: 0 0 0 2rem;
+}
+
+.weather-overlay.weather--theme-solid.position-bottom-left {
+    border-radius: 0 2rem 0 0;
+}
+
+.weather-overlay.weather--theme-solid.position-bottom-right {
+    border-radius: 2rem 0 0 0;
+}

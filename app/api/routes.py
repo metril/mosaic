@@ -789,6 +789,7 @@ class SyncGroupCreateRequest(BaseModel):
     date_format: str = Field('DDDD, MMMM DD', max_length=100, description="Date format (Immich Kiosk tokens)")
     clock_source: Literal['client', 'ntp', 'homeassistant'] = Field('client', description="Clock time source")
     clock_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = Field('bottom-left', description="Clock position")
+    overlay_theme: Literal['fade', 'solid', 'bubble', 'blur'] = Field('fade', description="Overlay theme style")
     # Weather settings
     show_weather: bool = Field(False, description="Show weather overlay")
     weather_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = Field('bottom-right', description="Weather position")
@@ -1001,6 +1002,7 @@ async def create_sync_group(
         date_format=body.date_format,
         clock_source=body.clock_source,
         clock_position=body.clock_position,
+        overlay_theme=body.overlay_theme,
         # Weather settings
         show_weather=body.show_weather,
         weather_position=body.weather_position,
