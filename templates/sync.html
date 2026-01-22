@@ -245,6 +245,10 @@
             </div>
         </div>
 
+        <!-- Gradient backdrop elements (fixed to viewport corners, not affected by pixel shift) -->
+        <div class="gradient-backdrop clock-gradient clock-gradient--theme-{{ settings.overlay_theme|default('fade') }} hidden" id="clockGradient"></div>
+        <div class="gradient-backdrop weather-gradient weather-gradient--theme-{{ settings.overlay_theme|default('fade') }} hidden" id="weatherGradient"></div>
+
         <!-- Clock overlay -->
         <div class="overlay clock-overlay clock--theme-{{ settings.overlay_theme|default('fade') }} position-{{ settings.clock_position|default('bottom-left') }} hidden" id="clockOverlay">
             <div class="clock-time" id="clockTime"></div>
@@ -323,6 +327,7 @@
                     this.timeEl = document.getElementById('clockTime');
                     this.dateEl = document.getElementById('clockDate');
                     this.overlay = document.getElementById('clockOverlay');
+                    this.gradient = document.getElementById('clockGradient');
                     this.updateInterval = null;
                     this.syncInterval = null;
                     this.serverOffset = 0; // Offset between server and client time (ms)
@@ -331,11 +336,14 @@
                 start() {
                     if (!this.settings.show_time && !this.settings.show_date) {
                         this.overlay.classList.add('hidden');
+                        this.gradient.classList.add('hidden');
                         return;
                     }
 
                     this.overlay.classList.remove('hidden');
                     this.overlay.className = 'overlay clock-overlay clock--theme-' + this.settings.overlay_theme + ' position-' + this.settings.clock_position;
+                    this.gradient.classList.remove('hidden');
+                    this.gradient.className = 'gradient-backdrop clock-gradient clock-gradient--theme-' + this.settings.overlay_theme;
 
                     // Initial sync if using server time
                     if (this.settings.clock_source !== 'client') {
@@ -455,17 +463,21 @@
                 constructor(settings) {
                     this.settings = settings;
                     this.overlay = document.getElementById('weatherOverlay');
+                    this.gradient = document.getElementById('weatherGradient');
                     this.updateInterval = null;
                 }
 
                 start() {
                     if (!this.settings.show_weather || !this.settings.weather_ha_entity) {
                         this.overlay.classList.add('hidden');
+                        this.gradient.classList.add('hidden');
                         return;
                     }
 
                     this.overlay.classList.remove('hidden');
                     this.overlay.className = 'overlay weather-overlay weather--theme-' + this.settings.overlay_theme + ' position-' + this.settings.weather_position;
+                    this.gradient.classList.remove('hidden');
+                    this.gradient.className = 'gradient-backdrop weather-gradient weather-gradient--theme-' + this.settings.overlay_theme;
 
                     // Update immediately
                     this.update();

@@ -1,9 +1,9 @@
 /* =================================================================
    THEME: FADE - Radial gradient background
-   Gradient is FIXED to screen corner, stays at edge during pixel shift
+   Gradient is FIXED to screen corner via separate backdrop element
    ================================================================= */
 
-/* Clock with fade theme - gradient FIXED to bottom-left screen corner */
+/* Clock overlay - transparent, no pseudo-element needed */
 .clock-overlay.clock--theme-fade {
     background: transparent;
     backdrop-filter: none;
@@ -11,19 +11,7 @@
     border-radius: 0;
 }
 
-.clock-overlay.clock--theme-fade::before {
-    content: "";
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 50vw;
-    height: 50vh;
-    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
-    z-index: 0;
-    pointer-events: none;
-}
-
-/* Weather with fade theme - gradient FIXED to bottom-right screen corner */
+/* Weather overlay - transparent, no pseudo-element needed */
 .weather-overlay.weather--theme-fade {
     background: transparent;
     backdrop-filter: none;
@@ -31,14 +19,12 @@
     border-radius: 0;
 }
 
-.weather-overlay.weather--theme-fade::before {
-    content: "";
-    position: fixed;
-    bottom: 0;
-    right: 0;
-    width: 50vw;
-    height: 50vh;
+/* Clock gradient backdrop - bottom-left */
+.clock-gradient--theme-fade {
+    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
+}
+
+/* Weather gradient backdrop - bottom-right */
+.weather-gradient--theme-fade {
     background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
-    z-index: 0;
-    pointer-events: none;
 }

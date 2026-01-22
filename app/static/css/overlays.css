@@ -152,3 +152,36 @@
 body.burn-in-dim .overlay {
     opacity: var(--burn-in-opacity, 0.7);
 }
+
+/* =================================================================
+   Gradient Backdrop Elements
+   These are separate from overlays to avoid transform containing block issues.
+   When a transform is applied to a parent, position: fixed children are
+   positioned relative to the transformed parent, not the viewport.
+   ================================================================= */
+
+.gradient-backdrop {
+    position: fixed;
+    z-index: 99;  /* Below overlays (z-index: 100) but above content */
+    pointer-events: none;
+}
+
+.gradient-backdrop.hidden {
+    display: none !important;
+}
+
+/* Clock gradient - bottom-left corner */
+.clock-gradient {
+    bottom: 0;
+    left: 0;
+    width: 50vw;
+    height: 50vh;
+}
+
+/* Weather gradient - bottom-right corner */
+.weather-gradient {
+    bottom: 0;
+    right: 0;
+    width: 50vw;
+    height: 50vh;
+}
