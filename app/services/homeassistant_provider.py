@@ -134,7 +134,9 @@ class HomeAssistantProvider:
 
             attrs = state.get("attributes", {})
 
-            # Build weather data response
+            # Build weather data response (current conditions only)
+            # Note: Forecast data is now fetched separately via get_forecast()
+            # using the weather.get_forecasts service (deprecated from attributes)
             weather_data = {
                 "condition": state.get("state"),  # e.g., "sunny", "cloudy", "rainy"
                 "temperature": attrs.get("temperature"),
@@ -145,23 +147,7 @@ class HomeAssistantProvider:
                 "wind_bearing": attrs.get("wind_bearing"),
                 "visibility": attrs.get("visibility"),
                 "friendly_name": attrs.get("friendly_name", entity_id),
-                "forecast": [],
             }
-
-            # Include forecast if available (limit to 3 days)
-            forecast = attrs.get("forecast", [])
-            if forecast:
-                weather_data["forecast"] = [
-                    {
-                        "datetime": f.get("datetime"),
-                        "condition": f.get("condition"),
-                        "temperature": f.get("temperature"),
-                        "templow": f.get("templow"),
-                        "precipitation": f.get("precipitation"),
-                        "precipitation_probability": f.get("precipitation_probability"),
-                    }
-                    for f in forecast[:3]
-                ]
 
             # Cache result
             self._weather_cache[entity_id] = (weather_data, now_ts)
@@ -179,6 +165,98 @@ class HomeAssistantProvider:
             logger.error(f"Failed to get HA weather: {e}")
             return {"error": str(e)}
 
+    async def get_forecast(
+        self,
+        entity_id: str,
+        forecast_type: str = "daily",
+        limit: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Fetch weather forecast via weather.get_forecasts service.
+
+        Modern Home Assistant requires calling this service instead of
+        reading forecast from entity attributes (deprecated).
+
+        Args:
+            entity_id: Weather entity ID (e.g., "weather.home")
+            forecast_type: "daily", "hourly", or "twice_daily"
+            limit: Number of forecast entries to return
+
+        Returns:
+            Dict with forecast_type and forecast array, or 'error' field on failure
+        """
+        if not self.config or not self.config.enabled:
+            return {"error": "Home Assistant not configured"}
+
+        if not entity_id:
+            return {"error": "No weather entity specified"}
+
+        # Check cache with type-specific key
+        cache_key = f"{entity_id}:forecast:{forecast_type}"
+        now_ts = datetime.now(timezone.utc).timestamp()
+        if cache_key in self._weather_cache:
+            data, cached_ts = self._weather_cache[cache_key]
+            if (now_ts - cached_ts) < self._cache_ttl:
+                # Return cached but apply limit
+                logger.debug(f"Returning cached forecast for {cache_key}")
+                cached_forecast = data.get("forecast", [])[:limit]
+                return {**data, "forecast": cached_forecast}
+
+        client = await self._get_client()
+        headers = self._get_headers()
+        base_url = self.config.url.rstrip('/')
+
+        try:
+            response = await client.post(
+                f"{base_url}/api/services/weather/get_forecasts",
+                headers=headers,
+                json={
+                    "entity_id": entity_id,
+                    "type": forecast_type
+                }
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            # Extract forecast from response
+            # Response format: {"weather.home": {"forecast": [...]}}
+            entity_data = result.get(entity_id, {})
+            raw_forecast = entity_data.get("forecast", [])
+
+            forecast_data = {
+                "forecast_type": forecast_type,
+                "forecast": [
+                    {
+                        "datetime": f.get("datetime"),
+                        "condition": f.get("condition"),
+                        "temperature": f.get("temperature"),
+                        "templow": f.get("templow"),
+                        "precipitation": f.get("precipitation"),
+                        "precipitation_probability": f.get("precipitation_probability"),
+                        "humidity": f.get("humidity"),
+                        "wind_speed": f.get("wind_speed"),
+                    }
+                    for f in raw_forecast
+                ]
+            }
+
+            # Cache full result
+            self._weather_cache[cache_key] = (forecast_data, now_ts)
+            logger.debug(f"Cached forecast for {cache_key}")
+
+            # Return with limit applied
+            return {**forecast_data, "forecast": forecast_data["forecast"][:limit]}
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HA forecast API error: {e.response.status_code}")
+            return {"error": f"API error: {e.response.status_code}"}
+        except httpx.TimeoutException:
+            logger.error("Timeout fetching forecast from Home Assistant")
+            return {"error": "Connection timeout"}
+        except Exception as e:
+            logger.error(f"Failed to get HA forecast: {e}")
+            return {"error": str(e)}
+
     def clear_cache(self, entity_id: Optional[str] = None):
         """
         Clear weather cache.
@@ -187,7 +265,13 @@ class HomeAssistantProvider:
             entity_id: Specific entity to clear, or None to clear all
         """
         if entity_id:
-            self._weather_cache.pop(entity_id, None)
+            # Clear both current weather and all forecast types for this entity
+            keys_to_remove = [
+                k for k in self._weather_cache.keys()
+                if k == entity_id or k.startswith(f"{entity_id}:")
+            ]
+            for key in keys_to_remove:
+                self._weather_cache.pop(key, None)
         else:
             self._weather_cache.clear()
 

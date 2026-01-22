@@ -214,6 +214,55 @@ async def get_weather_data(
     return data
 
 
+@router.get("/api/weather/forecast", responses={
+    200: {
+        "description": "Weather forecast from Home Assistant",
+        "content": {
+            "application/json": {
+                "example": {
+                    "forecast_type": "daily",
+                    "forecast": [
+                        {
+                            "datetime": "2026-01-22T00:00:00+00:00",
+                            "condition": "sunny",
+                            "temperature": 22,
+                            "templow": 15,
+                            "precipitation_probability": 10
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    503: {"description": "Home Assistant not available"}
+})
+async def get_weather_forecast(
+    request: Request,
+    entity_id: str = Query(..., description="Home Assistant weather entity ID (e.g., weather.home)"),
+    forecast_type: str = Query("daily", description="Forecast type: daily, hourly, or twice_daily"),
+    limit: int = Query(3, ge=1, le=24, description="Number of forecast entries to return")
+):
+    """
+    Get weather forecast from Home Assistant.
+
+    Fetches forecast data using the weather.get_forecasts service.
+    Supports daily, hourly, or twice_daily forecasts.
+    Results are cached for 10 minutes.
+    """
+    ha_provider = getattr(request.app.state, 'ha_provider', None)
+    if not ha_provider:
+        raise HTTPException(
+            status_code=503,
+            detail="Home Assistant not configured. Set HOMEASSISTANT_URL and HOMEASSISTANT_TOKEN environment variables."
+        )
+
+    data = await ha_provider.get_forecast(entity_id, forecast_type, limit)
+    if "error" in data:
+        raise HTTPException(status_code=503, detail=data["error"])
+
+    return data
+
+
 @router.get("/api/homeassistant/test", responses={
     200: {"description": "Connection test result"},
     503: {"description": "Home Assistant not available"}

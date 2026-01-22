@@ -278,6 +278,15 @@
                 font-size: 1.5rem;
                 margin: 4px 0;
             }
+            .forecast-day .forecast-temp {
+                white-space: nowrap;
+            }
+            .forecast-day .precip {
+                font-size: 0.7em;
+                opacity: 0.8;
+                color: #6af;
+                margin-top: 2px;
+            }
 
             /* Image fit modes */
             .screensaver-image.fit-cover {
@@ -544,21 +553,42 @@
 
                 async update() {
                     try {
+                        // Fetch current conditions
                         const response = await fetch(
                             '/api/weather?entity_id=' + encodeURIComponent(this.settings.weather_ha_entity)
                         );
-                        if (response.ok) {
-                            const data = await response.json();
-                            this.render(data);
-                        } else {
+                        if (!response.ok) {
                             console.error('Weather fetch failed:', response.status);
+                            return;
                         }
+                        const data = await response.json();
+
+                        // Fetch forecast separately if enabled
+                        let forecastData = null;
+                        if (this.settings.weather_show_forecast) {
+                            try {
+                                const forecastType = this.settings.weather_forecast_type || 'daily';
+                                const forecastDays = this.settings.weather_forecast_days || 3;
+                                const forecastUrl = '/api/weather/forecast?entity_id=' +
+                                    encodeURIComponent(this.settings.weather_ha_entity) +
+                                    '&forecast_type=' + forecastType +
+                                    '&limit=' + forecastDays;
+                                const forecastResponse = await fetch(forecastUrl);
+                                if (forecastResponse.ok) {
+                                    forecastData = await forecastResponse.json();
+                                }
+                            } catch (e) {
+                                console.error('Failed to fetch forecast:', e);
+                            }
+                        }
+
+                        this.render(data, forecastData);
                     } catch (e) {
                         console.error('Failed to fetch weather:', e);
                     }
                 }
 
-                render(data) {
+                render(data, forecastData) {
                     document.getElementById('weatherIcon').textContent = this.getWeatherIcon(data.condition);
                     document.getElementById('weatherTemp').textContent =
                         Math.round(data.temperature) + (data.temperature_unit || '°');
@@ -566,14 +596,35 @@
                         data.condition ? data.condition.replace(/-/g, ' ') : '';
 
                     const forecastEl = document.getElementById('weatherForecast');
-                    if (this.settings.weather_show_forecast && data.forecast && data.forecast.length > 0) {
-                        forecastEl.innerHTML = data.forecast.map(f => {
+                    if (this.settings.weather_show_forecast && forecastData && forecastData.forecast && forecastData.forecast.length > 0) {
+                        const isHourly = this.settings.weather_forecast_type === 'hourly';
+                        const showHighLow = this.settings.weather_show_high_low ?? true;
+                        const showPrecip = this.settings.weather_show_precipitation || false;
+
+                        forecastEl.innerHTML = forecastData.forecast.map(f => {
                             const date = new Date(f.datetime);
-                            const dayName = date.toLocaleDateString(undefined, { weekday: 'short' });
+                            // Label: time for hourly, day name for daily
+                            const label = isHourly
+                                ? date.toLocaleTimeString(undefined, { hour: 'numeric' })
+                                : date.toLocaleDateString(undefined, { weekday: 'short' });
+
+                            // Temperature display
+                            let tempDisplay = Math.round(f.temperature) + '°';
+                            if (showHighLow && f.templow != null && !isHourly) {
+                                tempDisplay = Math.round(f.temperature) + '°/' + Math.round(f.templow) + '°';
+                            }
+
+                            // Precipitation display
+                            let precipHtml = '';
+                            if (showPrecip && f.precipitation_probability != null) {
+                                precipHtml = '<span class="precip">💧' + f.precipitation_probability + '%</span>';
+                            }
+
                             return '<div class="forecast-day">' +
-                                '<span>' + dayName + '</span>' +
+                                '<span class="forecast-label">' + label + '</span>' +
                                 '<span class="forecast-icon">' + this.getWeatherIcon(f.condition) + '</span>' +
-                                '<span>' + Math.round(f.temperature) + '°</span>' +
+                                '<span class="forecast-temp">' + tempDisplay + '</span>' +
+                                precipHtml +
                             '</div>';
                         }).join('');
                         forecastEl.style.display = 'flex';

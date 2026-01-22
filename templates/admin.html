@@ -1301,8 +1301,36 @@
                                 </select>
                             </div>
                             <div class="checkbox-row">
-                                <input type="checkbox" id="weather_show_forecast" name="weather_show_forecast">
-                                <label for="weather_show_forecast">Show 3-day forecast</label>
+                                <input type="checkbox" id="weather_show_forecast" name="weather_show_forecast" onchange="toggleForecastOptions()">
+                                <label for="weather_show_forecast">Show forecast</label>
+                            </div>
+                            <div id="forecast-options" style="display: none; margin-left: 20px;">
+                                <div class="form-row">
+                                    <label for="weather_forecast_type">Forecast Type</label>
+                                    <select id="weather_forecast_type" name="weather_forecast_type">
+                                        <option value="daily">Daily</option>
+                                        <option value="hourly">Hourly</option>
+                                        <option value="twice_daily">Twice Daily</option>
+                                    </select>
+                                </div>
+                                <div class="form-row">
+                                    <label for="weather_forecast_days">Entries</label>
+                                    <select id="weather_forecast_days" name="weather_forecast_days">
+                                        <option value="3">3</option>
+                                        <option value="5">5</option>
+                                        <option value="7">7</option>
+                                        <option value="12">12</option>
+                                        <option value="24">24</option>
+                                    </select>
+                                </div>
+                                <div class="checkbox-row">
+                                    <input type="checkbox" id="weather_show_high_low" name="weather_show_high_low" checked>
+                                    <label for="weather_show_high_low">Show high/low temperatures</label>
+                                </div>
+                                <div class="checkbox-row">
+                                    <input type="checkbox" id="weather_show_precipitation" name="weather_show_precipitation">
+                                    <label for="weather_show_precipitation">Show precipitation probability</label>
+                                </div>
                             </div>
                         </div>
                     </details>
@@ -1594,6 +1622,11 @@
                 document.getElementById('weather_ha_entity').value = '';
                 document.getElementById('weather_position').value = 'bottom-right';
                 document.getElementById('weather_show_forecast').checked = false;
+                document.getElementById('weather_forecast_type').value = 'daily';
+                document.getElementById('weather_forecast_days').value = '3';
+                document.getElementById('weather_show_high_low').checked = true;
+                document.getElementById('weather_show_precipitation').checked = false;
+                toggleForecastOptions();
                 // Burn-in prevention defaults
                 document.getElementById('burn_in_protection').checked = false;
                 document.getElementById('burn_in_interval').value = 5;
@@ -1641,6 +1674,11 @@
                 document.getElementById('weather_ha_entity').value = settings.weather_ha_entity || '';
                 document.getElementById('weather_position').value = settings.weather_position || 'bottom-right';
                 document.getElementById('weather_show_forecast').checked = settings.weather_show_forecast || false;
+                document.getElementById('weather_forecast_type').value = settings.weather_forecast_type || 'daily';
+                document.getElementById('weather_forecast_days').value = String(settings.weather_forecast_days ?? 3);
+                document.getElementById('weather_show_high_low').checked = settings.weather_show_high_low ?? true;
+                document.getElementById('weather_show_precipitation').checked = settings.weather_show_precipitation || false;
+                toggleForecastOptions();
                 // Burn-in prevention settings
                 document.getElementById('burn_in_protection').checked = settings.burn_in_protection || false;
                 document.getElementById('burn_in_interval').value = settings.burn_in_interval ?? 5;
@@ -1703,6 +1741,10 @@
                 data.weather_ha_entity = form.weather_ha_entity.value || null;
                 data.weather_position = form.weather_position.value;
                 data.weather_show_forecast = form.weather_show_forecast.checked;
+                data.weather_forecast_type = form.weather_forecast_type.value;
+                data.weather_forecast_days = parseInt(form.weather_forecast_days.value) || 3;
+                data.weather_show_high_low = form.weather_show_high_low.checked;
+                data.weather_show_precipitation = form.weather_show_precipitation.checked;
 
                 // Burn-in prevention settings
                 data.burn_in_protection = form.burn_in_protection.checked;
@@ -1725,6 +1767,14 @@
                 const display = document.getElementById('blurAmountValue');
                 if (slider && display) {
                     display.textContent = slider.value;
+                }
+            }
+
+            function toggleForecastOptions() {
+                const showForecast = document.getElementById('weather_show_forecast').checked;
+                const optionsDiv = document.getElementById('forecast-options');
+                if (optionsDiv) {
+                    optionsDiv.style.display = showForecast ? 'block' : 'none';
                 }
             }
 

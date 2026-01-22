@@ -118,6 +118,10 @@ class SyncGroupSettings(BaseModel):
     weather_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = 'bottom-right'
     weather_ha_entity: Optional[str] = None
     weather_show_forecast: bool = False
+    weather_forecast_type: Literal['daily', 'hourly', 'twice_daily'] = 'daily'
+    weather_forecast_days: int = Field(default=3, ge=1, le=24)
+    weather_show_high_low: bool = True
+    weather_show_precipitation: bool = False
 
     # Layout settings
     layout: Literal['single', 'splitview', 'splitview-landscape'] = 'single'
