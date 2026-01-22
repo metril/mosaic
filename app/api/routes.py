@@ -126,20 +126,20 @@ async def health_check():
         "description": "Current time from specified source",
         "content": {
             "application/json": {
-                "example": {"datetime": "2024-01-15T14:30:00+00:00", "source": "ntp"}
+                "example": {"datetime": "2024-01-15T14:30:00+00:00", "source": "server"}
             }
         }
     }
 })
 async def get_clock_data(
     request: Request,
-    source: str = Query("client", description="Time source: client, ntp, or homeassistant")
+    source: str = Query("client", description="Time source: client, server, or homeassistant")
 ):
     """
     Get current time from specified source.
 
     - **client**: Returns minimal response, client uses its own time
-    - **ntp**: Returns server time (NTP-synced)
+    - **server**: Returns server's system time
     - **homeassistant**: Fetches time from Home Assistant
 
     The client uses this for offset-based time sync to ensure
@@ -154,17 +154,17 @@ async def get_clock_data(
             # Fall back to server time on error
             logger.warning(f"HA time fetch failed, falling back to server: {result.get('error')}")
 
-        # Fall back to NTP/server time if HA not configured or failed
+        # Fall back to server time if HA not configured or failed
         return {
             "datetime": datetime.now(timezone.utc).isoformat(),
-            "source": "ntp"
+            "source": "server"
         }
 
-    elif source == "ntp":
-        # Return server time (should be NTP-synced)
+    elif source == "server":
+        # Return server's system time
         return {
             "datetime": datetime.now(timezone.utc).isoformat(),
-            "source": "ntp"
+            "source": "server"
         }
 
     else:
@@ -787,7 +787,7 @@ class SyncGroupCreateRequest(BaseModel):
     show_date: bool = Field(False, description="Show date overlay")
     time_format: Literal['12', '24'] = Field('24', description="Time format (12/24 hour)")
     date_format: str = Field('DDDD, MMMM DD', max_length=100, description="Date format (Immich Kiosk tokens)")
-    clock_source: Literal['client', 'ntp', 'homeassistant'] = Field('client', description="Clock time source")
+    clock_source: Literal['client', 'server', 'homeassistant'] = Field('client', description="Clock time source")
     clock_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = Field('bottom-left', description="Clock position")
     overlay_theme: Literal['fade', 'solid', 'bubble', 'blur'] = Field('fade', description="Overlay theme style")
     # Weather settings
@@ -845,7 +845,7 @@ class SyncGroupUpdateRequest(BaseModel):
     show_date: Optional[bool] = Field(None, description="Show date overlay")
     time_format: Optional[Literal['12', '24']] = Field(None, description="Time format (12/24 hour)")
     date_format: Optional[str] = Field(None, max_length=100, description="Date format (Immich Kiosk tokens)")
-    clock_source: Optional[Literal['client', 'ntp', 'homeassistant']] = Field(None, description="Clock time source")
+    clock_source: Optional[Literal['client', 'server', 'homeassistant']] = Field(None, description="Clock time source")
     clock_position: Optional[Literal['bottom-left', 'bottom-right', 'top-left', 'top-right']] = Field(None, description="Clock position")
     overlay_theme: Optional[Literal['fade', 'solid', 'bubble', 'blur']] = Field(None, description="Overlay theme style")
     # Weather settings

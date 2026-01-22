@@ -190,7 +190,7 @@ DELETE /sync/admin/groups/living-room
 | `show_date` | bool | false | Display date overlay |
 | `time_format` | string | "24" | "12" or "24" hour format |
 | `date_format` | string | "DDDD, MMMM DD" | Date format string |
-| `clock_source` | string | "client" | "client", "ntp", or "homeassistant" |
+| `clock_source` | string | "client" | "client", "server", or "homeassistant" |
 | `clock_position` | string | "bottom-left" | Corner position |
 | **Weather Settings** ||||
 | `show_weather` | bool | false | Display weather overlay |

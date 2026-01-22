@@ -110,7 +110,7 @@ class SyncGroupSettings(BaseModel):
     show_date: bool = False
     time_format: Literal['12', '24'] = '24'
     date_format: str = 'DDDD, MMMM DD'
-    clock_source: Literal['client', 'ntp', 'homeassistant'] = 'client'
+    clock_source: Literal['client', 'server', 'homeassistant'] = 'client'
     clock_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = 'bottom-left'
     overlay_theme: Literal['fade', 'solid', 'bubble', 'blur'] = 'fade'
 
