@@ -4,6 +4,9 @@
    ================================================================= */
 
 :root {
+    /* Z-index hierarchy */
+    --z-base: 0;
+
     /* Fade gradient - complex HSLA gradient from Immich Kiosk */
     --fade-gradient: hsla(0, 0%, 0%, 0.59) 0%, hsla(0, 0%, 0%, 0.582) 5.2%,
         hsla(0, 0%, 0%, 0.561) 10.9%, hsla(0, 0%, 0%, 0.529) 16.9%,

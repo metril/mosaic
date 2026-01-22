@@ -8,6 +8,7 @@
     position: fixed;
     z-index: 100;
     padding: 1rem;
+    overflow: visible;
     transition: opacity var(--burn-in-fade, 10s) ease-in-out;
 }
 
@@ -20,23 +21,23 @@
    ================================================================= */
 
 .position-bottom-left {
-    bottom: 30px;
-    left: 30px;
+    bottom: 0;
+    left: 0;
 }
 
 .position-bottom-right {
-    bottom: 30px;
-    right: 30px;
+    bottom: 0;
+    right: 0;
 }
 
 .position-top-left {
-    top: 30px;
-    left: 30px;
+    top: 0;
+    left: 0;
 }
 
 .position-top-right {
-    top: 30px;
-    right: 30px;
+    top: 0;
+    right: 0;
 }
 
 /* =================================================================

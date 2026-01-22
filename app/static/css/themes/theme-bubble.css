@@ -1,11 +1,9 @@
 /* =================================================================
    THEME: BUBBLE - Same as fade for clock/weather overlays
-   Matches Immich Kiosk's theme-bubble.css (clock/weather portion)
-   Note: Bubble theme in Immich primarily affects metadata bubbles,
-   but for clock/weather it uses the same gradient as fade
+   Simplified to match Immich Kiosk pattern
    ================================================================= */
 
-/* Clock with bubble theme */
+/* Clock with bubble theme - gradient from top-left */
 .clock-overlay.clock--theme-bubble {
     background: transparent;
     backdrop-filter: none;
@@ -16,40 +14,15 @@
 .clock-overlay.clock--theme-bubble::before {
     content: "";
     position: absolute;
+    top: 0;
+    left: 0;
     width: 150%;
     height: 200%;
-    z-index: -1;
-}
-
-.clock-overlay.clock--theme-bubble.position-top-left::before {
-    top: 0;
-    left: 0;
     background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
+    z-index: 0;
 }
 
-.clock-overlay.clock--theme-bubble.position-top-right::before {
-    top: 0;
-    right: 0;
-    left: unset;
-    background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
-}
-
-.clock-overlay.clock--theme-bubble.position-bottom-left::before {
-    bottom: 0;
-    left: 0;
-    top: unset;
-    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
-}
-
-.clock-overlay.clock--theme-bubble.position-bottom-right::before {
-    bottom: 0;
-    right: 0;
-    top: unset;
-    left: unset;
-    background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
-}
-
-/* Weather with bubble theme */
+/* Weather with bubble theme - gradient from top-right */
 .weather-overlay.weather--theme-bubble {
     background: transparent;
     backdrop-filter: none;
@@ -60,35 +33,11 @@
 .weather-overlay.weather--theme-bubble::before {
     content: "";
     position: absolute;
+    top: 0;
+    right: 0;
+    left: unset;
     width: 150%;
     height: 200%;
-    z-index: -1;
-}
-
-.weather-overlay.weather--theme-bubble.position-top-left::before {
-    top: 0;
-    left: 0;
-    background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
-}
-
-.weather-overlay.weather--theme-bubble.position-top-right::before {
-    top: 0;
-    right: 0;
-    left: unset;
     background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
-}
-
-.weather-overlay.weather--theme-bubble.position-bottom-left::before {
-    bottom: 0;
-    left: 0;
-    top: unset;
-    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
-}
-
-.weather-overlay.weather--theme-bubble.position-bottom-right::before {
-    bottom: 0;
-    right: 0;
-    top: unset;
-    left: unset;
-    background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
+    z-index: 0;
 }
