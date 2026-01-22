@@ -1,9 +1,9 @@
 /* =================================================================
    THEME: FADE - Radial gradient background
-   Gradient emanates from the corner where the overlay is positioned
+   Gradient is FIXED to screen corner, stays at edge during pixel shift
    ================================================================= */
 
-/* Clock with fade theme - gradient from bottom-left (default position) */
+/* Clock with fade theme - gradient FIXED to bottom-left screen corner */
 .clock-overlay.clock--theme-fade {
     background: transparent;
     backdrop-filter: none;
@@ -13,17 +13,17 @@
 
 .clock-overlay.clock--theme-fade::before {
     content: "";
-    position: absolute;
+    position: fixed;
     bottom: 0;
     left: 0;
-    top: unset;
-    width: 150%;
-    height: 200%;
+    width: 50vw;
+    height: 50vh;
     background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
     z-index: 0;
+    pointer-events: none;
 }
 
-/* Weather with fade theme - gradient from bottom-right (default position) */
+/* Weather with fade theme - gradient FIXED to bottom-right screen corner */
 .weather-overlay.weather--theme-fade {
     background: transparent;
     backdrop-filter: none;
@@ -33,13 +33,12 @@
 
 .weather-overlay.weather--theme-fade::before {
     content: "";
-    position: absolute;
+    position: fixed;
     bottom: 0;
     right: 0;
-    top: unset;
-    left: unset;
-    width: 150%;
-    height: 200%;
+    width: 50vw;
+    height: 50vh;
     background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
     z-index: 0;
+    pointer-events: none;
 }
