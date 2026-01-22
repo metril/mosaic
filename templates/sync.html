@@ -15,6 +15,9 @@
                     hsla(0, 0%, 0%, 0.153) 65.4%, hsla(0, 0%, 0%, 0.103) 72.6%,
                     hsla(0, 0%, 0%, 0.061) 79.7%, hsla(0, 0%, 0%, 0.029) 86.7%,
                     hsla(0, 0%, 0%, 0.008) 93.5%, hsla(0, 0%, 0%, 0) 100%;
+                --bubble-background: rgba(0, 0, 0, 0.2);
+                --burn-in-fade: 10s;
+                --burn-in-opacity: 0.7;
             }
             * {
                 margin: 0;
@@ -212,7 +215,8 @@
             .overlay {
                 position: fixed;
                 z-index: 100;
-                padding: 20px;
+                padding: 1rem;
+                transition: opacity var(--burn-in-fade, 10s) ease-in-out;
             }
             .overlay.hidden {
                 display: none !important;
@@ -229,19 +233,26 @@
                 text-align: left;
             }
             .clock-time {
+                position: relative;
+                z-index: 1;
                 font-size: 3rem;
                 font-weight: 600;
                 color: white;
-                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+                text-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.6);
                 line-height: 1.2;
                 font-family: system-ui, -apple-system, sans-serif;
+                letter-spacing: 0.0625rem;
             }
             .clock-date {
-                font-size: 1.2rem;
+                position: relative;
+                z-index: 1;
+                font-size: 1.5rem;
                 color: rgba(255, 255, 255, 0.85);
-                text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+                text-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.6);
                 margin-top: 4px;
                 font-family: system-ui, -apple-system, sans-serif;
+                text-transform: capitalize;
+                letter-spacing: 0.0625rem;
             }
 
             /* Weather styles */
@@ -249,23 +260,32 @@
                 text-align: right;
             }
             .weather-icon {
+                position: relative;
+                z-index: 1;
                 font-size: 3rem;
                 margin-bottom: 8px;
             }
             .weather-temp {
-                font-size: 2.5rem;
-                font-weight: 600;
+                position: relative;
+                z-index: 1;
+                font-size: 3rem;
+                font-weight: bold;
                 color: white;
-                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+                text-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.6);
                 font-family: system-ui, -apple-system, sans-serif;
             }
             .weather-condition {
+                position: relative;
+                z-index: 1;
                 font-size: 1rem;
                 color: rgba(255, 255, 255, 0.85);
+                text-shadow: 0 0 1.25rem rgba(0, 0, 0, 0.6);
                 text-transform: capitalize;
                 margin-top: 4px;
             }
             .weather-forecast {
+                position: relative;
+                z-index: 1;
                 display: flex;
                 gap: 16px;
                 margin-top: 12px;
@@ -274,6 +294,8 @@
                 justify-content: flex-end;
             }
             .forecast-day {
+                position: relative;
+                z-index: 1;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
@@ -312,21 +334,21 @@
                 height: 200%;
                 z-index: -1;
             }
-            /* Offset and gradient by position (matches Immich Kiosk) */
+            /* NO offset - gradient starts at element edge (matches Immich Kiosk clock/weather) */
             .overlay.theme-fade.position-top-left::before {
-                top: -1rem; left: -1rem;
+                top: 0; left: 0;
                 background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
             }
             .overlay.theme-fade.position-top-right::before {
-                top: -1rem; right: -1rem; left: unset;
+                top: 0; right: 0; left: unset;
                 background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
             }
             .overlay.theme-fade.position-bottom-left::before {
-                bottom: -1rem; left: -1rem; top: unset;
+                bottom: 0; left: 0; top: unset;
                 background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
             }
             .overlay.theme-fade.position-bottom-right::before {
-                bottom: -1rem; right: -1rem; top: unset; left: unset;
+                bottom: 0; right: 0; top: unset; left: unset;
                 background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
             }
 
@@ -335,14 +357,16 @@
                 background-color: rgba(0, 0, 0, 0.6);
                 backdrop-filter: none;
                 -webkit-backdrop-filter: none;
-                padding: 1rem;
-                margin: -1rem;
             }
             /* Rounded corner faces toward center of screen */
             .overlay.theme-solid.position-top-left { border-radius: 0 0 2rem 0; }
             .overlay.theme-solid.position-top-right { border-radius: 0 0 0 2rem; }
             .overlay.theme-solid.position-bottom-left { border-radius: 0 2rem 0 0; }
             .overlay.theme-solid.position-bottom-right { border-radius: 2rem 0 0 0; }
+            /* Weather-specific: align-self for right positioning */
+            .weather-overlay.theme-solid {
+                align-self: start;
+            }
 
             /* ========== THEME: BUBBLE ========== */
             /* Bubble uses fade gradient for clock/weather (same as Immich Kiosk) */
@@ -360,20 +384,66 @@
                 z-index: -1;
             }
             .overlay.theme-bubble.position-top-left::before {
-                top: -1rem; left: -1rem;
+                top: 0; left: 0;
                 background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
             }
             .overlay.theme-bubble.position-top-right::before {
-                top: -1rem; right: -1rem; left: unset;
+                top: 0; right: 0; left: unset;
                 background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
             }
             .overlay.theme-bubble.position-bottom-left::before {
-                bottom: -1rem; left: -1rem; top: unset;
+                bottom: 0; left: 0; top: unset;
                 background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
             }
             .overlay.theme-bubble.position-bottom-right::before {
-                bottom: -1rem; right: -1rem; top: unset; left: unset;
+                bottom: 0; right: 0; top: unset; left: unset;
                 background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
+            }
+
+            /* ========== THEME: BLUR ========== */
+            .overlay.theme-blur {
+                background: transparent;
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+                border-radius: 0;
+            }
+            .overlay.theme-blur::before {
+                content: "";
+                position: absolute;
+                width: 150%;
+                height: 200%;
+                z-index: -1;
+                backdrop-filter: blur(0.5rem);
+                -webkit-backdrop-filter: blur(0.5rem);
+            }
+            .overlay.theme-blur.position-top-left::before {
+                top: 0; left: 0;
+                mask-image: radial-gradient(100% 100% at 0% 0%, black 60%, transparent 100%);
+                -webkit-mask-image: radial-gradient(100% 100% at 0% 0%, black 60%, transparent 100%);
+                background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
+            }
+            .overlay.theme-blur.position-top-right::before {
+                top: 0; right: 0; left: unset;
+                mask-image: radial-gradient(100% 100% at 100% 0%, black 60%, transparent 100%);
+                -webkit-mask-image: radial-gradient(100% 100% at 100% 0%, black 60%, transparent 100%);
+                background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
+            }
+            .overlay.theme-blur.position-bottom-left::before {
+                bottom: 0; left: 0; top: unset;
+                mask-image: radial-gradient(100% 100% at 0% 100%, black 60%, transparent 100%);
+                -webkit-mask-image: radial-gradient(100% 100% at 0% 100%, black 60%, transparent 100%);
+                background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
+            }
+            .overlay.theme-blur.position-bottom-right::before {
+                bottom: 0; right: 0; top: unset; left: unset;
+                mask-image: radial-gradient(100% 100% at 100% 100%, black 60%, transparent 100%);
+                -webkit-mask-image: radial-gradient(100% 100% at 100% 100%, black 60%, transparent 100%);
+                background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
+            }
+
+            /* Burn-in dim state (controlled by JS) */
+            body.burn-in-dim .overlay {
+                opacity: var(--burn-in-opacity, 0.7);
             }
 
             /* Image fit modes */
