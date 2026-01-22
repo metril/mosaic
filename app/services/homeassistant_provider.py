@@ -207,8 +207,9 @@ class HomeAssistantProvider:
         base_url = self.config.url.rstrip('/')
 
         try:
+            # Must use ?return_response to get forecast data from HA service call
             response = await client.post(
-                f"{base_url}/api/services/weather/get_forecasts",
+                f"{base_url}/api/services/weather/get_forecasts?return_response",
                 headers=headers,
                 json={
                     "entity_id": entity_id,
@@ -218,9 +219,10 @@ class HomeAssistantProvider:
             response.raise_for_status()
             result = response.json()
 
-            # Extract forecast from response
-            # Response format: {"weather.home": {"forecast": [...]}}
-            entity_data = result.get(entity_id, {})
+            # Extract forecast from service_response (not root level)
+            # Response format: {"changed_states": [...], "service_response": {"weather.home": {"forecast": [...]}}}
+            service_response = result.get("service_response", {})
+            entity_data = service_response.get(entity_id, {})
             raw_forecast = entity_data.get("forecast", [])
 
             forecast_data = {
