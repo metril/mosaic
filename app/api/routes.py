@@ -846,6 +846,7 @@ class SyncGroupUpdateRequest(BaseModel):
     date_format: Optional[str] = Field(None, max_length=100, description="Date format (Immich Kiosk tokens)")
     clock_source: Optional[Literal['client', 'ntp', 'homeassistant']] = Field(None, description="Clock time source")
     clock_position: Optional[Literal['bottom-left', 'bottom-right', 'top-left', 'top-right']] = Field(None, description="Clock position")
+    overlay_theme: Optional[Literal['fade', 'solid', 'bubble']] = Field(None, description="Overlay theme style")
     # Weather settings
     show_weather: Optional[bool] = Field(None, description="Show weather overlay")
     weather_position: Optional[Literal['bottom-left', 'bottom-right', 'top-left', 'top-right']] = Field(None, description="Weather position")

@@ -6,6 +6,16 @@
         <link rel="icon" type="image/x-icon" href="/favicon.ico">
         <title>Sync - {{ group_id }}</title>
         <style type="text/css">
+            :root {
+                --fade-gradient: hsla(0, 0%, 0%, 0.59) 0%, hsla(0, 0%, 0%, 0.582) 5.2%,
+                    hsla(0, 0%, 0%, 0.561) 10.9%, hsla(0, 0%, 0%, 0.529) 16.9%,
+                    hsla(0, 0%, 0%, 0.487) 23.3%, hsla(0, 0%, 0%, 0.437) 29.9%,
+                    hsla(0, 0%, 0%, 0.382) 36.8%, hsla(0, 0%, 0%, 0.324) 43.8%,
+                    hsla(0, 0%, 0%, 0.266) 51%, hsla(0, 0%, 0%, 0.208) 58.2%,
+                    hsla(0, 0%, 0%, 0.153) 65.4%, hsla(0, 0%, 0%, 0.103) 72.6%,
+                    hsla(0, 0%, 0%, 0.061) 79.7%, hsla(0, 0%, 0%, 0.029) 86.7%,
+                    hsla(0, 0%, 0%, 0.008) 93.5%, hsla(0, 0%, 0%, 0) 100%;
+            }
             * {
                 margin: 0;
                 padding: 0;
@@ -288,6 +298,61 @@
                 margin-top: 2px;
             }
 
+            /* =================================================================
+               Overlay Themes (from Immich Kiosk)
+               ================================================================= */
+
+            /* ========== THEME: FADE ========== */
+            .overlay.theme-fade {
+                background: transparent;
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+                border-radius: 0;
+            }
+            .overlay.theme-fade::before {
+                content: "";
+                position: absolute;
+                width: 200%;
+                height: 200%;
+                z-index: -1;
+            }
+            /* Fade gradients by position */
+            .overlay.theme-fade.position-top-left::before {
+                top: 0; left: 0;
+                background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
+            }
+            .overlay.theme-fade.position-top-right::before {
+                top: 0; right: 0; left: unset;
+                background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
+            }
+            .overlay.theme-fade.position-bottom-left::before {
+                bottom: 0; left: 0; top: unset;
+                background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
+            }
+            .overlay.theme-fade.position-bottom-right::before {
+                bottom: 0; right: 0; top: unset; left: unset;
+                background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
+            }
+
+            /* ========== THEME: SOLID ========== */
+            .overlay.theme-solid {
+                background-color: rgba(0, 0, 0, 0.6);
+                backdrop-filter: none;
+                -webkit-backdrop-filter: none;
+            }
+            .overlay.theme-solid.position-top-left { border-radius: 0 0 2rem 0; }
+            .overlay.theme-solid.position-top-right { border-radius: 0 0 0 2rem; }
+            .overlay.theme-solid.position-bottom-left { border-radius: 0 2rem 0 0; }
+            .overlay.theme-solid.position-bottom-right { border-radius: 2rem 0 0 0; }
+
+            /* ========== THEME: BUBBLE ========== */
+            .overlay.theme-bubble {
+                background: rgba(0, 0, 0, 0.4);
+                border-radius: 12px;
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+            }
+
             /* Image fit modes */
             .screensaver-image.fit-cover {
                 object-fit: cover;
@@ -328,13 +393,13 @@
         </div>
 
         <!-- Clock overlay -->
-        <div class="overlay clock-overlay position-{{ settings.clock_position|default('bottom-left') }} hidden" id="clockOverlay">
+        <div class="overlay clock-overlay theme-{{ settings.overlay_theme|default('fade') }} position-{{ settings.clock_position|default('bottom-left') }} hidden" id="clockOverlay">
             <div class="clock-time" id="clockTime"></div>
             <div class="clock-date" id="clockDate"></div>
         </div>
 
         <!-- Weather overlay -->
-        <div class="overlay weather-overlay position-{{ settings.weather_position|default('bottom-right') }} hidden" id="weatherOverlay">
+        <div class="overlay weather-overlay theme-{{ settings.overlay_theme|default('fade') }} position-{{ settings.weather_position|default('bottom-right') }} hidden" id="weatherOverlay">
             <div class="weather-icon" id="weatherIcon"></div>
             <div class="weather-temp" id="weatherTemp"></div>
             <div class="weather-condition" id="weatherCondition"></div>
@@ -373,6 +438,7 @@
                 date_format: "{{ settings.date_format|default('%A, %B %d') }}",
                 clock_source: "{{ settings.clock_source|default('client') }}",
                 clock_position: "{{ settings.clock_position|default('bottom-left') }}",
+                overlay_theme: "{{ settings.overlay_theme|default('fade') }}",
                 show_weather: {{ settings.show_weather|default(false)|tojson }},
                 weather_position: "{{ settings.weather_position|default('bottom-right') }}",
                 weather_ha_entity: "{{ settings.weather_ha_entity|default('') }}",
@@ -416,7 +482,7 @@
                     }
 
                     this.overlay.classList.remove('hidden');
-                    this.overlay.className = 'overlay clock-overlay position-' + this.settings.clock_position;
+                    this.overlay.className = 'overlay clock-overlay theme-' + this.settings.overlay_theme + ' position-' + this.settings.clock_position;
 
                     // Initial sync if using server time
                     if (this.settings.clock_source !== 'client') {
@@ -546,7 +612,7 @@
                     }
 
                     this.overlay.classList.remove('hidden');
-                    this.overlay.className = 'overlay weather-overlay position-' + this.settings.weather_position;
+                    this.overlay.className = 'overlay weather-overlay theme-' + this.settings.overlay_theme + ' position-' + this.settings.weather_position;
 
                     // Update immediately
                     this.update();

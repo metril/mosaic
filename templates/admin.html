@@ -1274,6 +1274,14 @@
                                     <option value="top-right">Top Right</option>
                                 </select>
                             </div>
+                            <div class="form-row">
+                                <label for="overlay_theme">Overlay Theme</label>
+                                <select id="overlay_theme" name="overlay_theme">
+                                    <option value="fade">Fade (Gradient)</option>
+                                    <option value="solid">Solid</option>
+                                    <option value="bubble">Bubble (Blur)</option>
+                                </select>
+                            </div>
                         </div>
                     </details>
 
@@ -1617,6 +1625,7 @@
                 document.getElementById('date_format').value = 'DDDD, MMMM DD';
                 document.getElementById('clock_source').value = 'client';
                 document.getElementById('clock_position').value = 'bottom-left';
+                document.getElementById('overlay_theme').value = 'fade';
                 // Weather defaults
                 document.getElementById('show_weather').checked = false;
                 document.getElementById('weather_ha_entity').value = '';
@@ -1669,6 +1678,7 @@
                 document.getElementById('date_format').value = settings.date_format || 'DDDD, MMMM DD';
                 document.getElementById('clock_source').value = settings.clock_source || 'client';
                 document.getElementById('clock_position').value = settings.clock_position || 'bottom-left';
+                document.getElementById('overlay_theme').value = settings.overlay_theme || 'fade';
                 // Weather settings
                 document.getElementById('show_weather').checked = settings.show_weather || false;
                 document.getElementById('weather_ha_entity').value = settings.weather_ha_entity || '';
@@ -1735,6 +1745,7 @@
                 data.date_format = form.date_format.value || 'DDDD, MMMM DD';
                 data.clock_source = form.clock_source.value;
                 data.clock_position = form.clock_position.value;
+                data.overlay_theme = form.overlay_theme.value;
 
                 // Weather settings
                 data.show_weather = form.show_weather.checked;
