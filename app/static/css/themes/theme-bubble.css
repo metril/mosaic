@@ -1,9 +1,9 @@
 /* =================================================================
    THEME: BUBBLE - Same as fade for clock/weather overlays
-   Simplified to match Immich Kiosk pattern
+   Gradient emanates from the corner where the overlay is positioned
    ================================================================= */
 
-/* Clock with bubble theme - gradient from top-left */
+/* Clock with bubble theme - gradient from bottom-left (default position) */
 .clock-overlay.clock--theme-bubble {
     background: transparent;
     backdrop-filter: none;
@@ -14,15 +14,16 @@
 .clock-overlay.clock--theme-bubble::before {
     content: "";
     position: absolute;
-    top: 0;
+    bottom: 0;
     left: 0;
+    top: unset;
     width: 150%;
     height: 200%;
-    background-image: radial-gradient(100% 100% at 0% 0%, var(--fade-gradient));
+    background-image: radial-gradient(100% 100% at 0% 100%, var(--fade-gradient));
     z-index: 0;
 }
 
-/* Weather with bubble theme - gradient from top-right */
+/* Weather with bubble theme - gradient from bottom-right (default position) */
 .weather-overlay.weather--theme-bubble {
     background: transparent;
     backdrop-filter: none;
@@ -33,11 +34,12 @@
 .weather-overlay.weather--theme-bubble::before {
     content: "";
     position: absolute;
-    top: 0;
+    bottom: 0;
     right: 0;
+    top: unset;
     left: unset;
     width: 150%;
     height: 200%;
-    background-image: radial-gradient(100% 100% at 100% 0%, var(--fade-gradient));
+    background-image: radial-gradient(100% 100% at 100% 100%, var(--fade-gradient));
     z-index: 0;
 }
