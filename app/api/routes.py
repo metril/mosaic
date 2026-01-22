@@ -851,6 +851,10 @@ class SyncGroupUpdateRequest(BaseModel):
     weather_position: Optional[Literal['bottom-left', 'bottom-right', 'top-left', 'top-right']] = Field(None, description="Weather position")
     weather_ha_entity: Optional[str] = Field(None, max_length=100, description="Home Assistant weather entity ID")
     weather_show_forecast: Optional[bool] = Field(None, description="Show weather forecast")
+    weather_forecast_type: Optional[Literal['daily', 'hourly', 'twice_daily']] = Field(None, description="Forecast type")
+    weather_forecast_days: Optional[int] = Field(None, ge=1, le=24, description="Number of forecast entries")
+    weather_show_high_low: Optional[bool] = Field(None, description="Show high/low temperatures")
+    weather_show_precipitation: Optional[bool] = Field(None, description="Show precipitation probability")
     # Layout settings
     layout: Optional[Literal['single', 'splitview', 'splitview-landscape']] = Field(None, description="Display layout")
     # Background blur settings
