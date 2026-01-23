@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
         <link rel="icon" type="image/x-icon" href="/favicon.ico">
         <!-- External CSS files for overlay themes (Immich Kiosk architecture) -->
         <link rel="stylesheet" href="/css/vars.css">
@@ -19,13 +19,24 @@
                 padding: 0;
                 box-sizing: border-box;
             }
+            html {
+                overflow: hidden;
+                overscroll-behavior: none;
+                height: 100%;
+                width: 100%;
+            }
             body {
                 background-color: rgb(0, 0, 0);
                 display: flex;
                 justify-content: center;
                 align-items: center;
-                min-height: 100vh;
+                height: 100vh;
+                width: 100vw;
                 overflow: hidden;
+                overscroll-behavior: none;
+                touch-action: none;
+                -webkit-user-select: none;
+                user-select: none;
             }
             .image-container {
                 position: relative;
@@ -799,6 +810,17 @@
                 weatherManager.start();
                 burnInManager.init(SETTINGS);
             });
+
+            // Prevent scrolling on kiosk browsers (Fully Kiosk, Android WebView)
+            document.addEventListener('touchmove', function(e) {
+                e.preventDefault();
+            }, { passive: false });
+
+            window.addEventListener('scroll', function() {
+                window.scrollTo(0, 0);
+            }, true);
+
+            window.scrollTo(0, 0);
 
             (function() {
                 // Configuration
