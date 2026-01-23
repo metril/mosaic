@@ -245,22 +245,25 @@
             </div>
         </div>
 
-        <!-- Gradient backdrop elements (fixed to viewport corners, not affected by pixel shift) -->
-        <div class="gradient-backdrop clock-gradient clock-gradient--theme-{{ settings.overlay_theme|default('fade') }} hidden" id="clockGradient"></div>
-        <div class="gradient-backdrop weather-gradient weather-gradient--theme-{{ settings.overlay_theme|default('fade') }} hidden" id="weatherGradient"></div>
+        <!-- Overlay container - single fixed element for kiosk browser compatibility -->
+        <div class="overlay-container" id="overlayContainer">
+            <!-- Gradient backdrop elements (siblings of overlays, not affected by pixel shift transforms) -->
+            <div class="gradient-backdrop clock-gradient clock-gradient--theme-{{ settings.overlay_theme|default('fade') }} hidden" id="clockGradient"></div>
+            <div class="gradient-backdrop weather-gradient weather-gradient--theme-{{ settings.overlay_theme|default('fade') }} hidden" id="weatherGradient"></div>
 
-        <!-- Clock overlay -->
-        <div class="overlay clock-overlay clock--theme-{{ settings.overlay_theme|default('fade') }} position-{{ settings.clock_position|default('bottom-left') }} hidden" id="clockOverlay">
-            <div class="clock-time" id="clockTime"></div>
-            <div class="clock-date" id="clockDate"></div>
-        </div>
+            <!-- Clock overlay -->
+            <div class="overlay clock-overlay clock--theme-{{ settings.overlay_theme|default('fade') }} position-{{ settings.clock_position|default('bottom-left') }} hidden" id="clockOverlay">
+                <div class="clock-time" id="clockTime"></div>
+                <div class="clock-date" id="clockDate"></div>
+            </div>
 
-        <!-- Weather overlay -->
-        <div class="overlay weather-overlay weather--theme-{{ settings.overlay_theme|default('fade') }} position-{{ settings.weather_position|default('bottom-right') }} hidden" id="weatherOverlay">
-            <div class="weather-icon" id="weatherIcon"></div>
-            <div class="weather-temp" id="weatherTemp"></div>
-            <div class="weather-condition" id="weatherCondition"></div>
-            <div class="weather-forecast" id="weatherForecast"></div>
+            <!-- Weather overlay -->
+            <div class="overlay weather-overlay weather--theme-{{ settings.overlay_theme|default('fade') }} position-{{ settings.weather_position|default('bottom-right') }} hidden" id="weatherOverlay">
+                <div class="weather-icon" id="weatherIcon"></div>
+                <div class="weather-temp" id="weatherTemp"></div>
+                <div class="weather-condition" id="weatherCondition"></div>
+                <div class="weather-forecast" id="weatherForecast"></div>
+            </div>
         </div>
 
         <div class="debug-overlay" id="debugOverlay">

@@ -3,12 +3,30 @@
    Matches Immich Kiosk's clock.css and weather.css patterns
    ================================================================= */
 
-/* Base overlay container */
-.overlay {
+/* =================================================================
+   Overlay Container
+   Single fixed element for better kiosk browser compatibility.
+   Fully Kiosk Browser on Android handles multiple position:fixed
+   elements differently than standard browsers.
+   ================================================================= */
+.overlay-container {
     position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 99;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+/* Base overlay - positioned absolutely within container */
+.overlay {
+    position: absolute;
     z-index: 100;
     padding: 1rem;
     overflow: visible;
+    pointer-events: auto;
     transition: opacity var(--burn-in-fade, 10s) ease-in-out;
 }
 
@@ -155,14 +173,13 @@ body.burn-in-dim .overlay {
 
 /* =================================================================
    Gradient Backdrop Elements
-   These are separate from overlays to avoid transform containing block issues.
-   When a transform is applied to a parent, position: fixed children are
-   positioned relative to the transformed parent, not the viewport.
+   Positioned absolutely within overlay-container. Gradients are siblings
+   of overlays, so burn-in transforms on overlays don't affect gradients.
    ================================================================= */
 
 .gradient-backdrop {
-    position: fixed;
-    z-index: 99;  /* Below overlays (z-index: 100) but above content */
+    position: absolute;
+    z-index: 1;  /* Below overlays (z-index: 100) within container */
     pointer-events: none;
 }
 
