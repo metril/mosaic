@@ -1504,7 +1504,7 @@
         </div>
 
         <script type="text/javascript">
-            const API_BASE = '/sync/admin/groups';
+            const API_BASE = '/api/sync/groups';
             const CSRF_TOKEN = '{{ csrf_token }}';
             let editingGroupId = null;
             let groupSettingsCache = {};
@@ -2332,7 +2332,7 @@
                 btn.disabled = true;
 
                 try {
-                    const response = await fetch('/sync/admin/save-config', {
+                    const response = await fetch('/api/sync/save-config', {
                         method: 'POST',
                         headers: {
                             'X-CSRF-Token': CSRF_TOKEN
@@ -2523,7 +2523,7 @@
                 const newPath = parentPath ? `${parentPath}/${name}` : name;
 
                 try {
-                    await fetchImmichJson('/immich/create-folder', {
+                    await fetchImmichJson('/api/immich/create-folder', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ path: newPath })
@@ -3073,7 +3073,7 @@
             // Immich Pull Management
             // =================================================================
 
-            const IMMICH_API_BASE = '/immich';
+            const IMMICH_API_BASE = '/api/immich';
             let editingPullName = null;
             let immichPulls = [];
             let pollIntervals = {};

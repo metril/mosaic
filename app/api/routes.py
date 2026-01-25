@@ -920,7 +920,7 @@ async def sync_admin_redirect():
     return RedirectResponse(url="/admin", status_code=302)
 
 
-@router.get("/sync/admin/groups", responses={
+@router.get("/api/sync/groups", responses={
     200: {
         "description": "List of all active sync groups",
         "content": {
@@ -951,7 +951,7 @@ async def list_sync_groups(request: Request, user: User = Depends(get_current_us
     return JSONResponse(content=groups)
 
 
-@router.post("/sync/admin/groups", responses={
+@router.post("/api/sync/groups", responses={
     201: {"description": "Sync group created successfully"},
     400: {"description": "Group already exists or invalid parameters"},
     401: {"description": "Not authenticated"},
@@ -1026,7 +1026,7 @@ async def create_sync_group(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.patch("/sync/admin/groups/{group_id}", responses={
+@router.patch("/api/sync/groups/{group_id}", responses={
     200: {"description": "Sync group updated successfully"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
@@ -1067,7 +1067,7 @@ async def update_sync_group(
     return JSONResponse(content=group.to_dict())
 
 
-@router.delete("/sync/admin/groups/{group_id}", responses={
+@router.delete("/api/sync/groups/{group_id}", responses={
     200: {"description": "Sync group deleted"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
@@ -1100,7 +1100,7 @@ async def delete_sync_group(
     return JSONResponse(content={"deleted": group_id})
 
 
-@router.post("/sync/admin/save-config", responses={
+@router.post("/api/sync/save-config", responses={
     200: {"description": "Configuration saved"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"}
@@ -1124,7 +1124,7 @@ async def save_sync_config(
 
 # --- Sync Group Playback Controls ---
 
-@router.post("/sync/admin/groups/{group_id}/pause", responses={
+@router.post("/api/sync/groups/{group_id}/pause", responses={
     200: {"description": "Group paused"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
@@ -1152,7 +1152,7 @@ async def pause_sync_group(
     return JSONResponse(content={"status": "paused", "group_id": group_id})
 
 
-@router.post("/sync/admin/groups/{group_id}/play", responses={
+@router.post("/api/sync/groups/{group_id}/play", responses={
     200: {"description": "Group resumed"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
@@ -1179,7 +1179,7 @@ async def play_sync_group(
     return JSONResponse(content={"status": "playing", "group_id": group_id})
 
 
-@router.post("/sync/admin/groups/{group_id}/next", responses={
+@router.post("/api/sync/groups/{group_id}/next", responses={
     200: {"description": "Skipped to next image"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
@@ -1207,7 +1207,7 @@ async def next_sync_group(
     return JSONResponse(content={"status": "skipped", "group_id": group_id})
 
 
-@router.post("/sync/admin/groups/{group_id}/previous", responses={
+@router.post("/api/sync/groups/{group_id}/previous", responses={
     200: {"description": "Went to previous image"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
@@ -1236,7 +1236,7 @@ async def previous_sync_group(
     return JSONResponse(content={"status": "rewound", "group_id": group_id})
 
 
-@router.post("/sync/admin/groups/{group_id}/rewind-all")
+@router.post("/api/sync/groups/{group_id}/rewind-all")
 async def rewind_all_group(
     group_id: str,
     request: Request,
@@ -1260,7 +1260,7 @@ async def rewind_all_group(
     return JSONResponse(content={"status": "rewound_all", "group_id": group_id})
 
 
-@router.post("/sync/admin/groups/{group_id}/forward-all")
+@router.post("/api/sync/groups/{group_id}/forward-all")
 async def forward_all_group(
     group_id: str,
     request: Request,
@@ -1284,7 +1284,35 @@ async def forward_all_group(
     return JSONResponse(content={"status": "forwarded_all", "group_id": group_id})
 
 
-@router.post("/sync/admin/groups/{group_id}/browsers/{browser_id}/jump")
+@router.post("/api/sync/groups/{group_id}/refresh", responses={
+    200: {"description": "Image list refreshed"},
+    401: {"description": "Not authenticated"},
+    404: {"description": "Group not found"}
+})
+async def refresh_group_images(
+    group_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Refresh the image list for a sync group after files have changed.
+
+    Requires authentication.
+    Call this after adding/removing files to the group's image folders
+    to update the available images without recreating the group.
+    """
+    sync_manager = get_sync_manager(request)
+    count = await sync_manager.refresh_group_images(group_id)
+
+    if count is None:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    logger.info(f"User {user.email} refreshed images for group '{group_id}': {count} images")
+    return JSONResponse(content={"group_id": group_id, "image_count": count})
+
+
+@router.post("/api/sync/groups/{group_id}/browsers/{browser_id}/jump")
 async def jump_to_image(
     group_id: str,
     browser_id: str,
@@ -1317,7 +1345,7 @@ async def jump_to_image(
     return JSONResponse(content={"status": "jumped", "image_path": image_path})
 
 
-@router.post("/sync/admin/groups/{group_id}/webhooks/{webhook_id}/test")
+@router.post("/api/sync/groups/{group_id}/webhooks/{webhook_id}/test")
 async def test_webhook(
     group_id: str,
     webhook_id: str,
@@ -1412,7 +1440,7 @@ async def sync_page(
     if not group:
         raise HTTPException(
             status_code=404,
-            detail=f"Sync group '{sync}' not found. Create it via /sync/admin first."
+            detail=f"Sync group '{sync}' not found. Create it via /admin first."
         )
 
     # Get WebSocket URL - check X-Forwarded-Proto for reverse proxy support
@@ -1659,7 +1687,7 @@ class ImmichPullCreateRequest(BaseModel):
 
 
 @router.get(
-    "/immich/pulls",
+    "/api/immich/pulls",
     responses={
         200: {"description": "List of configured Immich pulls"},
         401: {"description": "Authentication required"},
@@ -1686,7 +1714,7 @@ async def list_immich_pulls(
 
 
 @router.post(
-    "/immich/pulls",
+    "/api/immich/pulls",
     responses={
         200: {"description": "Pull configuration created/updated"},
         401: {"description": "Authentication required"},
@@ -1735,7 +1763,7 @@ async def create_immich_pull(
 
 
 @router.delete(
-    "/immich/pulls/{pull_name}",
+    "/api/immich/pulls/{pull_name}",
     responses={
         200: {"description": "Pull configuration deleted"},
         401: {"description": "Authentication required"},
@@ -1763,7 +1791,7 @@ async def delete_immich_pull(
 
 
 @router.post(
-    "/immich/pulls/save",
+    "/api/immich/pulls/save",
     responses={
         200: {"description": "Configuration saved"},
         401: {"description": "Authentication required"},
@@ -1786,7 +1814,7 @@ async def save_immich_config(
 
 
 @router.post(
-    "/immich/pull/{pull_name}",
+    "/api/immich/pull/{pull_name}",
     responses={
         200: {"description": "Pull operation started"},
         401: {"description": "Authentication required"},
@@ -1803,7 +1831,7 @@ async def trigger_immich_pull(
     Trigger an Immich pull operation.
 
     Starts the pull in the background and returns immediately.
-    Use GET /immich/pull/{pull_name}/status to check progress.
+    Use GET /api/immich/pull/{pull_name}/status to check progress.
     """
     provider = get_immich_provider(request)
 
@@ -1821,7 +1849,7 @@ async def trigger_immich_pull(
 
 
 @router.get(
-    "/immich/pull/{pull_name}/status",
+    "/api/immich/pull/{pull_name}/status",
     responses={
         200: {"description": "Pull operation status"},
         401: {"description": "Authentication required"},
@@ -1851,7 +1879,7 @@ async def get_immich_pull_status(
 
 
 @router.post(
-    "/immich/test-connection",
+    "/api/immich/test-connection",
     responses={
         200: {"description": "Connection test result"},
         401: {"description": "Authentication required"},
@@ -1886,7 +1914,7 @@ async def test_immich_connection(
 
 
 @router.get(
-    "/immich/albums",
+    "/api/immich/albums",
     responses={
         200: {"description": "List of albums from Immich"},
         401: {"description": "Authentication required"},
@@ -1927,7 +1955,7 @@ async def list_immich_albums(
 
 
 @router.get(
-    "/immich/people",
+    "/api/immich/people",
     responses={
         200: {"description": "List of recognized people from Immich"},
         401: {"description": "Authentication required"},
@@ -1973,7 +2001,7 @@ class CreateFolderRequest(BaseModel):
 
 
 @router.post(
-    "/immich/create-folder",
+    "/api/immich/create-folder",
     responses={
         200: {"description": "Folder created successfully"},
         400: {"description": "Invalid folder path"},

@@ -346,6 +346,11 @@ class ImagePool:
             self._shown_images.clear()
             logger.info("Cleared image assignments due to folder change")
 
+    def refresh_images(self) -> int:
+        """Refresh the image list from filesystem. Returns count of images found."""
+        self._refresh_images()
+        return len(self._all_images)
+
 
 @dataclass
 class SyncGroup:
@@ -776,6 +781,34 @@ class SyncManager:
     async def list_groups(self) -> List[Dict[str, Any]]:
         """List all active sync groups"""
         return [group.to_dict() for group in self.groups.values()]
+
+    async def refresh_group_images(self, group_id: str) -> Optional[int]:
+        """Refresh image list for a sync group. Returns image count or None if group not found."""
+        group = self.groups.get(group_id)
+        if not group:
+            return None
+        count = group.image_pool.refresh_images()
+        logger.info(f"Refreshed images for group '{group_id}': {count} images")
+        return count
+
+    def get_groups_by_folder(self, folder: str) -> List[str]:
+        """Find all group IDs that use a specific folder."""
+        matching = []
+        for group_id, group in self.groups.items():
+            if group.settings.folders:
+                folders = [f.strip() for f in group.settings.folders.split(",")]
+                if folder in folders or any(folder.startswith(f) or f.startswith(folder) for f in folders):
+                    matching.append(group_id)
+        return matching
+
+    async def refresh_groups_by_folder(self, folder: str) -> Dict[str, int]:
+        """Refresh all groups using a specific folder. Returns {group_id: image_count}."""
+        results = {}
+        for group_id in self.get_groups_by_folder(folder):
+            count = await self.refresh_group_images(group_id)
+            if count is not None:
+                results[group_id] = count
+        return results
 
     async def add_browser(
         self,

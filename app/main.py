@@ -25,6 +25,7 @@ from app.auth.oidc import get_oidc_config
 from app.services.sync_manager import SyncManager
 from app.services.immich_provider import ImmichProvider
 from app.services.homeassistant_provider import HomeAssistantProvider, HomeAssistantConfig
+from app.services.file_watcher import ImageFileWatcher
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException, error_response
 
@@ -119,6 +120,28 @@ async def lifespan(app: FastAPI):
         if loaded_pulls > 0:
             logger.info(f"Loaded {loaded_pulls} Immich pull configurations")
 
+        # Set up file watcher for image directory changes
+        # This handles both external file changes AND Immich pull completions
+        async def on_folder_changed(folder: str) -> None:
+            """Handle file system changes by refreshing affected sync groups."""
+            try:
+                # Convert absolute path to relative for matching
+                folder_path = Path(folder)
+                relative = folder_path.relative_to(image_service.image_dir)
+                refreshed = await app.state.sync_manager.refresh_groups_by_folder(str(relative))
+                if refreshed:
+                    logger.info(
+                        f"Folder changed '{relative}', "
+                        f"refreshed groups: {list(refreshed.keys())}"
+                    )
+            except ValueError:
+                # Folder is outside image_dir, ignore
+                pass
+
+        app.state.file_watcher = ImageFileWatcher(image_service.image_dir, on_folder_changed)
+        app.state.file_watcher.start(asyncio.get_event_loop())
+        logger.info("File watcher started for image directory")
+
         # Initialize Home Assistant provider if configured
         ha_url = os.environ.get('HOMEASSISTANT_URL', '').strip()
         ha_token = os.environ.get('HOMEASSISTANT_TOKEN', '').strip()
@@ -153,6 +176,10 @@ async def lifespan(app: FastAPI):
                 await cleanup_task
             except asyncio.CancelledError:
                 pass
+
+        # Stop file watcher
+        if hasattr(app.state, 'file_watcher'):
+            app.state.file_watcher.stop()
 
         # Close Immich provider HTTP client
         if hasattr(app.state, 'immich_provider'):
