@@ -241,6 +241,11 @@ static_css_path = Path(__file__).parent / "static" / "css"
 if static_css_path.exists():
     app.mount("/css", StaticFiles(directory=str(static_css_path)), name="css")
 
+# Mount static JS files (date-fns for date formatting)
+static_js_path = Path(__file__).parent / "static" / "js"
+if static_js_path.exists():
+    app.mount("/js", StaticFiles(directory=str(static_js_path)), name="js")
+
 # Include auth routes
 app.include_router(auth_router)
 

@@ -11,6 +11,8 @@
         <link rel="stylesheet" href="/css/themes/theme-solid.css">
         <link rel="stylesheet" href="/css/themes/theme-bubble.css">
         <link rel="stylesheet" href="/css/themes/theme-blur.css">
+        <!-- date-fns for robust date formatting (same as Immich Kiosk) -->
+        <script src="/js/date-fns.min.js"></script>
         <title>Sync - {{ group_id }}</title>
         <style type="text/css">
             /* CSS Variables and overlay styles are in external files */
@@ -427,29 +429,18 @@
                 }
 
                 formatDate(date) {
-                    // Immich Kiosk token-based date formatting
+                    // Convert Immich Kiosk tokens to date-fns tokens
                     const format = this.settings.date_format || 'DDDD, MMMM DD';
+                    const dateFnsFormat = format
+                        .replace(/DDDD/g, 'eeee')    // full weekday
+                        .replace(/DDD/g, 'eee')      // abbreviated weekday
+                        .replace(/DD/g, 'dd')        // day of month, 2 digits
+                        .replace(/D/g, 'd')          // day of month
+                        .replace(/YYYY/g, 'yyyy')    // 4-digit year
+                        .replace(/YY/g, 'yy');       // 2-digit year
+                    // MMMM, MMM, MM, M stay the same in date-fns
 
-                    const tokens = {
-                        'YYYY': date.getFullYear(),
-                        'YY': String(date.getFullYear()).slice(-2),
-                        'MMMM': date.toLocaleDateString('en-US', { month: 'long' }),
-                        'MMM': date.toLocaleDateString('en-US', { month: 'short' }),
-                        'MM': String(date.getMonth() + 1).padStart(2, '0'),
-                        'M': date.getMonth() + 1,
-                        'DDDD': date.toLocaleDateString('en-US', { weekday: 'long' }),
-                        'DDD': date.toLocaleDateString('en-US', { weekday: 'short' }),
-                        'DD': String(date.getDate()).padStart(2, '0'),
-                        'D': date.getDate()
-                    };
-
-                    // Replace tokens longest-first to avoid partial matches
-                    let result = format;
-                    const sortedTokens = Object.keys(tokens).sort((a, b) => b.length - a.length);
-                    for (const token of sortedTokens) {
-                        result = result.replace(new RegExp(token, 'g'), tokens[token]);
-                    }
-                    return result;
+                    return dateFns.format(date, dateFnsFormat);
                 }
 
                 stop() {
