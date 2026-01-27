@@ -738,72 +738,7 @@
                 border: 2px solid #4caf50;
             }
 
-            /* Endpoints section */
-            .endpoints-section {
-                margin: 12px 0;
-                background: rgba(0, 0, 0, 0.2);
-                border-radius: 6px;
-            }
-            .endpoints-section summary {
-                padding: 10px 14px;
-                cursor: pointer;
-                font-size: 13px;
-                color: #aaa;
-                user-select: none;
-            }
-            .endpoints-section summary:hover {
-                color: #eee;
-            }
-            .endpoints-section[open] summary {
-                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            }
-            .endpoints-list {
-                display: flex;
-                flex-direction: column;
-                gap: 6px;
-                padding: 12px;
-            }
-            .endpoint-item {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                padding: 8px 12px;
-                border-radius: 6px;
-                font-size: 13px;
-                min-width: 0;  /* Allow shrinking */
-                flex-wrap: wrap;
-            }
-            .endpoint-item.persistent {
-                background: rgba(76, 175, 80, 0.08);
-            }
-            .endpoint-item.anonymous {
-                background: rgba(255, 193, 7, 0.08);
-            }
-            .endpoint-icon {
-                font-size: 16px;
-                flex-shrink: 0;
-            }
-            .endpoint-name {
-                font-family: monospace;
-                color: #e94560;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                white-space: nowrap;
-                max-width: 140px;
-            }
-            .endpoint-label {
-                color: #ccc;
-            }
-            .endpoint-status {
-                font-size: 12px;
-                flex-shrink: 0;
-            }
-            .endpoint-item.connected .endpoint-status {
-                color: #4caf50;
-            }
-            .endpoint-item.disconnected .endpoint-status {
-                color: #888;
-            }
+            /* Endpoint URL input (in summary) */
             .btn-endpoint {
                 padding: 4px 8px;
                 font-size: 11px;
@@ -817,14 +752,6 @@
             .btn-endpoint:hover {
                 background: rgba(255, 255, 255, 0.2);
                 color: #fff;
-            }
-            .btn-endpoint.delete:hover {
-                background: rgba(233, 69, 96, 0.3);
-                color: #e94560;
-            }
-            .endpoints-actions {
-                padding: 8px 12px;
-                border-top: 1px solid rgba(255, 255, 255, 0.05);
             }
             .btn-small {
                 padding: 6px 12px;
@@ -856,63 +783,77 @@
                 font-size: 11px;
             }
 
-            /* Unified Endpoints View - combines endpoint info with history */
-            .endpoints-unified {
+            /* Individual Collapsible Endpoints - each endpoint is its own <details> */
+            .endpoints-container {
                 display: flex;
                 flex-direction: column;
-                gap: 10px;
-                padding: 10px 12px;
+                gap: 6px;
+                padding: 8px 0;
             }
-            .endpoint-unified-item {
+            .endpoint-details {
                 background: rgba(255, 255, 255, 0.03);
-                border-radius: 8px;
-                padding: 10px 12px;
+                border-radius: 6px;
                 border-left: 3px solid transparent;
             }
-            .endpoint-unified-item.connected {
+            .endpoint-details.connected {
                 border-left-color: #4CAF50;
             }
-            .endpoint-unified-item.disconnected {
+            .endpoint-details.disconnected {
                 border-left-color: #666;
-                opacity: 0.7;
             }
-            .endpoint-unified-item.anonymous {
+            .endpoint-details.anonymous {
                 border-left-color: #ff9800;
             }
-            .endpoint-header {
+            .endpoint-summary {
                 display: flex;
                 align-items: center;
                 gap: 10px;
-                flex-wrap: wrap;
+                padding: 8px 12px;
+                cursor: pointer;
+                list-style: none;
             }
-            .endpoint-header .endpoint-id {
+            .endpoint-summary::-webkit-details-marker {
+                display: none;
+            }
+            .endpoint-summary::before {
+                content: '\25B6';
+                font-size: 10px;
+                color: #666;
+                transition: transform 0.2s;
+            }
+            .endpoint-details[open] .endpoint-summary::before {
+                transform: rotate(90deg);
+            }
+            .endpoint-summary .endpoint-id {
                 font-family: monospace;
                 color: #e94560;
                 font-weight: 500;
             }
-            .endpoint-header .endpoint-name {
+            .endpoint-summary .endpoint-name {
                 color: #888;
                 font-size: 12px;
-                max-width: none;
             }
-            .endpoint-header .badge-anonymous {
+            .endpoint-summary .badge-anonymous {
                 color: #ff9800;
                 font-size: 11px;
             }
-            .endpoint-header .status-dot {
+            .endpoint-summary .status-dot {
                 font-size: 10px;
             }
-            .endpoint-header .status-dot.connected { color: #4CAF50; }
-            .endpoint-header .status-dot.disconnected { color: #666; }
-            .endpoint-header .last-seen {
+            .endpoint-summary .status-dot.connected { color: #4CAF50; }
+            .endpoint-summary .status-dot.disconnected { color: #666; }
+            .endpoint-summary .last-seen {
                 color: #666;
                 font-size: 11px;
+            }
+            .endpoint-summary .endpoint-url {
                 margin-left: auto;
             }
-            .endpoint-history-inline {
-                margin-top: 8px;
+            .endpoint-content {
+                padding: 8px 12px 12px 28px;
+                border-top: 1px solid rgba(255, 255, 255, 0.05);
             }
-            .endpoint-history-inline .history-strip {
+            .endpoint-content .history-strip {
                 overflow-x: auto;
             }
 
@@ -2472,45 +2413,43 @@
                         return a.endpoint_id.localeCompare(b.endpoint_id);
                     });
 
-                    const unifiedEndpointsHtml = endpoints.length > 0 ? `
-                        <details class="endpoints-section" data-group-id="${groupIdSafe}" open>
-                            <summary>Endpoints (${connectedCount} connected)</summary>
-                            <div class="endpoints-unified">
-                                ${sortedEndpoints.map(ep => {
-                                    const browser = browserByEndpoint[ep.endpoint_id];
-                                    const isConnected = !!browser;
-                                    const isPersistent = ep.is_persistent;
-                                    const epIdSafe = escapeHtml(ep.endpoint_id);
-                                    const epNameSafe = ep.name ? escapeHtml(ep.name) : '';
-                                    const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
-                                    const historyHtml = buildHistoryStrip(ep, browser);
+                    const endpointSectionsHtml = endpoints.length > 0 ? `
+                        <div class="endpoints-container" data-group-id="${groupIdSafe}">
+                            ${sortedEndpoints.map(ep => {
+                                const browser = browserByEndpoint[ep.endpoint_id];
+                                const isConnected = !!browser;
+                                const isPersistent = ep.is_persistent;
+                                const epIdSafe = escapeHtml(ep.endpoint_id);
+                                const epNameSafe = ep.name ? escapeHtml(ep.name) : '';
+                                const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
+                                const historyHtml = buildHistoryStrip(ep, browser);
 
-                                    return `
-                                        <div class="endpoint-unified-item ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}">
-                                            <div class="endpoint-header">
-                                                <span class="endpoint-id">${epIdSafe}</span>
-                                                ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
-                                                ${!isPersistent ? '<span class="badge-anonymous">(anonymous)</span>' : ''}
-                                                <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
-                                                ${!isConnected && ep.last_seen ? `<span class="last-seen">Last seen ${formatTimeAgo(ep.last_seen)}</span>` : ''}
-                                                <div class="endpoint-url">
-                                                    <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
-                                                    <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
-                                                </div>
+                                return `
+                                    <details class="endpoint-details ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}"
+                                             data-endpoint-id="${epIdSafe}"
+                                             ${isConnected ? 'open' : ''}>
+                                        <summary class="endpoint-summary">
+                                            <span class="endpoint-id">${epIdSafe}</span>
+                                            ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
+                                            ${!isPersistent ? '<span class="badge-anonymous">(anon)</span>' : ''}
+                                            <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
+                                            ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
+                                            <div class="endpoint-url" onclick="event.stopPropagation()">
+                                                <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
+                                                <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
                                             </div>
-                                            ${historyHtml}
+                                        </summary>
+                                        <div class="endpoint-content">
+                                            ${historyHtml || '<p style="color: #666; font-size: 12px;">No history</p>'}
                                         </div>
-                                    `;
-                                }).join('')}
-                            </div>
-                        </details>
+                                    </details>
+                                `;
+                            }).join('')}
+                        </div>
                     ` : `
-                        <details class="endpoints-section" data-group-id="${groupIdSafe}">
-                            <summary>Endpoints (0)</summary>
-                            <div class="endpoints-unified">
-                                <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints yet. Use the Edit button to create one.</div>
-                            </div>
-                        </details>
+                        <div class="endpoints-container" data-group-id="${groupIdSafe}">
+                            <p style="padding: 8px; color: #888; font-size: 13px;">No endpoints yet. Use the Edit button to create one.</p>
+                        </div>
                     `;
 
                     // Countdown display (only if not paused and has next_switch_at)
@@ -2530,7 +2469,7 @@
                                 <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9654;</button>
                                 <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
                             </div>
-                            ${unifiedEndpointsHtml}
+                            ${endpointSectionsHtml}
                             <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                             <div class="group-actions">
                                 <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
@@ -3219,7 +3158,7 @@
                 }
 
                 // Check if endpoint count changed - need full rebuild
-                const existingEndpointItems = card.querySelectorAll('.endpoint-unified-item').length;
+                const existingEndpointItems = card.querySelectorAll('.endpoint-details').length;
                 const newEndpointCount = group.endpoints ? group.endpoints.length : 0;
                 if (existingEndpointItems !== newEndpointCount) {
                     updateGroupCard(group);
@@ -3472,45 +3411,43 @@
                     return a.endpoint_id.localeCompare(b.endpoint_id);
                 });
 
-                const unifiedEndpointsHtml = endpoints.length > 0 ? `
-                    <details class="endpoints-section" data-group-id="${groupIdSafe}" open>
-                        <summary>Endpoints (${connectedCount} connected)</summary>
-                        <div class="endpoints-unified">
-                            ${sortedEndpoints.map(ep => {
-                                const browser = browserByEndpoint[ep.endpoint_id];
-                                const isConnected = !!browser;
-                                const isPersistent = ep.is_persistent;
-                                const epIdSafe = escapeHtml(ep.endpoint_id);
-                                const epNameSafe = ep.name ? escapeHtml(ep.name) : '';
-                                const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
-                                const historyHtml = buildHistoryStrip(ep, browser);
+                const endpointSectionsHtml = endpoints.length > 0 ? `
+                    <div class="endpoints-container" data-group-id="${groupIdSafe}">
+                        ${sortedEndpoints.map(ep => {
+                            const browser = browserByEndpoint[ep.endpoint_id];
+                            const isConnected = !!browser;
+                            const isPersistent = ep.is_persistent;
+                            const epIdSafe = escapeHtml(ep.endpoint_id);
+                            const epNameSafe = ep.name ? escapeHtml(ep.name) : '';
+                            const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
+                            const historyHtml = buildHistoryStrip(ep, browser);
 
-                                return `
-                                    <div class="endpoint-unified-item ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}">
-                                        <div class="endpoint-header">
-                                            <span class="endpoint-id">${epIdSafe}</span>
-                                            ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
-                                            ${!isPersistent ? '<span class="badge-anonymous">(anonymous)</span>' : ''}
-                                            <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
-                                            ${!isConnected && ep.last_seen ? `<span class="last-seen">Last seen ${formatTimeAgo(ep.last_seen)}</span>` : ''}
-                                            <div class="endpoint-url">
-                                                <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
-                                                <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
-                                            </div>
+                            return `
+                                <details class="endpoint-details ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}"
+                                         data-endpoint-id="${epIdSafe}"
+                                         ${isConnected ? 'open' : ''}>
+                                    <summary class="endpoint-summary">
+                                        <span class="endpoint-id">${epIdSafe}</span>
+                                        ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
+                                        ${!isPersistent ? '<span class="badge-anonymous">(anon)</span>' : ''}
+                                        <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
+                                        ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
+                                        <div class="endpoint-url" onclick="event.stopPropagation()">
+                                            <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
+                                            <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
                                         </div>
-                                        ${historyHtml}
+                                    </summary>
+                                    <div class="endpoint-content">
+                                        ${historyHtml || '<p style="color: #666; font-size: 12px;">No history</p>'}
                                     </div>
-                                `;
-                            }).join('')}
-                        </div>
-                    </details>
+                                </details>
+                            `;
+                        }).join('')}
+                    </div>
                 ` : `
-                    <details class="endpoints-section" data-group-id="${groupIdSafe}">
-                        <summary>Endpoints (0)</summary>
-                        <div class="endpoints-unified">
-                            <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints yet. Use the Edit button to create one.</div>
-                        </div>
-                    </details>
+                    <div class="endpoints-container" data-group-id="${groupIdSafe}">
+                        <p style="padding: 8px; color: #888; font-size: 13px;">No endpoints yet. Use the Edit button to create one.</p>
+                    </div>
                 `;
 
                 // Countdown display (only if not paused and has next_switch_at)
@@ -3529,7 +3466,7 @@
                             <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9654;</button>
                             <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
                         </div>
-                        ${unifiedEndpointsHtml}
+                        ${endpointSectionsHtml}
                         <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                         <div class="group-actions">
                             <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
@@ -3557,13 +3494,14 @@
                 }
             }
 
-            // Listen for endpoints-section toggle to scroll all history strips to current
+            // Listen for endpoint-details toggle to scroll history strip to current image
             document.getElementById('groupsList').addEventListener('toggle', (e) => {
-                if (e.target.classList.contains('endpoints-section') && e.target.open) {
-                    // Scroll all history strips within this section to show current
-                    e.target.querySelectorAll('.history-strip').forEach(strip => {
+                if (e.target.classList.contains('endpoint-details') && e.target.open) {
+                    // Scroll history strip within this endpoint to show current
+                    const strip = e.target.querySelector('.history-strip');
+                    if (strip) {
                         setTimeout(() => scrollToCurrentImage(strip), 50);
-                    });
+                    }
                 }
             }, true);
 
