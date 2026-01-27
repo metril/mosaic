@@ -229,6 +229,8 @@ class DisplayEndpoint:
             "current_image": self.current_image,
             "history_count": len(self.image_history),
             "forward_count": len(self.forward_history),
+            "image_history": self.image_history[-10:] if self.image_history else [],
+            "forward_history": self.forward_history[-10:] if self.forward_history else [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
         }

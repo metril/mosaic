@@ -1730,6 +1730,12 @@ async def endpoint_next_image(
         # No browser - use helper method
         display_manager.advance_endpoint_no_browser(group, endpoint)
 
+    # Notify admin dashboard of the change
+    await display_manager._notify_admins({
+        "type": "GROUP_UPDATED",
+        "group": group.to_dict()
+    })
+
     logger.info(f"User {user.email} requested next image for endpoint '{endpoint_id}'")
 
     return JSONResponse(content={
@@ -1772,6 +1778,12 @@ async def endpoint_previous_image(
     else:
         # No browser - use helper method
         display_manager.rewind_endpoint_no_browser(endpoint)
+
+    # Notify admin dashboard of the change
+    await display_manager._notify_admins({
+        "type": "GROUP_UPDATED",
+        "group": group.to_dict()
+    })
 
     logger.info(f"User {user.email} requested previous image for endpoint '{endpoint_id}'")
 
