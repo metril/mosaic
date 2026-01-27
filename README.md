@@ -116,13 +116,13 @@ http://localhost/?folders=earth,space&refresh=30&recursive=true
 
 Display images across multiple browsers (20+) in sync, with each browser showing a different image that cycles at exactly the same time.
 
-**Admin Dashboard:** `http://localhost/sync/admin`
+**Admin Dashboard:** `http://localhost/admin`
 
-Create and manage sync groups with all image processing options.
+Create and manage display groups with all image processing options.
 
 **Note:** When OIDC authentication is configured, admin endpoints require login. Unauthenticated users are redirected to `/auth/login`.
 
-**Browser Display:** `http://localhost/sync?sync={group_id}`
+**Browser Display:** `http://localhost/display?group={group_id}`
 
 Browsers connect via WebSocket for sub-second synchronization.
 
@@ -132,21 +132,22 @@ Browsers connect via WebSocket for sub-second synchronization.
 - No image repeats until all have been shown
 - All image processing options (eink, resize, etc.) available per group
 - Admin dashboard for real-time group management
+- Persistent endpoints for history preservation across reconnects
 
 **Workflow:**
-1. Create a sync group via admin dashboard or API
-2. Open browser tabs with the sync URL
+1. Create a display group via admin dashboard or API
+2. Open browser tabs with the display URL
 3. All browsers display synchronized, unique images
 4. Press 'd' to toggle debug overlay (shows timing info)
 
 **Admin API:**
 
 ```bash
-# List all sync groups
-GET /sync/admin/groups
+# List all display groups
+GET /api/display/groups
 
-# Create a sync group
-POST /sync/admin/groups
+# Create a display group
+POST /api/display/groups
 {
     "group_id": "living-room",
     "duration": 30,
@@ -158,19 +159,20 @@ POST /sync/admin/groups
 }
 
 # Update group settings (broadcasts to all browsers)
-PATCH /sync/admin/groups/living-room
+PATCH /api/display/groups/living-room
 {"duration": 60}
 
 # Delete group (disconnects all browsers)
-DELETE /sync/admin/groups/living-room
+DELETE /api/display/groups/living-room
 ```
 
-**Sync Group Parameters:**
+**Display Group Parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `group_id` | string | required | Unique identifier |
 | `duration` | int | 30 | Cycle duration (5-3600 seconds) |
+| `auto_cycle` | bool | true | Auto-cycle images. When false, on-demand mode (manual advance only) |
 | `folders` | string | null | Comma-separated folder paths |
 | `recursive` | bool | false | Search subfolders |
 | `width` | int | null | Target width |
@@ -213,6 +215,75 @@ DELETE /sync/admin/groups/living-room
 | `burn_in_shift_interval` | int | 60 | Seconds between shifts (10-300) |
 | **Webhooks** ||||
 | `webhooks` | array | [] | Webhook configurations (see below) |
+
+### Persistent Endpoints
+
+Display endpoints allow browsers to maintain image history across reconnections. Each endpoint tracks its own current image, history (for "previous" navigation), and forward history (for "next" after going back).
+
+**Endpoint Types:**
+- **Persistent** - Pre-created via API or admin UI. History preserved across server restarts.
+- **Anonymous** - Auto-generated when browser connects without `?endpoint=` parameter. Cleaned up after 24 hours of inactivity (configurable via `ENDPOINT_CLEANUP`).
+
+**Endpoint ID Rules:**
+- Alphanumeric characters, dashes, and underscores only: `[a-zA-Z0-9_-]+`
+- Maximum 64 characters
+- Case-sensitive
+
+**Connecting with Endpoint:**
+```bash
+# Connect browser with persistent endpoint (history preserved)
+http://localhost/display?group=living-room&endpoint=kitchen-tv
+
+# Connect without endpoint (anonymous endpoint auto-generated)
+http://localhost/display?group=living-room
+```
+
+**Endpoint API:**
+```bash
+# List endpoints in a group
+GET /api/display/groups/{group_id}/endpoints
+
+# Create a persistent endpoint
+POST /api/display/groups/{group_id}/endpoints
+{
+    "endpoint_id": "kitchen-tv",
+    "name": "Kitchen TV"
+}
+
+# Get endpoint details
+GET /api/display/groups/{group_id}/endpoints/{endpoint_id}
+
+# Update endpoint (e.g., promote anonymous to persistent)
+PATCH /api/display/groups/{group_id}/endpoints/{endpoint_id}
+{
+    "is_persistent": true,
+    "name": "Kitchen TV"
+}
+
+# Delete endpoint (must have no connected browsers)
+DELETE /api/display/groups/{group_id}/endpoints/{endpoint_id}
+```
+
+### On-Demand Mode
+
+When `auto_cycle` is set to `false`, images don't automatically rotate. Instead, images only change when:
+- User requests next/previous via the display interface (arrow keys or swipe)
+- Admin navigates via history thumbnails in the dashboard
+
+This is useful for:
+- Displays that should show the same image indefinitely
+- Manual control over image changes
+- Kiosk-style presentations
+
+**Enable on-demand mode:**
+```bash
+POST /api/display/groups
+{
+    "group_id": "kiosk",
+    "auto_cycle": false,
+    "folders": "presentations"
+}
+```
 
 ### Clock & Weather Overlays
 
@@ -320,7 +391,7 @@ When `secret` is set, webhooks include `X-Webhook-Signature: sha256=<hex>` compu
 **Webhook API Example:**
 ```bash
 # Create group with webhook
-POST /sync/admin/groups
+POST /api/display/groups
 {
     "group_id": "living-room",
     "duration": 30,
@@ -335,7 +406,7 @@ POST /sync/admin/groups
 }
 
 # Test a webhook
-POST /sync/admin/groups/{group_id}/webhooks/{webhook_id}/test
+POST /api/display/groups/{group_id}/webhooks/{webhook_id}/test
 ```
 
 ### Random Image API

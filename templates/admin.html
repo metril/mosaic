@@ -3226,7 +3226,7 @@
                     button.disabled = true;
                     button.textContent = 'Deleting...';
                     try {
-                        const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + endpointId, {
+                        const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + encodeURIComponent(endpointId), {
                             method: 'DELETE',
                             headers: {
                                 'X-CSRF-Token': CSRF_TOKEN

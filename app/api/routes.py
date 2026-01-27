@@ -1592,7 +1592,7 @@ async def update_endpoint(
     return JSONResponse(content=endpoint.to_dict())
 
 
-@router.delete("/api/display/groups/{group_id}/endpoints/{endpoint_id}", responses={
+@router.delete("/api/display/groups/{group_id}/endpoints/{endpoint_id:path}", responses={
     200: {"description": "Endpoint deleted"},
     400: {"description": "Cannot delete - browser connected"},
     404: {"description": "Group or endpoint not found"},
@@ -1604,6 +1604,8 @@ async def delete_endpoint(
     user: User = Depends(get_current_user)
 ):
     """Delete an endpoint. Cannot delete if a browser is currently connected."""
+    # Decode URL-encoded endpoint ID (supports "/" characters)
+    endpoint_id = unquote(endpoint_id)
     display_manager = get_display_manager(request)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -1810,7 +1812,12 @@ async def endpoint_previous_image(
 async def display_page(
     request: Request,
     group: str = Query(..., description="Display group ID to join"),
-    endpoint: Optional[str] = Query(None, description="Endpoint ID for persistent history")
+    endpoint: Optional[str] = Query(
+        None,
+        description="Endpoint ID for persistent history",
+        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=64
+    )
 ):
     """
     Serve the display page for a browser to join a display group.
@@ -1921,7 +1928,12 @@ async def websocket_admin(websocket: WebSocket):
 async def websocket_display(
     websocket: WebSocket,
     group_id: str,
-    endpoint: Optional[str] = Query(None, description="Endpoint ID for persistent history")
+    endpoint: Optional[str] = Query(
+        None,
+        description="Endpoint ID for persistent history",
+        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=64
+    )
 ):
     """
     WebSocket endpoint for synchronized image display.
