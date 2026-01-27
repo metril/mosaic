@@ -3626,7 +3626,17 @@
                 if (group.browsers) {
                     group.browsers.forEach(browser => {
                         const browserIdSafe = escapeHtml(browser.browser_id);
-                        const strip = card.querySelector(`.history-strip[data-browser-id="${browserIdSafe}"]`);
+                        let strip = card.querySelector(`.history-strip[data-browser-id="${browserIdSafe}"]`);
+
+                        // Also check for disconnected endpoint format (when browser just connected)
+                        if (!strip && browser.endpoint_id) {
+                            const epBrowserId = 'ep-' + browser.endpoint_id;
+                            strip = card.querySelector(`.history-strip[data-browser-id="${escapeHtml(epBrowserId)}"]`);
+                            if (strip) {
+                                // Update the data-browser-id to the new browser ID
+                                strip.setAttribute('data-browser-id', browserIdSafe);
+                            }
+                        }
 
                         if (strip) {
                             updateHistoryStrip(strip, browser, groupIdSafe, browserIdSafe);
@@ -3868,6 +3878,14 @@
                         thumbsHtml += `<img src="/api/image/${encodePath(path)}?${size}" class="thumb ${type}" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" ${dataPath} alt="${type}" loading="lazy" onerror="handleThumbnailError(this)">`;
                     });
                     strip.innerHTML = thumbsHtml;
+                } else {
+                    // Update data-browser-id on existing thumbnails if it changed
+                    // (handles case when browser just connected and strip had ep-xxx format)
+                    existingThumbs.forEach(thumb => {
+                        if (thumb.dataset.browserId !== browserIdSafe) {
+                            thumb.dataset.browserId = browserIdSafe;
+                        }
+                    });
                 }
 
                 // Always scroll to current image after any update (not just rebuilds)
