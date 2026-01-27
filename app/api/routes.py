@@ -2021,6 +2021,13 @@ async def websocket_display(
                 "image_id": current_image,
                 "cycle": group.current_cycle
             })
+        else:
+            # No image available - send error to browser
+            error_msg = group.image_pool.error or "No images configured for this group"
+            await websocket.send_json({
+                "type": "NO_IMAGES",
+                "error": error_msg
+            })
 
         # Handle incoming messages
         while True:

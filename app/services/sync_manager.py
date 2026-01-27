@@ -306,6 +306,14 @@ class ImagePool:
             folder_paths=folder_paths,
             recursive=self.settings.recursive
         )
+
+        # Track empty pool (no images found, even if folders exist)
+        if not self._all_images and not self.error:
+            if not self.settings.folders:
+                self.error = "No folders configured"
+            else:
+                self.error = "No images found in configured folders"
+
         # Invalidate cache when images change (#26)
         self._all_paths_cache = None
         logger.info(f"ImagePool refreshed: {len(self._all_images)} images available")
@@ -474,7 +482,9 @@ class DisplayGroup:
 
         return {
             "group_id": self.group_id,
-            "error": self.image_pool.error,
+            "error": self.image_pool.error,  # Legacy field for compatibility
+            "image_pool_error": self.image_pool.error,
+            "image_count": len(self.image_pool._all_images),
             "browser_count": len(self.browsers),
             "current_cycle": self.current_cycle,
             "paused": self.paused,

@@ -115,6 +115,11 @@
                 background: rgba(156, 39, 176, 0.2);
                 color: #ce93d8;
             }
+            .status-badge.error {
+                background: rgba(244, 67, 54, 0.2);
+                color: #f44336;
+                cursor: help;
+            }
             .group-meta {
                 font-size: 13px;
                 color: #888;
@@ -2583,11 +2588,16 @@
 
                     // Status badge (visual indicator instead of text)
                     const isOnDemand = s.auto_cycle === false;
-                    const statusBadge = isPaused
+                    const imagePoolError = group.image_pool_error;
+                    let statusBadge = isPaused
                         ? '<span class="status-badge paused">Paused</span>'
                         : (isOnDemand ? '<span class="status-badge on-demand">On-demand</span>' : '');
+                    // Add error badge if no images
+                    if (imagePoolError) {
+                        statusBadge += `<span class="status-badge error" title="${escapeHtml(imagePoolError)}">⚠ No Images</span>`;
+                    }
 
-                    // Error indicator
+                    // Error indicator (legacy, shown below group name)
                     const errorHtml = group.error
                         ? `<div class="group-error" title="${escapeHtml(group.error)}">⚠️ ${escapeHtml(group.error)}</div>`
                         : '';
@@ -3530,9 +3540,14 @@
                 const groupName = card.querySelector('.group-name');
                 if (groupName) {
                     const isOnDemand = group.settings?.auto_cycle === false;
-                    const statusBadge = group.paused
+                    const imagePoolError = group.image_pool_error;
+                    let statusBadge = group.paused
                         ? '<span class="status-badge paused">Paused</span>'
                         : (isOnDemand ? '<span class="status-badge on-demand">On-demand</span>' : '');
+                    // Add error badge if no images
+                    if (imagePoolError) {
+                        statusBadge += `<span class="status-badge error" title="${escapeHtml(imagePoolError)}">⚠ No Images</span>`;
+                    }
                     groupName.innerHTML = escapeHtml(group.group_id) + statusBadge;
                 }
 
@@ -3786,9 +3801,14 @@
 
                 // Status badge (visual indicator instead of text)
                 const isOnDemand = s.auto_cycle === false;
-                const statusBadge = isPaused
+                const imagePoolError = group.image_pool_error;
+                let statusBadge = isPaused
                     ? '<span class="status-badge paused">Paused</span>'
                     : (isOnDemand ? '<span class="status-badge on-demand">On-demand</span>' : '');
+                // Add error badge if no images
+                if (imagePoolError) {
+                    statusBadge += `<span class="status-badge error" title="${escapeHtml(imagePoolError)}">⚠ No Images</span>`;
+                }
 
                 // Build unified endpoints section with inline history
                 const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
