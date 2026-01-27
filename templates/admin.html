@@ -2621,8 +2621,8 @@
                     const buildHistoryStrip = (ep, browser) => {
                         // Use browser data if connected, otherwise use endpoint data
                         const currentImage = browser ? browser.current_image : ep.current_image;
-                        const imageHistory = browser ? (browser.image_history || []) : [];
-                        const forwardHistory = browser ? (browser.forward_history || []) : [];
+                        const imageHistory = browser ? (browser.image_history || []) : (ep.image_history || []);
+                        const forwardHistory = browser ? (browser.forward_history || []) : (ep.forward_history || []);
                         const browserIdSafe = browser ? escapeHtml(browser.browser_id) : escapeHtml('ep-' + ep.endpoint_id);
 
                         // Skip if no current image at all
@@ -2836,17 +2836,23 @@
             // Jump to a specific image in history
             async function jumpToImage(groupId, browserId, imagePath) {
                 try {
-                    const response = await fetch(
-                        API_BASE + '/' + groupId + '/browsers/' + browserId + '/jump',
-                        {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-Token': CSRF_TOKEN
-                            },
-                            body: JSON.stringify({ image_path: imagePath })
-                        }
-                    );
+                    // Check if this is a disconnected endpoint (browserId starts with 'ep-')
+                    let url;
+                    if (browserId.startsWith('ep-')) {
+                        const endpointId = browserId.substring(3);  // Remove 'ep-' prefix
+                        url = API_BASE + '/' + groupId + '/endpoints/' + endpointId + '/jump';
+                    } else {
+                        url = API_BASE + '/' + groupId + '/browsers/' + browserId + '/jump';
+                    }
+
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN
+                        },
+                        body: JSON.stringify({ image_path: imagePath })
+                    });
                     if (!response.ok) {
                         const err = await response.json();
                         showMessage(err.detail || 'Jump failed', 'error');
@@ -3930,8 +3936,8 @@
                 const buildHistoryStrip = (ep, browser) => {
                     // Use browser data if connected, otherwise use endpoint data
                     const currentImage = browser ? browser.current_image : ep.current_image;
-                    const imageHistory = browser ? (browser.image_history || []) : [];
-                    const forwardHistory = browser ? (browser.forward_history || []) : [];
+                    const imageHistory = browser ? (browser.image_history || []) : (ep.image_history || []);
+                    const forwardHistory = browser ? (browser.forward_history || []) : (ep.forward_history || []);
                     const browserIdSafe = browser ? escapeHtml(browser.browser_id) : escapeHtml('ep-' + ep.endpoint_id);
 
                     // Skip if no current image at all

@@ -1830,6 +1830,70 @@ class DisplayManager:
 
         return True
 
+    async def jump_endpoint_to_image(
+        self, group_id: str, endpoint_id: str, image_path: str
+    ) -> bool:
+        """Jump an endpoint to a specific image from its history (no browser required).
+
+        Works for disconnected endpoints where no browser WebSocket is connected.
+        The image must be in the endpoint's image_history or forward_history.
+        """
+        group = self.groups.get(group_id)
+        if not group:
+            return False
+
+        endpoint = group.endpoints.get(endpoint_id)
+        if not endpoint:
+            return False
+
+        # Validate the target image still exists on disk
+        if not self._validate_image_path(image_path):
+            logger.warning(f"Jump target no longer exists: {image_path}")
+            self._clean_endpoint_history(endpoint)
+            return False
+
+        # Find image in history or forward_history
+        if image_path in endpoint.image_history:
+            idx = endpoint.image_history.index(image_path)
+            # Build new forward: history items after idx, then current, then existing forward
+            new_forward = []
+            for img in endpoint.image_history[idx + 1:]:
+                new_forward.append(img)
+            if endpoint.current_image:
+                new_forward.append(endpoint.current_image)
+            new_forward.extend(endpoint.forward_history)
+            endpoint.forward_history = new_forward
+            endpoint.current_image = image_path
+            endpoint.image_history = endpoint.image_history[:idx]
+
+        elif image_path in endpoint.forward_history:
+            idx = endpoint.forward_history.index(image_path)
+            # Push current and items before idx to history
+            if endpoint.current_image:
+                endpoint.image_history.append(endpoint.current_image)
+            for img in endpoint.forward_history[:idx]:
+                endpoint.image_history.append(img)
+            endpoint.forward_history = endpoint.forward_history[idx + 1:]
+            endpoint.current_image = image_path
+            # Trim history if needed
+            while len(endpoint.image_history) > MAX_IMAGE_HISTORY:
+                endpoint.image_history.pop(0)
+        else:
+            # Image not in history - can't jump
+            return False
+
+        endpoint.next_image = None
+
+        logger.info(f"Endpoint {endpoint_id} in group {group_id} jumped to {image_path}")
+
+        # Notify admin clients
+        await self._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
+
+        return True
+
     async def _advance_browsers(
         self, group: DisplayGroup, browser_ids: Optional[List[str]] = None
     ) -> None:
@@ -2097,6 +2161,9 @@ class DisplayManager:
         endpoint.image_history.extend(endpoint.forward_history)
         endpoint.forward_history.clear()
         endpoint.current_image = next_img
+
+        # Increment cycle count (matches _advance_browsers behavior)
+        group.current_cycle = (group.current_cycle + 1) % MAX_CYCLE_COUNT
 
         return next_img
 

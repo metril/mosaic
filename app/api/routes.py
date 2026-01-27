@@ -1368,6 +1368,39 @@ async def jump_to_image(
     return JSONResponse(content={"status": "jumped", "image_path": image_path})
 
 
+@router.post("/api/display/groups/{group_id}/endpoints/{endpoint_id}/jump")
+async def endpoint_jump_to_image(
+    group_id: str,
+    endpoint_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Jump an endpoint to a specific image from its history.
+
+    Works for disconnected endpoints (no browser required).
+    The image must be in the endpoint's image_history or forward_history.
+    """
+    body = await request.json()
+    image_path = body.get("image_path")
+
+    if not image_path:
+        raise HTTPException(status_code=400, detail="image_path required")
+
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} jumping endpoint {endpoint_id} in group {group_id} to {image_path}")
+    success = await display_manager.jump_endpoint_to_image(group_id, endpoint_id, image_path)
+
+    if not success:
+        raise HTTPException(
+            status_code=404,
+            detail="Group, endpoint, or image not found in history"
+        )
+
+    return JSONResponse(content={"status": "jumped", "image_path": image_path})
+
+
 @router.post("/api/display/groups/{group_id}/webhooks/{webhook_id}/test")
 async def test_webhook(
     group_id: str,
