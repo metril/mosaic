@@ -1843,6 +1843,12 @@ async def display_page(
             else:
                 display_manager.rewind_endpoint_no_browser(endpoint_obj)
 
+        # Notify admin clients of the change
+        await display_manager._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": display_group.to_dict()
+        })
+
     # Get WebSocket URL - check X-Forwarded-Proto for reverse proxy support
     original_scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     ws_scheme = "wss" if original_scheme == "https" else "ws"
