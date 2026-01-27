@@ -2678,8 +2678,8 @@
                                                 ${historyInfo ? `<span class="history-info">${historyInfo}</span>` : ''}
                                                 ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
                                             </div>
-                                            <div class="endpoint-url-row" onclick="event.stopPropagation()">
-                                                <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
+                                            <div class="endpoint-url-row">
+                                                <input type="text" value="${epDisplayUrl}" readonly onclick="event.stopPropagation(); this.select()">
                                                 <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
                                             </div>
                                         </summary>
@@ -3740,7 +3740,7 @@
                     expectedImages.forEach(({path, type}) => {
                         const size = type === 'current' ? 'width=260&height=173' : 'width=200&height=133';
                         const dataPath = type === 'current' ? '' : `data-image-path="${escapeHtml(path)}"`;
-                        thumbsHtml += `<img src="/api/image/${encodePath(path)}?${size}" class="thumb ${type}" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" ${dataPath} alt="${type}" loading="lazy">`;
+                        thumbsHtml += `<img src="/api/image/${encodePath(path)}?${size}" class="thumb ${type}" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" ${dataPath} alt="${type}" loading="lazy" onerror="handleThumbnailError(this)">`;
                     });
                     strip.innerHTML = thumbsHtml;
                 }
@@ -3876,8 +3876,8 @@
                                             ${historyInfo ? `<span class="history-info">${historyInfo}</span>` : ''}
                                             ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
                                         </div>
-                                        <div class="endpoint-url-row" onclick="event.stopPropagation()">
-                                            <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
+                                        <div class="endpoint-url-row">
+                                            <input type="text" value="${epDisplayUrl}" readonly onclick="event.stopPropagation(); this.select()">
                                             <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
                                         </div>
                                     </summary>
