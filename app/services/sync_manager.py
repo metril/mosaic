@@ -1064,6 +1064,23 @@ class DisplayManager:
             elif msg_type == "HEARTBEAT":
                 browser.last_heartbeat = _utc_now()
 
+            elif msg_type == "NEXT_IMAGE":
+                # Request next image (for on-demand mode)
+                # Release lock before calling _advance_browsers which acquires it
+                pass  # Handled outside lock below
+
+            elif msg_type == "PREVIOUS_IMAGE":
+                # Request previous image (go back in history)
+                pass  # Handled outside lock below
+
+        # Handle NEXT_IMAGE/PREVIOUS_IMAGE outside lock (they acquire their own locks)
+        if msg_type == "NEXT_IMAGE":
+            await self._advance_browsers(group, [browser_id])
+            should_notify_admins = True
+        elif msg_type == "PREVIOUS_IMAGE":
+            await self._rewind_browsers(group, [browser_id])
+            should_notify_admins = True
+
         # Notify admin clients outside lock
         if should_notify_admins:
             await self._notify_admins({

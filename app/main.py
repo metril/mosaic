@@ -60,7 +60,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 
 
-async def periodic_cleanup(display_manager: DisplayManager, interval: int = 30):
+async def periodic_cleanup(
+    display_manager: DisplayManager,
+    interval: int = 30,
+    endpoint_cleanup_hours: int = 24
+):
     """Periodically clean up stale browser connections with resilience (#27)."""
     consecutive_failures = 0
     max_failures = 5
@@ -76,9 +80,12 @@ async def periodic_cleanup(display_manager: DisplayManager, interval: int = 30):
             await display_manager.cleanup_stale_browsers(timeout_seconds=60)
 
             # Clean up anonymous endpoints less frequently (hourly)
-            if iteration_count >= endpoint_cleanup_interval:
+            # Set ENDPOINT_CLEANUP_HOURS=0 to disable cleanup entirely
+            if endpoint_cleanup_hours > 0 and iteration_count >= endpoint_cleanup_interval:
                 iteration_count = 0
-                cleaned = await display_manager.cleanup_stale_endpoints(timeout_hours=24)
+                cleaned = await display_manager.cleanup_stale_endpoints(
+                    timeout_hours=endpoint_cleanup_hours
+                )
                 if cleaned > 0:
                     logger.info(f"Cleaned up {cleaned} stale anonymous endpoints")
 
@@ -177,8 +184,15 @@ async def lifespan(app: FastAPI):
             logger.debug("Home Assistant not configured (HOMEASSISTANT_URL/TOKEN not set)")
 
         # Start cleanup task for stale browser connections
-        cleanup_task = asyncio.create_task(periodic_cleanup(app.state.display_manager))
-        logger.info("Cleanup task started")
+        # ENDPOINT_CLEANUP_HOURS: how long before anonymous endpoints are removed (default 24h, 0=disabled)
+        endpoint_cleanup_hours = int(os.environ.get('ENDPOINT_CLEANUP_HOURS', '24'))
+        cleanup_task = asyncio.create_task(
+            periodic_cleanup(app.state.display_manager, endpoint_cleanup_hours=endpoint_cleanup_hours)
+        )
+        if endpoint_cleanup_hours > 0:
+            logger.info(f"Cleanup task started (endpoint cleanup: {endpoint_cleanup_hours}h)")
+        else:
+            logger.info("Cleanup task started (endpoint cleanup: disabled)")
 
         logger.info("=" * 60)
 

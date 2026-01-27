@@ -1588,6 +1588,119 @@ async def delete_endpoint(
     return JSONResponse(content={"status": "deleted", "endpoint_id": endpoint_id})
 
 
+@router.post("/api/display/groups/{group_id}/endpoints/{endpoint_id}/next")
+async def endpoint_next_image(
+    group_id: str = PathParam(...),
+    endpoint_id: str = PathParam(...),
+    request: Request = None,
+    user: User = Depends(get_current_user)
+):
+    """
+    Request next image for a specific endpoint.
+
+    Useful for on-demand mode (auto_cycle=false) to manually advance images.
+    Works even when no browser is connected - updates the endpoint's state.
+    """
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    endpoint = group.endpoints.get(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail=f"Endpoint '{endpoint_id}' not found")
+
+    # Find connected browser for this endpoint
+    browser = next(
+        (b for b in group.browsers.values() if b.endpoint_id == endpoint_id),
+        None
+    )
+
+    if browser:
+        # Browser connected - use _advance_browsers
+        await display_manager._advance_browsers(group, [browser.browser_id])
+    else:
+        # No browser - directly update endpoint state
+        images = await display_manager.image_service.get_images(
+            subfolder=group.settings.folder,
+            sort=group.settings.sort,
+            filter_glob=group.settings.filter_glob
+        )
+        if images:
+            import random
+            if group.settings.sort == "random":
+                next_img = random.choice(images)
+            else:
+                # Find current index and advance
+                try:
+                    idx = images.index(endpoint.current_image) if endpoint.current_image else -1
+                    next_img = images[(idx + 1) % len(images)]
+                except ValueError:
+                    next_img = images[0]
+
+            # Push current to history and set new image
+            if endpoint.current_image:
+                endpoint.image_history.append(endpoint.current_image)
+            endpoint.image_history.extend(endpoint.forward_history)
+            endpoint.forward_history.clear()
+            endpoint.current_image = next_img
+
+    logger.info(f"User {user.email} requested next image for endpoint '{endpoint_id}'")
+
+    return JSONResponse(content={
+        "status": "ok",
+        "endpoint_id": endpoint_id,
+        "current_image": endpoint.current_image
+    })
+
+
+@router.post("/api/display/groups/{group_id}/endpoints/{endpoint_id}/previous")
+async def endpoint_previous_image(
+    group_id: str = PathParam(...),
+    endpoint_id: str = PathParam(...),
+    request: Request = None,
+    user: User = Depends(get_current_user)
+):
+    """
+    Request previous image for a specific endpoint.
+
+    Goes back in the endpoint's image history.
+    """
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    endpoint = group.endpoints.get(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail=f"Endpoint '{endpoint_id}' not found")
+
+    # Find connected browser for this endpoint
+    browser = next(
+        (b for b in group.browsers.values() if b.endpoint_id == endpoint_id),
+        None
+    )
+
+    if browser:
+        # Browser connected - use _rewind_browsers
+        await display_manager._rewind_browsers(group, [browser.browser_id])
+    else:
+        # No browser - directly update endpoint state
+        if endpoint.image_history:
+            if endpoint.current_image:
+                endpoint.forward_history.insert(0, endpoint.current_image)
+            endpoint.current_image = endpoint.image_history.pop()
+
+    logger.info(f"User {user.email} requested previous image for endpoint '{endpoint_id}'")
+
+    return JSONResponse(content={
+        "status": "ok",
+        "endpoint_id": endpoint_id,
+        "current_image": endpoint.current_image,
+        "history_length": len(endpoint.image_history)
+    })
+
+
 @router.get("/display", include_in_schema=False)
 async def display_page(
     request: Request,
