@@ -806,85 +806,92 @@
             }
             .endpoint-summary {
                 display: flex;
-                align-items: center;
-                gap: 8px;
+                flex-direction: column;
+                gap: 4px;
                 padding: 8px 12px;
                 cursor: pointer;
                 list-style: none;
-                overflow: hidden;
-                min-width: 0;
             }
             .endpoint-summary::-webkit-details-marker {
                 display: none;
             }
-            .endpoint-summary::before {
+            /* Endpoint info row (first line) */
+            .endpoint-info {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+            }
+            .endpoint-info::before {
                 content: '\25B6';
                 font-size: 10px;
                 color: #666;
                 transition: transform 0.2s;
                 flex-shrink: 0;
             }
-            .endpoint-details[open] .endpoint-summary::before {
+            .endpoint-details[open] .endpoint-info::before {
                 transform: rotate(90deg);
             }
-            .endpoint-summary .endpoint-id {
+            .endpoint-info .endpoint-id {
                 font-family: monospace;
                 color: #e94560;
                 font-weight: 500;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                max-width: 120px;
+                max-width: 150px;
                 flex-shrink: 1;
             }
-            .endpoint-summary .endpoint-name {
+            .endpoint-info .endpoint-name {
                 color: #888;
                 font-size: 12px;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                max-width: 100px;
+                max-width: 120px;
                 flex-shrink: 2;
             }
-            .endpoint-summary .badge-anonymous {
+            .endpoint-info .badge-anonymous {
                 color: #ff9800;
                 font-size: 11px;
                 flex-shrink: 0;
             }
-            .endpoint-summary .status-dot {
+            .endpoint-info .status-dot {
                 font-size: 10px;
                 flex-shrink: 0;
             }
-            .endpoint-summary .status-dot.connected { color: #4CAF50; }
-            .endpoint-summary .status-dot.disconnected { color: #666; }
-            .endpoint-summary .last-seen {
+            .endpoint-info .status-dot.connected { color: #4CAF50; }
+            .endpoint-info .status-dot.disconnected { color: #666; }
+            .endpoint-info .last-seen {
                 color: #666;
                 font-size: 11px;
                 flex-shrink: 0;
             }
-            .endpoint-summary .history-info {
+            .endpoint-info .history-info {
                 color: #888;
                 font-size: 11px;
                 white-space: nowrap;
                 flex-shrink: 0;
             }
-            .endpoint-summary .endpoint-url {
-                margin-left: auto;
-                flex-shrink: 0;
+            /* URL row (second line) */
+            .endpoint-url-row {
                 display: flex;
                 align-items: center;
                 gap: 4px;
+                padding-left: 18px;  /* Align with content after arrow */
             }
-            .endpoint-summary .endpoint-url input {
-                width: 100px;
+            .endpoint-url-row input {
+                flex: 1;
+                max-width: 220px;
                 padding: 2px 6px;
                 font-size: 11px;
+                font-family: monospace;
                 background: rgba(255, 255, 255, 0.05);
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 3px;
                 color: #aaa;
             }
-            .endpoint-summary .endpoint-url .btn-copy {
+            .endpoint-url-row .btn-copy {
                 padding: 2px 6px;
                 font-size: 11px;
                 flex-shrink: 0;
@@ -2467,24 +2474,25 @@
                                 // Calculate history position info
                                 const historyCount = browser ? (browser.history_count || 0) : (ep.history_count || 0);
                                 const forwardCount = browser ? (browser.forward_count || 0) : (ep.forward_count || 0);
+                                // Show "Current" when at the front (forward_count = 0), otherwise show position
                                 const historyInfo = forwardCount > 0
                                     ? `${historyCount} behind, ${forwardCount} ahead`
-                                    : historyCount > 0
-                                        ? `${historyCount} behind`
-                                        : (isConnected ? 'Current' : '');
+                                    : (isConnected ? 'Current' : '');
 
                                 return `
                                     <details class="endpoint-details ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}"
                                              data-endpoint-id="${epIdSafe}"
                                              ${isConnected ? 'open' : ''}>
                                         <summary class="endpoint-summary">
-                                            <span class="endpoint-id">${epIdSafe}</span>
-                                            ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
-                                            ${!isPersistent ? '<span class="badge-anonymous">(anon)</span>' : ''}
-                                            <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
-                                            ${historyInfo ? `<span class="history-info">${historyInfo}</span>` : ''}
-                                            ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
-                                            <div class="endpoint-url" onclick="event.stopPropagation()">
+                                            <div class="endpoint-info">
+                                                <span class="endpoint-id">${epIdSafe}</span>
+                                                ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
+                                                ${!isPersistent ? '<span class="badge-anonymous">(anon)</span>' : ''}
+                                                <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
+                                                ${historyInfo ? `<span class="history-info">${historyInfo}</span>` : ''}
+                                                ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
+                                            </div>
+                                            <div class="endpoint-url-row" onclick="event.stopPropagation()">
                                                 <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
                                                 <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
                                             </div>
@@ -2540,7 +2548,8 @@
             }
 
             // Event delegation for buttons and thumbnail clicks
-            document.getElementById('groupsList').addEventListener('click', async function(e) {
+            // Note: Using non-blocking handlers to prevent UI freezes
+            document.getElementById('groupsList').addEventListener('click', function(e) {
                 const controlBtn = e.target.closest('.btn-control');
                 const editBtn = e.target.closest('.btn-edit');
                 const deleteBtn = e.target.closest('.btn-delete');
@@ -2551,7 +2560,10 @@
                 if (controlBtn) {
                     const action = controlBtn.dataset.action;
                     const groupId = controlBtn.dataset.groupId;
-                    await sendControlAction(groupId, action);
+                    // Fire-and-forget - don't await to prevent blocking
+                    sendControlAction(groupId, action).catch(err => {
+                        console.error('Control action failed:', err);
+                    });
                 } else if (editBtn) {
                     const groupId = editBtn.dataset.groupId;
                     openPanel('edit', groupId);
@@ -2567,16 +2579,33 @@
                     const imagePath = thumb.dataset.imagePath;
 
                     if (groupId && browserId && imagePath) {
-                        await jumpToImage(groupId, browserId, imagePath);
+                        // Fire-and-forget
+                        jumpToImage(groupId, browserId, imagePath).catch(err => {
+                            console.error('Jump failed:', err);
+                        });
                     }
                 } else if (createEndpointBtn) {
                     const groupId = createEndpointBtn.dataset.groupId;
                     openCreateEndpointModal(groupId);
                 } else if (copyUrlBtn) {
+                    e.stopPropagation(); // Prevent details toggle
                     const url = copyUrlBtn.dataset.url;
-                    await navigator.clipboard.writeText(window.location.origin + url);
-                    copyUrlBtn.textContent = '✓';
-                    setTimeout(() => copyUrlBtn.textContent = '📋', 1500);
+                    if (url) {
+                        navigator.clipboard.writeText(window.location.origin + url)
+                            .then(() => {
+                                copyUrlBtn.textContent = '✓';
+                                setTimeout(() => copyUrlBtn.textContent = '📋', 1500);
+                            })
+                            .catch(err => {
+                                // Fallback: select the input for manual copy
+                                const input = copyUrlBtn.previousElementSibling;
+                                if (input && input.tagName === 'INPUT') {
+                                    input.select();
+                                    input.setSelectionRange(0, input.value.length);
+                                }
+                                console.warn('Clipboard write failed:', err);
+                            });
+                    }
                 }
             });
 
@@ -3089,40 +3118,44 @@
             }
 
             function handleWebSocketMessage(msg) {
-                switch (msg.type) {
-                    case 'INITIAL_STATE':
-                        // Full render on initial connect
-                        renderGroups(msg.groups);
-                        scrollAllToCurrentImage();
-                        break;
-                    case 'GROUP_CREATED':
-                        // Add new group card
-                        groupSettingsCache[msg.group.group_id] = msg.group.settings;
-                        cachedGroups.push(msg.group);
-                        addGroupCard(msg.group);
-                        break;
-                    case 'GROUP_DELETED':
-                        // Remove group card
-                        removeGroupCard(msg.group_id);
-                        delete groupSettingsCache[msg.group_id];
-                        cachedGroups = cachedGroups.filter(g => g.group_id !== msg.group_id);
-                        break;
-                    case 'GROUP_UPDATED':
-                        // Update existing group card with partial DOM update to preserve scroll position
-                        groupSettingsCache[msg.group.group_id] = msg.group.settings;
-                        // Update cachedGroups
-                        const idx = cachedGroups.findIndex(g => g.group_id === msg.group.group_id);
-                        if (idx >= 0) cachedGroups[idx] = msg.group;
-                        else cachedGroups.push(msg.group);
-                        updateGroupCardPartial(msg.group);
-                        // If editing this group's endpoints panel, re-render it
-                        if (editingGroupId === msg.group.group_id) {
-                            renderEndpointsInPanel(msg.group.group_id);
-                        }
-                        break;
-                    case 'PING':
-                        ws.send(JSON.stringify({ type: 'PONG' }));
-                        break;
+                try {
+                    switch (msg.type) {
+                        case 'INITIAL_STATE':
+                            // Full render on initial connect
+                            renderGroups(msg.groups);
+                            scrollAllToCurrentImage();
+                            break;
+                        case 'GROUP_CREATED':
+                            // Add new group card
+                            groupSettingsCache[msg.group.group_id] = msg.group.settings;
+                            cachedGroups.push(msg.group);
+                            addGroupCard(msg.group);
+                            break;
+                        case 'GROUP_DELETED':
+                            // Remove group card
+                            removeGroupCard(msg.group_id);
+                            delete groupSettingsCache[msg.group_id];
+                            cachedGroups = cachedGroups.filter(g => g.group_id !== msg.group_id);
+                            break;
+                        case 'GROUP_UPDATED':
+                            // Update existing group card with partial DOM update to preserve scroll position
+                            groupSettingsCache[msg.group.group_id] = msg.group.settings;
+                            // Update cachedGroups
+                            const idx = cachedGroups.findIndex(g => g.group_id === msg.group.group_id);
+                            if (idx >= 0) cachedGroups[idx] = msg.group;
+                            else cachedGroups.push(msg.group);
+                            updateGroupCardPartial(msg.group);
+                            // If editing this group's endpoints panel, re-render it
+                            if (editingGroupId === msg.group.group_id) {
+                                renderEndpointsInPanel(msg.group.group_id);
+                            }
+                            break;
+                        case 'PING':
+                            ws.send(JSON.stringify({ type: 'PONG' }));
+                            break;
+                    }
+                } catch (e) {
+                    console.error('Error handling WebSocket message type ' + msg.type + ':', e);
                 }
             }
 
@@ -3199,6 +3232,7 @@
 
             // Partial update of group card - avoids scroll position reset
             function updateGroupCardPartial(group) {
+                try {
                 const groupIdSafe = escapeHtml(group.group_id);
                 const card = document.querySelector(`.btn-control[data-group-id="${groupIdSafe}"]`)?.closest('.group-card');
 
@@ -3282,13 +3316,12 @@
                         const isConnected = !!browser;
 
                         // Calculate new history info
+                        // Show "Current" when at the front (forward_count = 0), otherwise show position
                         const historyCount = browser ? (browser.history_count || 0) : (ep.history_count || 0);
                         const forwardCount = browser ? (browser.forward_count || 0) : (ep.forward_count || 0);
                         const historyInfo = forwardCount > 0
                             ? `${historyCount} behind, ${forwardCount} ahead`
-                            : historyCount > 0
-                                ? `${historyCount} behind`
-                                : (isConnected ? 'Current' : '');
+                            : (isConnected ? 'Current' : '');
 
                         // Update or create history-info span
                         let historyInfoSpan = summary.querySelector('.history-info');
@@ -3346,6 +3379,15 @@
                     stopCountdown(group.group_id);
                     if (countdownEl) {
                         countdownEl.remove();
+                    }
+                }
+                } catch (e) {
+                    console.error('Error in updateGroupCardPartial:', e);
+                    // Fall back to full update on error
+                    try {
+                        updateGroupCard(group);
+                    } catch (e2) {
+                        console.error('Full update also failed:', e2);
                     }
                 }
             }
@@ -3537,24 +3579,25 @@
                             // Calculate history position info
                             const historyCount = browser ? (browser.history_count || 0) : (ep.history_count || 0);
                             const forwardCount = browser ? (browser.forward_count || 0) : (ep.forward_count || 0);
+                            // Show "Current" when at the front (forward_count = 0), otherwise show position
                             const historyInfo = forwardCount > 0
                                 ? `${historyCount} behind, ${forwardCount} ahead`
-                                : historyCount > 0
-                                    ? `${historyCount} behind`
-                                    : (isConnected ? 'Current' : '');
+                                : (isConnected ? 'Current' : '');
 
                             return `
                                 <details class="endpoint-details ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}"
                                          data-endpoint-id="${epIdSafe}"
                                          ${isConnected ? 'open' : ''}>
                                     <summary class="endpoint-summary">
-                                        <span class="endpoint-id">${epIdSafe}</span>
-                                        ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
-                                        ${!isPersistent ? '<span class="badge-anonymous">(anon)</span>' : ''}
-                                        <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
-                                        ${historyInfo ? `<span class="history-info">${historyInfo}</span>` : ''}
-                                        ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
-                                        <div class="endpoint-url" onclick="event.stopPropagation()">
+                                        <div class="endpoint-info">
+                                            <span class="endpoint-id">${epIdSafe}</span>
+                                            ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
+                                            ${!isPersistent ? '<span class="badge-anonymous">(anon)</span>' : ''}
+                                            <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
+                                            ${historyInfo ? `<span class="history-info">${historyInfo}</span>` : ''}
+                                            ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
+                                        </div>
+                                        <div class="endpoint-url-row" onclick="event.stopPropagation()">
                                             <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
                                             <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
                                         </div>
