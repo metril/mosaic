@@ -807,11 +807,12 @@
             .endpoint-summary {
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: 8px;
                 padding: 8px 12px;
                 cursor: pointer;
                 list-style: none;
                 overflow: hidden;
+                min-width: 0;
             }
             .endpoint-summary::-webkit-details-marker {
                 display: none;
@@ -821,6 +822,7 @@
                 font-size: 10px;
                 color: #666;
                 transition: transform 0.2s;
+                flex-shrink: 0;
             }
             .endpoint-details[open] .endpoint-summary::before {
                 transform: rotate(90deg);
@@ -829,36 +831,63 @@
                 font-family: monospace;
                 color: #e94560;
                 font-weight: 500;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 120px;
+                flex-shrink: 1;
             }
             .endpoint-summary .endpoint-name {
                 color: #888;
                 font-size: 12px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 100px;
+                flex-shrink: 2;
             }
             .endpoint-summary .badge-anonymous {
                 color: #ff9800;
                 font-size: 11px;
+                flex-shrink: 0;
             }
             .endpoint-summary .status-dot {
                 font-size: 10px;
+                flex-shrink: 0;
             }
             .endpoint-summary .status-dot.connected { color: #4CAF50; }
             .endpoint-summary .status-dot.disconnected { color: #666; }
             .endpoint-summary .last-seen {
                 color: #666;
                 font-size: 11px;
-            }
-            .endpoint-summary .endpoint-url {
-                margin-left: auto;
                 flex-shrink: 0;
-                max-width: 140px;
-            }
-            .endpoint-summary .endpoint-url input {
-                width: 90px;
             }
             .endpoint-summary .history-info {
                 color: #888;
                 font-size: 11px;
                 white-space: nowrap;
+                flex-shrink: 0;
+            }
+            .endpoint-summary .endpoint-url {
+                margin-left: auto;
+                flex-shrink: 0;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .endpoint-summary .endpoint-url input {
+                width: 100px;
+                padding: 2px 6px;
+                font-size: 11px;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 3px;
+                color: #aaa;
+            }
+            .endpoint-summary .endpoint-url .btn-copy {
+                padding: 2px 6px;
+                font-size: 11px;
+                flex-shrink: 0;
             }
             .endpoint-content {
                 padding: 8px 12px 12px 28px;
@@ -3228,6 +3257,68 @@
 
                         if (strip) {
                             updateHistoryStrip(strip, browser, groupIdSafe, browserIdSafe);
+                        }
+                    });
+                }
+
+                // 4.5 Update history-info in endpoint summaries
+                if (group.endpoints && group.browsers) {
+                    // Build browser lookup by endpoint_id
+                    const browserByEndpoint = {};
+                    group.browsers.forEach(b => {
+                        browserByEndpoint[b.endpoint_id] = b;
+                    });
+
+                    group.endpoints.forEach(ep => {
+                        const epIdSafe = escapeHtml(ep.endpoint_id);
+                        const endpointDetails = card.querySelector(`.endpoint-details[data-endpoint-id="${epIdSafe}"]`);
+                        if (!endpointDetails) return;
+
+                        const summary = endpointDetails.querySelector('.endpoint-summary');
+                        if (!summary) return;
+
+                        // Get browser for this endpoint
+                        const browser = browserByEndpoint[ep.endpoint_id];
+                        const isConnected = !!browser;
+
+                        // Calculate new history info
+                        const historyCount = browser ? (browser.history_count || 0) : (ep.history_count || 0);
+                        const forwardCount = browser ? (browser.forward_count || 0) : (ep.forward_count || 0);
+                        const historyInfo = forwardCount > 0
+                            ? `${historyCount} behind, ${forwardCount} ahead`
+                            : historyCount > 0
+                                ? `${historyCount} behind`
+                                : (isConnected ? 'Current' : '');
+
+                        // Update or create history-info span
+                        let historyInfoSpan = summary.querySelector('.history-info');
+                        if (historyInfo) {
+                            if (historyInfoSpan) {
+                                historyInfoSpan.textContent = historyInfo;
+                            } else {
+                                // Create and insert after status-dot
+                                const statusDot = summary.querySelector('.status-dot');
+                                if (statusDot) {
+                                    historyInfoSpan = document.createElement('span');
+                                    historyInfoSpan.className = 'history-info';
+                                    historyInfoSpan.textContent = historyInfo;
+                                    statusDot.after(historyInfoSpan);
+                                }
+                            }
+                        } else if (historyInfoSpan) {
+                            historyInfoSpan.remove();
+                        }
+
+                        // Update connected/disconnected class
+                        endpointDetails.classList.toggle('connected', isConnected);
+                        endpointDetails.classList.toggle('disconnected', !isConnected);
+
+                        // Update status dot
+                        const statusDot = summary.querySelector('.status-dot');
+                        if (statusDot) {
+                            statusDot.textContent = isConnected ? '●' : '○';
+                            statusDot.classList.toggle('connected', isConnected);
+                            statusDot.classList.toggle('disconnected', !isConnected);
                         }
                     });
                 }
