@@ -234,27 +234,33 @@ class DisplayEndpoint:
         }
 
     def to_config_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for YAML config persistence (persistent endpoints only)."""
+        """Convert to dictionary for YAML config persistence (persistent endpoints only).
+
+        Note: History (image_history, forward_history, current_image) is NOT saved because:
+        - It's runtime state, not configuration
+        - Disk files may change between restarts, making history stale
+        - History should start fresh on server restart
+        """
         if not self.is_persistent:
             return {}
         return {
             "name": self.name,
-            "image_history": self.image_history[-50:] if self.image_history else [],  # Keep last 50
-            "forward_history": self.forward_history[:10] if self.forward_history else [],  # Keep next 10
-            "current_image": self.current_image,
         }
 
     @classmethod
     def from_config_dict(cls, endpoint_id: str, data: Dict[str, Any]) -> "DisplayEndpoint":
-        """Create from YAML config dict."""
+        """Create from YAML config dict.
+
+        Note: History is not restored - endpoints start fresh on server restart.
+        """
         return cls(
             endpoint_id=endpoint_id,
             name=data.get("name"),
             is_persistent=True,  # Config endpoints are always persistent
-            current_image=data.get("current_image"),
-            image_history=data.get("image_history", []),
-            forward_history=data.get("forward_history", []),
-            created_at=_utc_now(),  # Reset creation time on load
+            current_image=None,  # Start fresh - no history restored
+            image_history=[],
+            forward_history=[],
+            created_at=_utc_now(),
         )
 
 

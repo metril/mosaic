@@ -938,13 +938,11 @@
                 overflow-x: auto;
             }
 
-            /* Countdown timer */
-            .countdown {
-                font-size: 14px;
+            /* Countdown timer (inline with group-meta) */
+            .countdown-inline {
                 color: #888;
-                margin: 4px 0 8px 0;
             }
-            .countdown-value {
+            .countdown-inline .countdown-value {
                 font-family: monospace;
                 color: #e94560;
                 font-weight: bold;
@@ -1945,7 +1943,7 @@
                 // Use raw groupId - browser decodes HTML entities in attribute values
                 // so escapeHtml() would create a mismatch
                 const countdownEl = document.querySelector(
-                    `.countdown[data-group-id="${groupId}"] .countdown-value`
+                    `.countdown-inline[data-group-id="${groupId}"] .countdown-value`
                 );
 
                 console.log('startCountdown: countdownEl found:', countdownEl);
@@ -2709,16 +2707,20 @@
                         </div>
                     `;
 
-                    // Countdown display (only if not paused, not on-demand, and has next_switch_at)
+                    // Countdown display inline with group-meta (only if not paused and not on-demand)
                     const countdownHtml = (isPaused || isOnDemand) ? '' :
-                        `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
+                        ` &bull; <span class="countdown-inline" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</span>`;
 
                     return `
                         <div class="group-card${group.error ? ' has-error' : ''}">
                             <div class="group-name">${groupIdSafe}${statusBadge}</div>
                             ${errorHtml}
-                            <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
-                            ${countdownHtml}
+                            <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}${countdownHtml}</div>
+                            <div class="group-actions">
+                                <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
+                                <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
+                                <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
+                            </div>
                             <div class="group-controls">
                                 <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;</button>
                                 <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9664;</button>
@@ -2728,11 +2730,6 @@
                             </div>
                             ${endpointSectionsHtml}
                             <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
-                            <div class="group-actions">
-                                <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
-                                <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
-                                <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
-                            </div>
                         </div>
                     `;
                 }).join('');
@@ -3608,6 +3605,13 @@
                         // Disconnected endpoint - update using endpoint data
                         const epBrowserId = 'ep-' + ep.endpoint_id;
                         const strip = card.querySelector(`.history-strip[data-browser-id="${escapeHtml(epBrowserId)}"]`);
+
+                        if (!strip && ep.current_image) {
+                            // Strip doesn't exist but endpoint now has an image - need full rebuild
+                            updateGroupCard(group);
+                            return;
+                        }
+
                         if (strip && ep.current_image) {
                             // Update or replace the current image thumbnail
                             const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
@@ -3698,19 +3702,21 @@
                 }
 
                 // 6. Handle countdown visibility (skip for on-demand mode)
+                // Countdown is now inline with group-meta, so we handle visibility differently
                 const isOnDemandPartial = group.settings?.auto_cycle === false;
-                let countdownEl = card.querySelector('.countdown');
+                let countdownEl = card.querySelector('.countdown-inline');
                 if (!group.paused && !isOnDemandPartial && group.next_switch_at) {
                     if (!countdownEl) {
                         // Need to add countdown element - fall back to full update
                         updateGroupCard(group);
                         return;
                     }
+                    countdownEl.style.display = '';
                     startCountdown(group.group_id, group.next_switch_at);
                 } else {
                     stopCountdown(group.group_id);
                     if (countdownEl) {
-                        countdownEl.remove();
+                        countdownEl.style.display = 'none';
                     }
                 }
                 } catch (e) {
@@ -3956,15 +3962,19 @@
                     </div>
                 `;
 
-                // Countdown display (only if not paused, not on-demand, and has next_switch_at)
+                // Countdown display inline with group-meta (only if not paused and not on-demand)
                 const countdownHtml = (isPaused || isOnDemand) ? '' :
-                    `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
+                    ` &bull; <span class="countdown-inline" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</span>`;
 
                 return `
                     <div class="group-card">
                         <div class="group-name">${groupIdSafe}${statusBadge}</div>
-                        <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
-                        ${countdownHtml}
+                        <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}${countdownHtml}</div>
+                        <div class="group-actions">
+                            <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
+                            <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
+                            <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
+                        </div>
                         <div class="group-controls">
                             <button class="btn-control" data-action="rewind-all" data-group-id="${groupIdSafe}" title="Rewind All">&#9198;</button>
                             <button class="btn-control" data-action="previous" data-group-id="${groupIdSafe}" title="Previous">&#9664;</button>
@@ -3974,11 +3984,6 @@
                         </div>
                         ${endpointSectionsHtml}
                         <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
-                        <div class="group-actions">
-                            <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
-                            <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
-                            <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
-                        </div>
                     </div>
                 `;
             }
