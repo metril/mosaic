@@ -811,6 +811,7 @@
                 padding: 8px 12px;
                 cursor: pointer;
                 list-style: none;
+                overflow: hidden;
             }
             .endpoint-summary::-webkit-details-marker {
                 display: none;
@@ -848,6 +849,16 @@
             }
             .endpoint-summary .endpoint-url {
                 margin-left: auto;
+                flex-shrink: 0;
+                max-width: 140px;
+            }
+            .endpoint-summary .endpoint-url input {
+                width: 90px;
+            }
+            .endpoint-summary .history-info {
+                color: #888;
+                font-size: 11px;
+                white-space: nowrap;
             }
             .endpoint-content {
                 padding: 8px 12px 12px 28px;
@@ -2424,6 +2435,15 @@
                                 const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
                                 const historyHtml = buildHistoryStrip(ep, browser);
 
+                                // Calculate history position info
+                                const historyCount = browser ? (browser.history_count || 0) : (ep.history_count || 0);
+                                const forwardCount = browser ? (browser.forward_count || 0) : (ep.forward_count || 0);
+                                const historyInfo = forwardCount > 0
+                                    ? `${historyCount} behind, ${forwardCount} ahead`
+                                    : historyCount > 0
+                                        ? `${historyCount} behind`
+                                        : (isConnected ? 'Current' : '');
+
                                 return `
                                     <details class="endpoint-details ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}"
                                              data-endpoint-id="${epIdSafe}"
@@ -2433,6 +2453,7 @@
                                             ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
                                             ${!isPersistent ? '<span class="badge-anonymous">(anon)</span>' : ''}
                                             <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
+                                            ${historyInfo ? `<span class="history-info">${historyInfo}</span>` : ''}
                                             ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
                                             <div class="endpoint-url" onclick="event.stopPropagation()">
                                                 <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
@@ -3422,6 +3443,15 @@
                             const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
                             const historyHtml = buildHistoryStrip(ep, browser);
 
+                            // Calculate history position info
+                            const historyCount = browser ? (browser.history_count || 0) : (ep.history_count || 0);
+                            const forwardCount = browser ? (browser.forward_count || 0) : (ep.forward_count || 0);
+                            const historyInfo = forwardCount > 0
+                                ? `${historyCount} behind, ${forwardCount} ahead`
+                                : historyCount > 0
+                                    ? `${historyCount} behind`
+                                    : (isConnected ? 'Current' : '');
+
                             return `
                                 <details class="endpoint-details ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}"
                                          data-endpoint-id="${epIdSafe}"
@@ -3431,6 +3461,7 @@
                                         ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
                                         ${!isPersistent ? '<span class="badge-anonymous">(anon)</span>' : ''}
                                         <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
+                                        ${historyInfo ? `<span class="history-info">${historyInfo}</span>` : ''}
                                         ${!isConnected && ep.last_seen ? `<span class="last-seen">${formatTimeAgo(ep.last_seen)}</span>` : ''}
                                         <div class="endpoint-url" onclick="event.stopPropagation()">
                                             <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
