@@ -694,6 +694,14 @@
             .history-details[open] summary {
                 border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             }
+            .history-endpoint {
+                font-family: monospace;
+                background: rgba(255, 255, 255, 0.1);
+                padding: 2px 6px;
+                border-radius: 3px;
+                font-size: 11px;
+                color: #e94560;
+            }
             .history-strip {
                 display: flex;
                 align-items: center;
@@ -762,26 +770,33 @@
                 padding: 8px 12px;
                 border-radius: 6px;
                 font-size: 13px;
+                min-width: 0;  /* Allow shrinking */
+                flex-wrap: wrap;
             }
             .endpoint-item.persistent {
-                background: rgba(76, 175, 80, 0.15);
+                background: rgba(76, 175, 80, 0.08);
             }
             .endpoint-item.anonymous {
-                background: rgba(255, 193, 7, 0.15);
+                background: rgba(255, 193, 7, 0.08);
             }
             .endpoint-icon {
                 font-size: 16px;
+                flex-shrink: 0;
             }
             .endpoint-name {
                 font-family: monospace;
                 color: #e94560;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                max-width: 140px;
             }
             .endpoint-label {
                 color: #ccc;
             }
             .endpoint-status {
-                margin-left: auto;
                 font-size: 12px;
+                flex-shrink: 0;
             }
             .endpoint-item.connected .endpoint-status {
                 color: #4caf50;
@@ -819,10 +834,15 @@
                 display: flex;
                 align-items: center;
                 gap: 6px;
+                flex: 1;
+                min-width: 0;
+                max-width: 200px;
                 margin-left: auto;
             }
             .endpoint-url input {
-                width: 180px;
+                flex: 1;
+                min-width: 60px;
+                max-width: 140px;
                 padding: 4px 8px;
                 font-size: 11px;
                 font-family: monospace;
@@ -1470,6 +1490,26 @@
                             </div>
                         </div>
                     </details>
+
+                    <!-- Endpoints Management (only shown in edit mode) -->
+                    <details class="settings-section" id="endpointsSection" style="display: none;">
+                        <summary>Endpoints</summary>
+                        <div class="section-content">
+                            <p style="color: #888; font-size: 12px; margin-bottom: 12px;">
+                                Create persistent endpoints to maintain image history across browser reconnects.
+                            </p>
+                            <div id="endpointsList" style="margin-bottom: 12px;"></div>
+                            <div class="form-row">
+                                <label>Create New Endpoint</label>
+                                <div class="input-with-button">
+                                    <input type="text" id="newEndpointId" placeholder="e.g., kitchen-tv"
+                                           pattern="^[a-zA-Z0-9_\-]+$">
+                                    <button type="button" class="btn btn-secondary" onclick="createEndpointFromPanel()">Create</button>
+                                </div>
+                                <small>Letters, numbers, dashes, underscores only</small>
+                            </div>
+                        </div>
+                    </details>
                 </form>
             </div>
             <div class="panel-footer">
@@ -1651,6 +1691,7 @@
             const CSRF_TOKEN = '{{ csrf_token }}';
             let editingGroupId = null;
             let groupSettingsCache = {};
+            let cachedGroups = [];  // Full group data for endpoints panel
             let currentWebhooks = [];  // Webhooks being edited in the form
             let folderTreeData = null;
             let selectedFolders = new Set();
@@ -1747,6 +1788,7 @@
                 const title = document.getElementById('panelTitle');
                 const submitBtn = document.getElementById('submitBtn');
                 const groupIdRow = document.getElementById('groupIdRow');
+                const endpointsSection = document.getElementById('endpointsSection');
 
                 if (mode === 'edit') {
                     title.textContent = 'Edit: ' + groupId;
@@ -1754,12 +1796,17 @@
                     groupIdRow.style.display = 'none';
                     document.getElementById('group_id').removeAttribute('required');
                     populateForm(groupSettingsCache[groupId]);
+                    // Show endpoints section and render list
+                    endpointsSection.style.display = '';
+                    renderEndpointsInPanel(groupId);
                 } else {
                     title.textContent = 'Create Group';
                     submitBtn.textContent = 'Create Group';
                     groupIdRow.style.display = 'block';
                     document.getElementById('group_id').setAttribute('required', '');
                     resetForm();
+                    // Hide endpoints section in create mode
+                    endpointsSection.style.display = 'none';
                 }
 
                 panel.classList.add('open');
@@ -2274,6 +2321,7 @@
                 const container = document.getElementById('groupsList');
                 const countEl = document.getElementById('groupCount');
                 groupSettingsCache = {};
+                cachedGroups = groups || [];  // Store full group data for endpoints panel
 
                 countEl.textContent = groups.length;
 
@@ -2357,16 +2405,19 @@
                             return '';  // No history section if nothing to show
                         }
 
-                        // Summary for collapsible header
-                        const summaryText = forwardCount > 0
-                            ? `History (${historyCount} behind, ${forwardCount} ahead)`
+                        // Summary for collapsible header - include endpoint ID
+                        const endpointLabel = browser.endpoint_id
+                            ? `<span class="history-endpoint">${escapeHtml(browser.endpoint_id)}</span> `
+                            : '';
+                        const historyInfo = forwardCount > 0
+                            ? `${historyCount} behind, ${forwardCount} ahead`
                             : historyCount > 0
-                                ? `History (${historyCount} behind)`
-                                : 'Current image';
+                                ? `${historyCount} behind`
+                                : 'Current';
 
                         return `
                             <details class="history-details" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}">
-                                <summary>${summaryText}</summary>
+                                <summary>${endpointLabel}${historyInfo}</summary>
                                 <div class="history-strip">${thumbsHtml}</div>
                             </details>
                         `;
@@ -2405,18 +2456,12 @@
                                     `;
                                 }).join('')}
                             </div>
-                            <div class="endpoints-actions">
-                                <button class="btn btn-small btn-create-endpoint" data-group-id="${groupIdSafe}">+ New Endpoint</button>
-                            </div>
                         </details>
                     ` : `
                         <details class="endpoints-section" data-group-id="${groupIdSafe}">
                             <summary>Endpoints (0)</summary>
                             <div class="endpoints-list">
-                                <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints configured. Create one to get a persistent display URL.</div>
-                            </div>
-                            <div class="endpoints-actions">
-                                <button class="btn btn-small btn-create-endpoint" data-group-id="${groupIdSafe}">+ New Endpoint</button>
+                                <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints yet. Use the Edit button to create one.</div>
                             </div>
                         </details>
                     `;
@@ -2866,6 +2911,92 @@
                 }
             }
 
+            // =================================================================
+            // Endpoint Panel Functions (for Edit panel)
+            // =================================================================
+
+            // Render endpoints list in the Edit panel
+            function renderEndpointsInPanel(groupId) {
+                const container = document.getElementById('endpointsList');
+                // Find group from cached data
+                const group = cachedGroups ? cachedGroups.find(g => g.group_id === groupId) : null;
+                if (!group || !group.endpoints || group.endpoints.length === 0) {
+                    container.innerHTML = '<p style="color: #666; font-size: 12px;">No endpoints yet. Endpoints will be created automatically when displays connect.</p>';
+                    return;
+                }
+                // Each endpoint shows ID, optional name, and Delete button
+                container.innerHTML = group.endpoints.map(ep => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 6px;">
+                        <div style="flex: 1; min-width: 0;">
+                            <span style="font-family: monospace; color: #e94560;">${escapeHtml(ep.endpoint_id)}</span>
+                            ${ep.name ? `<span style="color: #888; margin-left: 8px;">${escapeHtml(ep.name)}</span>` : ''}
+                            ${ep.is_persistent ? '' : '<span style="color: #ff9800; font-size: 11px; margin-left: 8px;">(anonymous)</span>'}
+                        </div>
+                        <button type="button" class="btn btn-danger btn-small"
+                                onclick="deleteEndpointFromPanel('${escapeHtml(groupId)}', '${escapeHtml(ep.endpoint_id)}')">Delete</button>
+                    </div>
+                `).join('');
+            }
+
+            // Delete endpoint from the Edit panel
+            async function deleteEndpointFromPanel(groupId, endpointId) {
+                if (!confirm('Delete endpoint "' + endpointId + '"?\n\nThis will remove its image history and cannot be undone.')) {
+                    return;
+                }
+                try {
+                    const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + endpointId, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRF-Token': csrfToken
+                        }
+                    });
+                    if (!response.ok) {
+                        const data = await response.json();
+                        throw new Error(data.detail || 'Failed to delete');
+                    }
+                    // WebSocket update will refresh the panel - re-render immediately for responsiveness
+                    renderEndpointsInPanel(groupId);
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                }
+            }
+
+            // Create endpoint from the Edit panel
+            async function createEndpointFromPanel() {
+                const input = document.getElementById('newEndpointId');
+                const epId = input.value.trim();
+                if (!epId || !editingGroupId) {
+                    alert('Please enter an endpoint ID');
+                    return;
+                }
+
+                if (!/^[a-zA-Z0-9_\-]+$/.test(epId)) {
+                    alert('Endpoint ID can only contain letters, numbers, dashes, and underscores');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(API_BASE + '/' + editingGroupId + '/endpoints', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': csrfToken
+                        },
+                        body: JSON.stringify({ endpoint_id: epId, is_persistent: true })
+                    });
+                    if (!response.ok) {
+                        const data = await response.json();
+                        throw new Error(data.detail || 'Failed to create');
+                    }
+                    input.value = '';
+                    // WebSocket update will refresh - re-render for responsiveness
+                    // Need to wait for cached data to update
+                    setTimeout(() => renderEndpointsInPanel(editingGroupId), 100);
+                } catch (e) {
+                    alert('Error: ' + e.message);
+                }
+            }
+
             async function createFolder() {
                 const nameInput = document.getElementById('newFolderName');
                 const name = nameInput.value.trim();
@@ -2960,17 +3091,27 @@
                     case 'GROUP_CREATED':
                         // Add new group card
                         groupSettingsCache[msg.group.group_id] = msg.group.settings;
+                        cachedGroups.push(msg.group);
                         addGroupCard(msg.group);
                         break;
                     case 'GROUP_DELETED':
                         // Remove group card
                         removeGroupCard(msg.group_id);
                         delete groupSettingsCache[msg.group_id];
+                        cachedGroups = cachedGroups.filter(g => g.group_id !== msg.group_id);
                         break;
                     case 'GROUP_UPDATED':
                         // Update existing group card with partial DOM update to preserve scroll position
                         groupSettingsCache[msg.group.group_id] = msg.group.settings;
+                        // Update cachedGroups
+                        const idx = cachedGroups.findIndex(g => g.group_id === msg.group.group_id);
+                        if (idx >= 0) cachedGroups[idx] = msg.group;
+                        else cachedGroups.push(msg.group);
                         updateGroupCardPartial(msg.group);
+                        // If editing this group's endpoints panel, re-render it
+                        if (editingGroupId === msg.group.group_id) {
+                            renderEndpointsInPanel(msg.group.group_id);
+                        }
                         break;
                     case 'PING':
                         ws.send(JSON.stringify({ type: 'PONG' }));
@@ -3131,16 +3272,20 @@
                             updateHistoryStrip(strip, browser, groupIdSafe, browserIdSafe);
                         }
 
-                        // Update summary text
+                        // Update summary text with endpoint label
                         const summary = details.querySelector('summary');
                         if (summary) {
                             const historyCount = browser.history_count || 0;
                             const forwardCount = browser.forward_count || 0;
-                            summary.textContent = forwardCount > 0
-                                ? `History (${historyCount} behind, ${forwardCount} ahead)`
+                            const endpointLabel = browser.endpoint_id
+                                ? `<span class="history-endpoint">${escapeHtml(browser.endpoint_id)}</span> `
+                                : '';
+                            const historyInfo = forwardCount > 0
+                                ? `${historyCount} behind, ${forwardCount} ahead`
                                 : historyCount > 0
-                                    ? `History (${historyCount} behind)`
-                                    : 'Current image';
+                                    ? `${historyCount} behind`
+                                    : 'Current';
+                            summary.innerHTML = endpointLabel + historyInfo;
                         }
                     });
                 }
@@ -3316,15 +3461,19 @@
                         return '';
                     }
 
-                    const summaryText = forwardCount > 0
-                        ? `History (${historyCount} behind, ${forwardCount} ahead)`
+                    // Summary with endpoint label
+                    const endpointLabel = browser.endpoint_id
+                        ? `<span class="history-endpoint">${escapeHtml(browser.endpoint_id)}</span> `
+                        : '';
+                    const historyInfo = forwardCount > 0
+                        ? `${historyCount} behind, ${forwardCount} ahead`
                         : historyCount > 0
-                            ? `History (${historyCount} behind)`
-                            : 'Current image';
+                            ? `${historyCount} behind`
+                            : 'Current';
 
                     return `
                         <details class="history-details" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}">
-                            <summary>${summaryText}</summary>
+                            <summary>${endpointLabel}${historyInfo}</summary>
                             <div class="history-strip">${thumbsHtml}</div>
                         </details>
                     `;
@@ -3363,18 +3512,12 @@
                                 `;
                             }).join('')}
                         </div>
-                        <div class="endpoints-actions">
-                            <button class="btn btn-small btn-create-endpoint" data-group-id="${groupIdSafe}">+ New Endpoint</button>
-                        </div>
                     </details>
                 ` : `
                     <details class="endpoints-section" data-group-id="${groupIdSafe}">
                         <summary>Endpoints (0)</summary>
                         <div class="endpoints-list">
-                            <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints configured. Create one to get a persistent display URL.</div>
-                        </div>
-                        <div class="endpoints-actions">
-                            <button class="btn btn-small btn-create-endpoint" data-group-id="${groupIdSafe}">+ New Endpoint</button>
+                            <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints yet. Use the Edit button to create one.</div>
                         </div>
                     </details>
                 `;
