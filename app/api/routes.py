@@ -26,6 +26,7 @@ from app.services.image_service import ImageService
 from app.services.sync_manager import (
     DisplayManager,
     DisplayGroupSettings,
+    DisplayEndpoint,
     WebhookConfig,
     WebhookTrigger,
     WebhookPayloadOption,
@@ -1423,10 +1424,175 @@ async def test_webhook(
         )
 
 
+# --- Display Endpoint Management APIs ---
+
+class EndpointCreateRequest(BaseModel):
+    """Request body for creating a display endpoint"""
+    endpoint_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-zA-Z0-9_\-]+$",
+        description="Unique identifier for the endpoint"
+    )
+    name: Optional[str] = Field(None, max_length=100, description="Human-readable name")
+
+
+class EndpointUpdateRequest(BaseModel):
+    """Request body for updating a display endpoint"""
+    name: Optional[str] = Field(None, max_length=100, description="Human-readable name")
+    is_persistent: Optional[bool] = Field(None, description="Promote anonymous to persistent")
+
+
+@router.get("/api/display/groups/{group_id}/endpoints", responses={
+    200: {"description": "List of endpoints for the group"},
+    404: {"description": "Group not found"},
+})
+async def list_endpoints(
+    group_id: str = PathParam(...),
+    request: Request = None,
+    user: User = Depends(get_current_user)
+):
+    """List all endpoints for a display group."""
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    return JSONResponse(
+        content={"endpoints": [e.to_dict() for e in group.endpoints.values()]}
+    )
+
+
+@router.post("/api/display/groups/{group_id}/endpoints", responses={
+    201: {"description": "Endpoint created successfully"},
+    400: {"description": "Invalid request or endpoint already exists"},
+    404: {"description": "Group not found"},
+})
+async def create_endpoint(
+    group_id: str = PathParam(...),
+    body: EndpointCreateRequest = None,
+    request: Request = None,
+    user: User = Depends(get_current_user)
+):
+    """Create a new persistent endpoint for a display group."""
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    if body.endpoint_id in group.endpoints:
+        raise HTTPException(status_code=400, detail=f"Endpoint '{body.endpoint_id}' already exists")
+
+    endpoint = DisplayEndpoint(
+        endpoint_id=body.endpoint_id,
+        name=body.name,
+        is_persistent=True,
+    )
+    group.endpoints[body.endpoint_id] = endpoint
+
+    logger.info(f"User {user.email} created endpoint '{body.endpoint_id}' in group '{group_id}'")
+
+    return JSONResponse(
+        status_code=201,
+        content=endpoint.to_dict()
+    )
+
+
+@router.get("/api/display/groups/{group_id}/endpoints/{endpoint_id}", responses={
+    200: {"description": "Endpoint details"},
+    404: {"description": "Group or endpoint not found"},
+})
+async def get_endpoint(
+    group_id: str = PathParam(...),
+    endpoint_id: str = PathParam(...),
+    request: Request = None,
+    user: User = Depends(get_current_user)
+):
+    """Get details of a specific endpoint."""
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    endpoint = group.endpoints.get(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail=f"Endpoint '{endpoint_id}' not found")
+
+    return JSONResponse(content=endpoint.to_dict())
+
+
+@router.patch("/api/display/groups/{group_id}/endpoints/{endpoint_id}", responses={
+    200: {"description": "Endpoint updated successfully"},
+    404: {"description": "Group or endpoint not found"},
+})
+async def update_endpoint(
+    group_id: str = PathParam(...),
+    endpoint_id: str = PathParam(...),
+    body: EndpointUpdateRequest = None,
+    request: Request = None,
+    user: User = Depends(get_current_user)
+):
+    """Update an endpoint (e.g., rename or promote from anonymous to persistent)."""
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    endpoint = group.endpoints.get(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail=f"Endpoint '{endpoint_id}' not found")
+
+    if body.name is not None:
+        endpoint.name = body.name
+    if body.is_persistent is not None:
+        endpoint.is_persistent = body.is_persistent
+
+    logger.info(f"User {user.email} updated endpoint '{endpoint_id}' in group '{group_id}'")
+
+    return JSONResponse(content=endpoint.to_dict())
+
+
+@router.delete("/api/display/groups/{group_id}/endpoints/{endpoint_id}", responses={
+    200: {"description": "Endpoint deleted"},
+    400: {"description": "Cannot delete - browser connected"},
+    404: {"description": "Group or endpoint not found"},
+})
+async def delete_endpoint(
+    group_id: str = PathParam(...),
+    endpoint_id: str = PathParam(...),
+    request: Request = None,
+    user: User = Depends(get_current_user)
+):
+    """Delete an endpoint. Cannot delete if a browser is currently connected."""
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    endpoint = group.endpoints.get(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail=f"Endpoint '{endpoint_id}' not found")
+
+    # Check if any browser is using this endpoint
+    connected_browsers = [b for b in group.browsers.values() if b.endpoint_id == endpoint_id]
+    if connected_browsers:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete endpoint '{endpoint_id}' - {len(connected_browsers)} browser(s) connected"
+        )
+
+    del group.endpoints[endpoint_id]
+    logger.info(f"User {user.email} deleted endpoint '{endpoint_id}' from group '{group_id}'")
+
+    return JSONResponse(content={"status": "deleted", "endpoint_id": endpoint_id})
+
+
 @router.get("/display", include_in_schema=False)
 async def display_page(
     request: Request,
-    group: str = Query(..., description="Display group ID to join")
+    group: str = Query(..., description="Display group ID to join"),
+    endpoint: Optional[str] = Query(None, description="Endpoint ID for persistent history")
 ):
     """
     Serve the display page for a browser to join a display group.
@@ -1436,6 +1602,7 @@ async def display_page(
 
     Query Parameters:
         group: The group ID to join (must exist, created via admin API)
+        endpoint: Optional endpoint ID for persistent history across reconnects
     """
     display_manager = get_display_manager(request)
     display_group = await display_manager.get_group(group)
@@ -1450,12 +1617,15 @@ async def display_page(
     original_scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     ws_scheme = "wss" if original_scheme == "https" else "ws"
     ws_url = f"{ws_scheme}://{request.url.netloc}/ws/display/{group}"
+    if endpoint:
+        ws_url += f"?endpoint={endpoint}"
 
     return templates.TemplateResponse(
         "display.html",
         {
             "request": request,
             "group_id": group,
+            "endpoint_id": endpoint,
             "ws_url": ws_url,
             "settings": display_group.settings.to_dict()
         }
@@ -1530,13 +1700,17 @@ async def websocket_admin(websocket: WebSocket):
 
 
 @router.websocket("/ws/display/{group_id}")
-async def websocket_display(websocket: WebSocket, group_id: str):
+async def websocket_display(
+    websocket: WebSocket,
+    group_id: str,
+    endpoint: Optional[str] = Query(None, description="Endpoint ID for persistent history")
+):
     """
     WebSocket endpoint for synchronized image display.
 
     Protocol:
         Server -> Client:
-        - WELCOME: browser_id, group_id, browser_count
+        - WELCOME: browser_id, endpoint_id, group_id, browser_count
         - ASSIGN: image_url, image_id, cycle
         - PRELOAD: image_url, switch_at (timestamp ms)
         - SWITCH: timestamp, cycle
@@ -1582,7 +1756,7 @@ async def websocket_display(websocket: WebSocket, group_id: str):
     try:
         # Add browser to group (may fail if group deleted or limit reached)
         try:
-            browser = await display_manager.add_browser(group_id, websocket)
+            browser = await display_manager.add_browser(group_id, websocket, endpoint)
         except ValueError as e:
             # Connection limit reached (A10)
             await websocket.close(code=4008, reason=str(e))
@@ -1598,30 +1772,35 @@ async def websocket_display(websocket: WebSocket, group_id: str):
             await websocket.close(code=4004, reason="Group no longer exists")
             return
 
+        # Get the endpoint for this browser
+        display_endpoint = group.get_endpoint_for_browser(browser.browser_id)
+
         # Send welcome message
         await websocket.send_json({
             "type": "WELCOME",
             "browser_id": browser.browser_id,
+            "endpoint_id": browser.endpoint_id,
             "group_id": group_id,
             "browser_count": len(group.browsers),
             "settings": group.settings.to_dict()
         })
 
-        # Send initial image assignment
-        if browser.current_image:
+        # Send initial image assignment (from endpoint's current_image)
+        current_image = display_endpoint.current_image if display_endpoint else None
+        if current_image:
             image_url = display_manager.build_image_url(
-                browser.current_image,
+                current_image,
                 group.settings
             )
             blur_url = display_manager.build_blur_url(
-                browser.current_image,
+                current_image,
                 group.settings
             )
             await websocket.send_json({
                 "type": "ASSIGN",
                 "image_url": image_url,
                 "blur_url": blur_url,
-                "image_id": browser.current_image,
+                "image_id": current_image,
                 "cycle": group.current_cycle
             })
 

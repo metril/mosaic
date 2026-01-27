@@ -65,11 +65,23 @@ async def periodic_cleanup(display_manager: DisplayManager, interval: int = 30):
     consecutive_failures = 0
     max_failures = 5
     backoff_delay = interval
+    iteration_count = 0
+    # Run endpoint cleanup every hour (120 iterations at 30s interval)
+    endpoint_cleanup_interval = 120
 
     while True:
         await asyncio.sleep(backoff_delay)
+        iteration_count += 1
         try:
             await display_manager.cleanup_stale_browsers(timeout_seconds=60)
+
+            # Clean up anonymous endpoints less frequently (hourly)
+            if iteration_count >= endpoint_cleanup_interval:
+                iteration_count = 0
+                cleaned = await display_manager.cleanup_stale_endpoints(timeout_hours=24)
+                if cleaned > 0:
+                    logger.info(f"Cleaned up {cleaned} stale anonymous endpoints")
+
             # Reset on success
             consecutive_failures = 0
             backoff_delay = interval

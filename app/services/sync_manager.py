@@ -203,17 +203,70 @@ def _next_cron_time(duration: int) -> datetime:
 
 
 @dataclass
-class BrowserState:
-    """State of a connected browser in a display group"""
-    browser_id: str
-    websocket: WebSocket
+class DisplayEndpoint:
+    """
+    Persistent display endpoint that retains state across browser reconnections.
+
+    Pre-created endpoints (is_persistent=True) keep their history forever.
+    Auto-generated endpoints (is_persistent=False) are cleaned up after 24h of inactivity.
+    """
+    endpoint_id: str  # "kitchen-tv" or "anon-abc123"
+    name: Optional[str] = None  # Human-readable name for admin UI
+    is_persistent: bool = True  # False for auto-generated anonymous endpoints
     current_image: Optional[str] = None
-    next_image: Optional[str] = None
+    next_image: Optional[str] = None  # Image being preloaded
     image_history: List[str] = field(default_factory=list)  # Past images for "previous"
     forward_history: List[str] = field(default_factory=list)  # Future images for "next" replay
+    created_at: datetime = field(default_factory=_utc_now)
+    last_seen: Optional[datetime] = None  # Last time a browser was connected
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for API responses and config persistence."""
+        return {
+            "endpoint_id": self.endpoint_id,
+            "name": self.name,
+            "is_persistent": self.is_persistent,
+            "current_image": self.current_image,
+            "history_count": len(self.image_history),
+            "forward_count": len(self.forward_history),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+        }
+
+    def to_config_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for YAML config persistence (persistent endpoints only)."""
+        if not self.is_persistent:
+            return {}
+        return {
+            "name": self.name,
+            "image_history": self.image_history[-50:] if self.image_history else [],  # Keep last 50
+            "forward_history": self.forward_history[:10] if self.forward_history else [],  # Keep next 10
+            "current_image": self.current_image,
+        }
+
+    @classmethod
+    def from_config_dict(cls, endpoint_id: str, data: Dict[str, Any]) -> "DisplayEndpoint":
+        """Create from YAML config dict."""
+        return cls(
+            endpoint_id=endpoint_id,
+            name=data.get("name"),
+            is_persistent=True,  # Config endpoints are always persistent
+            current_image=data.get("current_image"),
+            image_history=data.get("image_history", []),
+            forward_history=data.get("forward_history", []),
+            created_at=_utc_now(),  # Reset creation time on load
+        )
+
+
+@dataclass
+class BrowserState:
+    """Ephemeral state of a connected browser WebSocket connection."""
+    browser_id: str  # WebSocket connection ID
+    websocket: WebSocket
+    endpoint_id: str  # Links to DisplayEndpoint that holds history
     status: BrowserStatus = BrowserStatus.CONNECTING
-    connected_at: datetime = field(default_factory=_utc_now)  # Timezone-aware (P3)
-    last_heartbeat: datetime = field(default_factory=_utc_now)  # Timezone-aware (P3)
+    connected_at: datetime = field(default_factory=_utc_now)
+    last_heartbeat: datetime = field(default_factory=_utc_now)
 
 
 class ImagePool:
@@ -360,6 +413,7 @@ class DisplayGroup:
     settings: DisplayGroupSettings
     image_pool: ImagePool
     browsers: Dict[str, BrowserState] = field(default_factory=dict)
+    endpoints: Dict[str, DisplayEndpoint] = field(default_factory=dict)  # Persistent endpoints
     created_at: datetime = field(default_factory=_utc_now)
     current_cycle: int = 0
     next_switch_time: Optional[datetime] = None
@@ -368,8 +422,56 @@ class DisplayGroup:
     _webhook_interval_tasks: Dict[str, asyncio.Task] = field(default_factory=dict, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
+    def get_endpoint(self, endpoint_id: str) -> Optional[DisplayEndpoint]:
+        """Get an endpoint by ID."""
+        return self.endpoints.get(endpoint_id)
+
+    def get_or_create_endpoint(self, endpoint_id: Optional[str] = None) -> DisplayEndpoint:
+        """Get existing endpoint or create a new anonymous one."""
+        if endpoint_id and endpoint_id in self.endpoints:
+            return self.endpoints[endpoint_id]
+
+        # Generate anonymous endpoint ID if not provided
+        if not endpoint_id:
+            import secrets
+            endpoint_id = f"anon-{secrets.token_hex(6)}"
+
+        # Create new endpoint
+        is_persistent = not endpoint_id.startswith("anon-")
+        endpoint = DisplayEndpoint(
+            endpoint_id=endpoint_id,
+            is_persistent=is_persistent,
+            created_at=_utc_now(),
+        )
+        self.endpoints[endpoint_id] = endpoint
+        return endpoint
+
+    def get_endpoint_for_browser(self, browser_id: str) -> Optional[DisplayEndpoint]:
+        """Get the endpoint associated with a browser."""
+        browser = self.browsers.get(browser_id)
+        if browser:
+            return self.endpoints.get(browser.endpoint_id)
+        return None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
+        browsers_list = []
+        for b in self.browsers.values():
+            # Get endpoint for this browser to access history
+            endpoint = self.endpoints.get(b.endpoint_id)
+            browsers_list.append({
+                "browser_id": b.browser_id,
+                "endpoint_id": b.endpoint_id,
+                "status": b.status.value,
+                "current_image": endpoint.current_image if endpoint else None,
+                "connected_at": b.connected_at.isoformat() + "Z",
+                # History info from endpoint
+                "history_count": len(endpoint.image_history) if endpoint else 0,
+                "forward_count": len(endpoint.forward_history) if endpoint else 0,
+                "image_history": endpoint.image_history[-10:] if endpoint else [],
+                "forward_history": endpoint.forward_history[-10:] if endpoint else [],
+            })
+
         return {
             "group_id": self.group_id,
             "error": self.image_pool.error,
@@ -379,20 +481,8 @@ class DisplayGroup:
             "created_at": self.created_at.isoformat() + "Z",
             "next_switch_at": self.next_switch_time.isoformat() if self.next_switch_time else None,
             "settings": self.settings.to_dict(),
-            "browsers": [
-                {
-                    "browser_id": b.browser_id,
-                    "status": b.status.value,
-                    "current_image": b.current_image,
-                    "connected_at": b.connected_at.isoformat() + "Z",
-                    # History info for thumbnail display
-                    "history_count": len(b.image_history),
-                    "forward_count": len(b.forward_history),
-                    "image_history": b.image_history[-10:],  # Last 10 for thumbnails
-                    "forward_history": b.forward_history[-10:]  # Next 10 for thumbnails
-                }
-                for b in self.browsers.values()
-            ]
+            "browsers": browsers_list,
+            "endpoints": [e.to_dict() for e in self.endpoints.values()],
         }
 
 
@@ -534,10 +624,11 @@ class DisplayManager:
                     elif field == WebhookPayloadOption.SETTINGS:
                         payload["settings"] = group.settings.to_dict()
                     elif field == WebhookPayloadOption.CURRENT_IMAGE:
-                        # Get current images from all browsers
+                        # Get current images from all endpoints (via browsers)
                         images = [
-                            b.current_image for b in group.browsers.values()
-                            if b.current_image
+                            group.endpoints[b.endpoint_id].current_image
+                            for b in group.browsers.values()
+                            if b.endpoint_id in group.endpoints and group.endpoints[b.endpoint_id].current_image
                         ]
                         payload["current_images"] = images
                     elif field == WebhookPayloadOption.BROWSER_COUNT:
@@ -814,10 +905,17 @@ class DisplayManager:
     async def add_browser(
         self,
         group_id: str,
-        websocket: WebSocket
+        websocket: WebSocket,
+        endpoint_id: Optional[str] = None
     ) -> Optional[BrowserState]:
         """
         Add a browser to a display group.
+
+        Args:
+            group_id: The display group to join
+            websocket: The WebSocket connection
+            endpoint_id: Optional endpoint ID for persistent history.
+                        If None, an anonymous endpoint is created.
 
         Returns None if group doesn't exist.
         Raises ValueError if browser limit is reached (A10).
@@ -834,19 +932,25 @@ class DisplayManager:
                     f"Maximum browsers per group ({MAX_BROWSERS_PER_GROUP}) reached"
                 )
 
+            # Get or create the endpoint
+            endpoint = group.get_or_create_endpoint(endpoint_id)
+            endpoint.last_seen = _utc_now()
+
             browser_id = uuid.uuid4().hex[:16]  # 64-bit uniqueness (P4)
             browser = BrowserState(
                 browser_id=browser_id,
-                websocket=websocket
+                websocket=websocket,
+                endpoint_id=endpoint.endpoint_id,
             )
 
             async with group._lock:
                 group.browsers[browser_id] = browser
 
-                # Assign initial image (lock held for atomicity #1)
-                image_path = group.image_pool.assign_unique_image(browser_id)
-                if image_path:
-                    browser.current_image = image_path
+                # Assign initial image to endpoint if it doesn't have one
+                if not endpoint.current_image:
+                    image_path = group.image_pool.assign_unique_image(browser_id)
+                    if image_path:
+                        endpoint.current_image = image_path
 
                 # Start cycle task if needed (#2, #11), not paused, and auto_cycle enabled
                 # Check both: first browser OR crashed task
@@ -864,7 +968,7 @@ class DisplayManager:
                     )
 
             metrics.record_connection()  # A6
-            logger.info(f"Browser {browser_id} joined group {group_id}")
+            logger.info(f"Browser {browser_id} joined group {group_id} (endpoint: {endpoint.endpoint_id})")
 
         # Notify admin clients (outside lock to avoid deadlock)
         await self._notify_admins({
@@ -882,6 +986,11 @@ class DisplayManager:
         removed = False
         async with group._lock:
             if browser_id in group.browsers:
+                browser = group.browsers[browser_id]
+                # Update endpoint's last_seen time
+                endpoint = group.endpoints.get(browser.endpoint_id)
+                if endpoint:
+                    endpoint.last_seen = _utc_now()
                 group.image_pool.release_image(browser_id)
                 del group.browsers[browser_id]
                 metrics.record_disconnection()  # A6
@@ -935,19 +1044,20 @@ class DisplayManager:
 
             elif msg_type == "SWITCH_COMPLETE":
                 browser.status = BrowserStatus.READY
-                # Move next_image to current_image, push old to history
-                if browser.next_image:
+                # Move next_image to current_image, push old to history (using endpoint)
+                endpoint = group.endpoints.get(browser.endpoint_id)
+                if endpoint and endpoint.next_image:
                     # Push current to history before replacing
-                    if browser.current_image:
-                        browser.image_history.append(browser.current_image)
+                    if endpoint.current_image:
+                        endpoint.image_history.append(endpoint.current_image)
                     # Move forward items to history (they're already in chronological order)
-                    browser.image_history.extend(browser.forward_history)
-                    browser.forward_history.clear()
-                    browser.current_image = browser.next_image
-                    browser.next_image = None
+                    endpoint.image_history.extend(endpoint.forward_history)
+                    endpoint.forward_history.clear()
+                    endpoint.current_image = endpoint.next_image
+                    endpoint.next_image = None
                     # Cap history at MAX_IMAGE_HISTORY
-                    while len(browser.image_history) > MAX_IMAGE_HISTORY:
-                        browser.image_history.pop(0)
+                    while len(endpoint.image_history) > MAX_IMAGE_HISTORY:
+                        endpoint.image_history.pop(0)
                     should_notify_admins = True
                 logger.debug(f"Browser {browser_id} switch complete")
 
@@ -1108,12 +1218,13 @@ class DisplayManager:
                     for browser in browsers_to_update:
                         async with group._lock:
                             # Assign under lock for atomicity (#1)
+                            endpoint = group.endpoints.get(browser.endpoint_id)
                             next_image = group.image_pool.assign_unique_image(browser.browser_id)
-                            if next_image:
-                                browser.next_image = next_image
+                            if next_image and endpoint:
+                                endpoint.next_image = next_image
                                 browser.status = BrowserStatus.PRELOADING
 
-                        if next_image:
+                        if next_image and endpoint:
                             # Build URL once per image (#25 - partially, each browser gets unique image)
                             image_url = self.build_image_url(next_image, settings)
                             blur_url = self.build_blur_url(next_image, settings)
@@ -1185,6 +1296,55 @@ class DisplayManager:
             for browser_id in stale:
                 logger.info(f"Removing stale browser {browser_id}")
                 await self.remove_browser(group.group_id, browser_id)
+
+    async def cleanup_stale_endpoints(self, timeout_hours: int = 24) -> int:
+        """
+        Remove anonymous endpoints that haven't been connected for timeout_hours.
+
+        Only removes endpoints where is_persistent=False and no browser is connected.
+        Returns the number of endpoints cleaned up.
+        """
+        now = _utc_now()
+        timeout_seconds = timeout_hours * 3600
+        cleaned_count = 0
+
+        # Take snapshot of groups to avoid modification during iteration
+        groups_snapshot = list(self.groups.values())
+
+        for group in groups_snapshot:
+            stale_endpoints = []
+
+            async with group._lock:
+                # Find connected endpoint IDs
+                connected_endpoint_ids = {b.endpoint_id for b in group.browsers.values()}
+
+                for endpoint_id, endpoint in group.endpoints.items():
+                    # Skip persistent endpoints
+                    if endpoint.is_persistent:
+                        continue
+                    # Skip endpoints with connected browsers
+                    if endpoint_id in connected_endpoint_ids:
+                        continue
+                    # Check if last_seen is beyond timeout
+                    if endpoint.last_seen:
+                        elapsed = (now - endpoint.last_seen).total_seconds()
+                        if elapsed > timeout_seconds:
+                            stale_endpoints.append(endpoint_id)
+
+                # Remove stale endpoints
+                for endpoint_id in stale_endpoints:
+                    del group.endpoints[endpoint_id]
+                    cleaned_count += 1
+                    logger.info(
+                        f"Cleaned up stale anonymous endpoint {endpoint_id} "
+                        f"from group {group.group_id}"
+                    )
+
+        if cleaned_count > 0:
+            # Save config after cleanup
+            await self.save_config()
+
+        return cleaned_count
 
     # --- Playback Control Methods ---
 
@@ -1260,9 +1420,10 @@ class DisplayManager:
                 except asyncio.CancelledError:
                     pass
 
-        # Check if any browser has forward_history to replay
+        # Check if any endpoint has forward_history to replay
         can_replay = any(
-            len(b.forward_history) > 0 for b in group.browsers.values()
+            len(group.endpoints.get(b.endpoint_id, DisplayEndpoint("")).forward_history) > 0
+            for b in group.browsers.values()
         )
 
         if can_replay:
@@ -1295,15 +1456,18 @@ class DisplayManager:
             logger.info(f"previous_group({group_id}): no group or no browsers")
             return False
 
-        # Debug: log state of all browsers before rewind
+        # Debug: log state of all browsers/endpoints before rewind
         for bid, b in group.browsers.items():
-            logger.info(f"previous_group({group_id}): browser {bid}: "
-                       f"history_len={len(b.image_history)}, "
-                       f"current={b.current_image}, next={b.next_image}")
+            endpoint = group.endpoints.get(b.endpoint_id)
+            if endpoint:
+                logger.info(f"previous_group({group_id}): browser {bid}: "
+                           f"history_len={len(endpoint.image_history)}, "
+                           f"current={endpoint.current_image}, next={endpoint.next_image}")
 
-        # Check if any browser can rewind (has history OR is mid-switch with next_image)
+        # Check if any endpoint can rewind (has history OR is mid-switch with next_image)
         can_rewind = any(
-            len(browser.image_history) > 0 or browser.next_image is not None
+            (ep := group.endpoints.get(browser.endpoint_id)) and
+            (len(ep.image_history) > 0 or ep.next_image is not None)
             for browser in group.browsers.values()
         )
         if not can_rewind:
@@ -1356,19 +1520,20 @@ class DisplayManager:
         browsers_to_assign = []
         async with group._lock:
             for browser in group.browsers.values():
-                if not browser.image_history:
+                endpoint = group.endpoints.get(browser.endpoint_id)
+                if not endpoint or not endpoint.image_history:
                     continue
 
                 # Push current to forward_history
-                if browser.current_image:
-                    browser.forward_history.append(browser.current_image)
+                if endpoint.current_image:
+                    endpoint.forward_history.append(endpoint.current_image)
                 # Push remaining history items to forward (reversed to preserve order)
-                browser.forward_history.extend(reversed(browser.image_history[1:]))
+                endpoint.forward_history.extend(reversed(endpoint.image_history[1:]))
 
                 # First item in history becomes current
-                first_image = browser.image_history[0]
-                browser.current_image = first_image
-                browser.image_history.clear()
+                first_image = endpoint.image_history[0]
+                endpoint.current_image = first_image
+                endpoint.image_history.clear()
                 browser.status = BrowserStatus.READY
 
                 browsers_to_assign.append((browser, first_image))
@@ -1424,24 +1589,25 @@ class DisplayManager:
         browsers_to_assign = []
         async with group._lock:
             for browser in group.browsers.values():
-                if not browser.forward_history:
+                endpoint = group.endpoints.get(browser.endpoint_id)
+                if not endpoint or not endpoint.forward_history:
                     continue
 
                 # Push current to history
-                if browser.current_image:
-                    browser.image_history.append(browser.current_image)
+                if endpoint.current_image:
+                    endpoint.image_history.append(endpoint.current_image)
                 # Push all forward items except last to history
-                browser.image_history.extend(browser.forward_history[:-1])
+                endpoint.image_history.extend(endpoint.forward_history[:-1])
 
                 # Last item in forward_history becomes current
-                last_image = browser.forward_history[-1]
-                browser.current_image = last_image
-                browser.forward_history.clear()
+                last_image = endpoint.forward_history[-1]
+                endpoint.current_image = last_image
+                endpoint.forward_history.clear()
                 browser.status = BrowserStatus.READY
 
                 # Trim history if needed
-                while len(browser.image_history) > MAX_IMAGE_HISTORY:
-                    browser.image_history.pop(0)
+                while len(endpoint.image_history) > MAX_IMAGE_HISTORY:
+                    endpoint.image_history.pop(0)
 
                 browsers_to_assign.append((browser, last_image))
 
@@ -1490,6 +1656,10 @@ class DisplayManager:
         if not browser:
             return False
 
+        endpoint = group.endpoints.get(browser.endpoint_id)
+        if not endpoint:
+            return False
+
         # Cancel current cycle task
         async with group._lock:
             if group._cycle_task and not group._cycle_task.done():
@@ -1499,44 +1669,44 @@ class DisplayManager:
                 except asyncio.CancelledError:
                     pass
 
-        # Find image in history or forward_history
+        # Find image in history or forward_history (using endpoint)
         async with group._lock:
             # Check if jumping to past image
-            if image_path in browser.image_history:
-                idx = browser.image_history.index(image_path)
+            if image_path in endpoint.image_history:
+                idx = endpoint.image_history.index(image_path)
                 # Build new forward: history items after idx, then current, then existing forward
                 new_forward = []
-                for img in browser.image_history[idx + 1:]:
+                for img in endpoint.image_history[idx + 1:]:
                     new_forward.append(img)
-                if browser.current_image:
-                    new_forward.append(browser.current_image)
+                if endpoint.current_image:
+                    new_forward.append(endpoint.current_image)
                 # Prepend to existing forward (existing items are newer)
-                new_forward.extend(browser.forward_history)
-                browser.forward_history = new_forward
+                new_forward.extend(endpoint.forward_history)
+                endpoint.forward_history = new_forward
                 # Set new current and trim history
-                browser.current_image = image_path
-                browser.image_history = browser.image_history[:idx]
+                endpoint.current_image = image_path
+                endpoint.image_history = endpoint.image_history[:idx]
 
             # Check if jumping to forward image
-            elif image_path in browser.forward_history:
-                idx = browser.forward_history.index(image_path)
+            elif image_path in endpoint.forward_history:
+                idx = endpoint.forward_history.index(image_path)
                 # forward_history stores [oldest, ..., newest]
                 # Items BEFORE idx are older - add current then those to history
-                if browser.current_image:
-                    browser.image_history.append(browser.current_image)
-                for img in browser.forward_history[:idx]:
-                    browser.image_history.append(img)
+                if endpoint.current_image:
+                    endpoint.image_history.append(endpoint.current_image)
+                for img in endpoint.forward_history[:idx]:
+                    endpoint.image_history.append(img)
                 # Items AFTER idx are newer - stay as forward
-                browser.forward_history = browser.forward_history[idx + 1:]
-                browser.current_image = image_path
+                endpoint.forward_history = endpoint.forward_history[idx + 1:]
+                endpoint.current_image = image_path
                 # Trim history if needed
-                while len(browser.image_history) > MAX_IMAGE_HISTORY:
-                    browser.image_history.pop(0)
+                while len(endpoint.image_history) > MAX_IMAGE_HISTORY:
+                    endpoint.image_history.pop(0)
             else:
                 # Image not in history - can't jump
                 return False
 
-            browser.next_image = None
+            endpoint.next_image = None
             browser.status = BrowserStatus.READY
 
         # Send ASSIGN
@@ -1581,18 +1751,22 @@ class DisplayManager:
 
         async with group._lock:
             for browser in list(group.browsers.values()):
+                endpoint = group.endpoints.get(browser.endpoint_id)
+                if not endpoint:
+                    continue
+
                 next_image = group.image_pool.assign_unique_image(browser.browser_id)
                 if not next_image:
                     continue
 
-                # Push current to history
-                if browser.current_image:
-                    browser.image_history.append(browser.current_image)
-                    if len(browser.image_history) > MAX_IMAGE_HISTORY:
-                        browser.image_history.pop(0)
+                # Push current to history (using endpoint)
+                if endpoint.current_image:
+                    endpoint.image_history.append(endpoint.current_image)
+                    if len(endpoint.image_history) > MAX_IMAGE_HISTORY:
+                        endpoint.image_history.pop(0)
 
-                browser.current_image = next_image
-                browser.next_image = None
+                endpoint.current_image = next_image
+                endpoint.next_image = None
                 browser.status = BrowserStatus.READY
                 browsers_to_assign.append((browser, next_image))
 
@@ -1625,18 +1799,19 @@ class DisplayManager:
 
         async with group._lock:
             for browser in list(group.browsers.values()):
-                if not browser.forward_history:
+                endpoint = group.endpoints.get(browser.endpoint_id)
+                if not endpoint or not endpoint.forward_history:
                     continue
 
                 # Push current to history
-                if browser.current_image:
-                    browser.image_history.append(browser.current_image)
-                    if len(browser.image_history) > MAX_IMAGE_HISTORY:
-                        browser.image_history.pop(0)
+                if endpoint.current_image:
+                    endpoint.image_history.append(endpoint.current_image)
+                    if len(endpoint.image_history) > MAX_IMAGE_HISTORY:
+                        endpoint.image_history.pop(0)
 
                 # Pop from forward_history
-                next_image = browser.forward_history.pop()
-                browser.current_image = next_image
+                next_image = endpoint.forward_history.pop()
+                endpoint.current_image = next_image
                 browser.status = BrowserStatus.READY
 
                 browsers_to_assign.append((browser, next_image))
@@ -1668,30 +1843,34 @@ class DisplayManager:
 
         async with group._lock:
             for browser in list(group.browsers.values()):
+                endpoint = group.endpoints.get(browser.endpoint_id)
+                if not endpoint:
+                    continue
+
                 previous_image = None
                 rewind_case = None
 
                 logger.info(f"_rewind_browsers: browser {browser.browser_id}: "
-                           f"BEFORE history={[p.split('/')[-1] for p in browser.image_history]}, "
-                           f"current={browser.current_image}, next={browser.next_image}")
+                           f"BEFORE history={[p.split('/')[-1] for p in endpoint.image_history]}, "
+                           f"current={endpoint.current_image}, next={endpoint.next_image}")
 
                 # Case 1: Browser is mid-switch (next_image is set, SWITCH_COMPLETE not yet received)
                 # The browser is showing/transitioning to next_image, cancel and stay on current_image
-                if browser.next_image:
-                    previous_image = browser.current_image
+                if endpoint.next_image:
+                    previous_image = endpoint.current_image
                     rewind_case = "mid-switch"
                     # Clear next_image to cancel the pending switch
-                    browser.next_image = None
+                    endpoint.next_image = None
                     # Note: Don't pop from history - we're just canceling a pending switch
                 # Case 2: Normal rewind from history
-                elif browser.image_history:
+                elif endpoint.image_history:
                     # Push current to forward_history (for Next to replay)
-                    if browser.current_image:
-                        browser.forward_history.append(browser.current_image)
+                    if endpoint.current_image:
+                        endpoint.forward_history.append(endpoint.current_image)
                         group.image_pool.release_image(browser.browser_id)
-                    previous_image = browser.image_history.pop()
+                    previous_image = endpoint.image_history.pop()
                     rewind_case = "history"
-                    browser.current_image = previous_image
+                    endpoint.current_image = previous_image
                 else:
                     # No next_image and no history - nothing to rewind to
                     logger.info(f"_rewind_browsers: browser {browser.browser_id}: SKIP (no next, no history)")
