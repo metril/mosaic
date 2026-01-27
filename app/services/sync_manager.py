@@ -2081,14 +2081,7 @@ class DisplayManager:
         images = [str(p.relative_to(self.image_service.image_dir)) for p in image_paths]
 
         import random
-        if group.settings.sort == "random":
-            next_img = random.choice(images)
-        else:
-            try:
-                idx = images.index(endpoint.current_image) if endpoint.current_image else -1
-                next_img = images[(idx + 1) % len(images)]
-            except ValueError:
-                next_img = images[0]
+        next_img = random.choice(images)
 
         # Update endpoint history
         if endpoint.current_image:
