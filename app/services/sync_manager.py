@@ -522,9 +522,25 @@ class DisplayManager:
         loaded = 0
         for group_id, settings_dict in config.get("groups", {}).items():
             try:
+                # Extract endpoints before creating settings (they're not part of settings)
+                settings_dict = dict(settings_dict)  # Make a copy to avoid modifying original
+                endpoints_config = settings_dict.pop("endpoints", {})
+
                 settings = DisplayGroupSettings.from_dict(settings_dict)
                 await self.create_group(group_id, settings)
-                logger.info(f"Loaded display group from config: {group_id}")
+
+                # Load persistent endpoints
+                group = self.groups[group_id]
+                for endpoint_id, endpoint_data in endpoints_config.items():
+                    endpoint = DisplayEndpoint.from_config_dict(endpoint_id, endpoint_data)
+                    group.endpoints[endpoint_id] = endpoint
+                    logger.debug(f"Loaded endpoint '{endpoint_id}' for group '{group_id}'")
+
+                endpoint_count = len(endpoints_config)
+                if endpoint_count > 0:
+                    logger.info(f"Loaded display group from config: {group_id} ({endpoint_count} endpoints)")
+                else:
+                    logger.info(f"Loaded display group from config: {group_id}")
                 loaded += 1
             except Exception as e:
                 logger.warning(f"Failed to load group '{group_id}' from config: {e}")
@@ -538,12 +554,19 @@ class DisplayManager:
         """
         import yaml
 
-        config = {
-            "groups": {
-                group_id: group.settings.to_config_dict()
-                for group_id, group in self.groups.items()
-            }
-        }
+        config = {"groups": {}}
+        for group_id, group in self.groups.items():
+            group_config = group.settings.to_config_dict()
+            # Add persistent endpoints
+            endpoints_config = {}
+            for endpoint_id, endpoint in group.endpoints.items():
+                if endpoint.is_persistent:
+                    endpoint_data = endpoint.to_config_dict()
+                    if endpoint_data:  # to_config_dict returns {} for non-persistent
+                        endpoints_config[endpoint_id] = endpoint_data
+            if endpoints_config:
+                group_config["endpoints"] = endpoints_config
+            config["groups"][group_id] = group_config
 
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.config_path, "w") as f:

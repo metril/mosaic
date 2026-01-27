@@ -1491,6 +1491,15 @@ async def create_endpoint(
     )
     group.endpoints[body.endpoint_id] = endpoint
 
+    # Save config to persist the new endpoint
+    display_manager.save_config()
+
+    # Notify admin clients of the change
+    await display_manager._notify_admins({
+        "type": "GROUP_UPDATED",
+        "group": group.to_dict()
+    })
+
     logger.info(f"User {user.email} created endpoint '{body.endpoint_id}' in group '{group_id}'")
 
     return JSONResponse(
@@ -1543,10 +1552,21 @@ async def update_endpoint(
     if not endpoint:
         raise HTTPException(status_code=404, detail=f"Endpoint '{endpoint_id}' not found")
 
+    was_persistent = endpoint.is_persistent
     if body.name is not None:
         endpoint.name = body.name
     if body.is_persistent is not None:
         endpoint.is_persistent = body.is_persistent
+
+    # Save config if endpoint is now persistent (includes promotions)
+    if endpoint.is_persistent:
+        display_manager.save_config()
+
+    # Notify admin clients of the change
+    await display_manager._notify_admins({
+        "type": "GROUP_UPDATED",
+        "group": group.to_dict()
+    })
 
     logger.info(f"User {user.email} updated endpoint '{endpoint_id}' in group '{group_id}'")
 
@@ -1582,7 +1602,19 @@ async def delete_endpoint(
             detail=f"Cannot delete endpoint '{endpoint_id}' - {len(connected_browsers)} browser(s) connected"
         )
 
+    was_persistent = endpoint.is_persistent
     del group.endpoints[endpoint_id]
+
+    # Save config if the deleted endpoint was persistent
+    if was_persistent:
+        display_manager.save_config()
+
+    # Notify admin clients of the change
+    await display_manager._notify_admins({
+        "type": "GROUP_UPDATED",
+        "group": group.to_dict()
+    })
+
     logger.info(f"User {user.email} deleted endpoint '{endpoint_id}' from group '{group_id}'")
 
     return JSONResponse(content={"status": "deleted", "endpoint_id": endpoint_id})

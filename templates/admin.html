@@ -730,6 +730,112 @@
                 border: 2px solid #4caf50;
             }
 
+            /* Endpoints section */
+            .endpoints-section {
+                margin: 12px 0;
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+            }
+            .endpoints-section summary {
+                padding: 10px 14px;
+                cursor: pointer;
+                font-size: 13px;
+                color: #aaa;
+                user-select: none;
+            }
+            .endpoints-section summary:hover {
+                color: #eee;
+            }
+            .endpoints-section[open] summary {
+                border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            .endpoints-list {
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                padding: 12px;
+            }
+            .endpoint-item {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                padding: 8px 12px;
+                border-radius: 6px;
+                font-size: 13px;
+            }
+            .endpoint-item.persistent {
+                background: rgba(76, 175, 80, 0.15);
+            }
+            .endpoint-item.anonymous {
+                background: rgba(255, 193, 7, 0.15);
+            }
+            .endpoint-icon {
+                font-size: 16px;
+            }
+            .endpoint-name {
+                font-family: monospace;
+                color: #e94560;
+            }
+            .endpoint-label {
+                color: #ccc;
+            }
+            .endpoint-status {
+                margin-left: auto;
+                font-size: 12px;
+            }
+            .endpoint-item.connected .endpoint-status {
+                color: #4caf50;
+            }
+            .endpoint-item.disconnected .endpoint-status {
+                color: #888;
+            }
+            .btn-endpoint {
+                padding: 4px 8px;
+                font-size: 11px;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                background: rgba(255, 255, 255, 0.1);
+                color: #ccc;
+                transition: all 0.2s;
+            }
+            .btn-endpoint:hover {
+                background: rgba(255, 255, 255, 0.2);
+                color: #fff;
+            }
+            .btn-endpoint.delete:hover {
+                background: rgba(233, 69, 96, 0.3);
+                color: #e94560;
+            }
+            .endpoints-actions {
+                padding: 8px 12px;
+                border-top: 1px solid rgba(255, 255, 255, 0.05);
+            }
+            .btn-small {
+                padding: 6px 12px;
+                font-size: 12px;
+            }
+            .endpoint-url {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                margin-left: auto;
+            }
+            .endpoint-url input {
+                width: 180px;
+                padding: 4px 8px;
+                font-size: 11px;
+                font-family: monospace;
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 4px;
+                color: #aaa;
+            }
+            .btn-copy {
+                padding: 4px 8px;
+                font-size: 11px;
+            }
+
             /* Countdown timer */
             .countdown {
                 font-size: 14px;
@@ -1394,6 +1500,38 @@
             </div>
         </div>
 
+        <!-- Create Endpoint modal -->
+        <div class="modal" id="endpointModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="modal-title">Create Endpoint</span>
+                    <button class="modal-close" onclick="closeEndpointModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="endpointId">Endpoint ID</label>
+                        <input type="text" id="endpointId" placeholder="e.g., kitchen-tv" pattern="^[a-zA-Z0-9_\-]+$" required>
+                        <small style="color: #888; font-size: 12px;">Letters, numbers, dashes, and underscores only</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="endpointName">Display Name (optional)</label>
+                        <input type="text" id="endpointName" placeholder="e.g., Kitchen TV">
+                    </div>
+                    <div class="form-group" id="endpointUrlPreview" style="display: none;">
+                        <label>Display URL</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="endpointUrlValue" readonly style="flex: 1; font-family: monospace; font-size: 12px;">
+                            <button type="button" class="btn btn-ghost" onclick="copyEndpointUrl()">Copy</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-ghost" onclick="closeEndpointModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" onclick="submitCreateEndpoint()">Create</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Immich Panel overlay -->
         <div class="panel-overlay" id="immichPanelOverlay" onclick="closeImmichPanel()"></div>
 
@@ -1586,6 +1724,19 @@
                 const div = document.createElement('div');
                 div.textContent = text;
                 return div.innerHTML;
+            }
+
+            // Format time ago for endpoint last_seen
+            function formatTimeAgo(isoString) {
+                if (!isoString) return 'never';
+                const date = new Date(isoString);
+                const now = new Date();
+                const seconds = Math.floor((now - date) / 1000);
+
+                if (seconds < 60) return 'just now';
+                if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+                if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+                return Math.floor(seconds / 86400) + 'd ago';
             }
 
             // Panel management
@@ -2221,6 +2372,55 @@
                         `;
                     }).join('');
 
+                    // Build endpoints section
+                    const connectedEndpointIds = new Set(group.browsers.map(b => b.endpoint_id));
+                    const endpoints = group.endpoints || [];
+                    const connectedCount = endpoints.filter(e => connectedEndpointIds.has(e.endpoint_id)).length;
+                    const endpointsHtml = endpoints.length > 0 ? `
+                        <details class="endpoints-section" data-group-id="${groupIdSafe}">
+                            <summary>Endpoints (${endpoints.length} total, ${connectedCount} connected)</summary>
+                            <div class="endpoints-list">
+                                ${endpoints.map(ep => {
+                                    const isConnected = connectedEndpointIds.has(ep.endpoint_id);
+                                    const isPersistent = ep.is_persistent;
+                                    const epIdSafe = escapeHtml(ep.endpoint_id);
+                                    const epNameSafe = ep.name ? escapeHtml(ep.name) : '';
+                                    const statusText = isConnected ? '● Connected' :
+                                        (ep.last_seen ? '○ Last seen ' + formatTimeAgo(ep.last_seen) : '○ Never connected');
+                                    const displayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
+
+                                    return `
+                                        <div class="endpoint-item ${isPersistent ? 'persistent' : 'anonymous'} ${isConnected ? 'connected' : 'disconnected'}">
+                                            <span class="endpoint-icon">${isPersistent ? '📺' : '🔗'}</span>
+                                            <span class="endpoint-name">${epIdSafe}</span>
+                                            ${epNameSafe ? `<span class="endpoint-label">${epNameSafe}</span>` : ''}
+                                            <span class="endpoint-status">${statusText}</span>
+                                            <div class="endpoint-url">
+                                                <input type="text" value="${displayUrl}" readonly onclick="this.select()">
+                                                <button class="btn-copy btn-endpoint" data-url="${displayUrl}" title="Copy URL">📋</button>
+                                            </div>
+                                            ${!isPersistent ? `<button class="btn-endpoint promote" data-group-id="${groupIdSafe}" data-endpoint-id="${epIdSafe}" title="Make persistent">⬆</button>` : ''}
+                                            ${!isConnected ? `<button class="btn-endpoint delete" data-group-id="${groupIdSafe}" data-endpoint-id="${epIdSafe}" title="Delete">✕</button>` : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                            <div class="endpoints-actions">
+                                <button class="btn btn-small btn-create-endpoint" data-group-id="${groupIdSafe}">+ New Endpoint</button>
+                            </div>
+                        </details>
+                    ` : `
+                        <details class="endpoints-section" data-group-id="${groupIdSafe}">
+                            <summary>Endpoints (0)</summary>
+                            <div class="endpoints-list">
+                                <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints configured. Create one to get a persistent display URL.</div>
+                            </div>
+                            <div class="endpoints-actions">
+                                <button class="btn btn-small btn-create-endpoint" data-group-id="${groupIdSafe}">+ New Endpoint</button>
+                            </div>
+                        </details>
+                    `;
+
                     // Countdown display (only if not paused and has next_switch_at)
                     const countdownHtml = isPaused ? '' :
                         `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
@@ -2239,6 +2439,7 @@
                                 <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
                             </div>
                             ${browserHistoryHtml}
+                            ${endpointsHtml}
                             <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                             <div class="group-actions">
                                 <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
@@ -2264,6 +2465,10 @@
                 const editBtn = e.target.closest('.btn-edit');
                 const deleteBtn = e.target.closest('.btn-delete');
                 const thumb = e.target.closest('.thumb');
+                const createEndpointBtn = e.target.closest('.btn-create-endpoint');
+                const promoteEndpointBtn = e.target.closest('.btn-endpoint.promote');
+                const deleteEndpointBtn = e.target.closest('.btn-endpoint.delete');
+                const copyUrlBtn = e.target.closest('.btn-copy');
 
                 if (controlBtn) {
                     const action = controlBtn.dataset.action;
@@ -2286,6 +2491,22 @@
                     if (groupId && browserId && imagePath) {
                         await jumpToImage(groupId, browserId, imagePath);
                     }
+                } else if (createEndpointBtn) {
+                    const groupId = createEndpointBtn.dataset.groupId;
+                    openCreateEndpointModal(groupId);
+                } else if (promoteEndpointBtn) {
+                    const groupId = promoteEndpointBtn.dataset.groupId;
+                    const endpointId = promoteEndpointBtn.dataset.endpointId;
+                    await promoteEndpoint(groupId, endpointId);
+                } else if (deleteEndpointBtn) {
+                    const groupId = deleteEndpointBtn.dataset.groupId;
+                    const endpointId = deleteEndpointBtn.dataset.endpointId;
+                    await deleteEndpoint(groupId, endpointId);
+                } else if (copyUrlBtn) {
+                    const url = copyUrlBtn.dataset.url;
+                    await navigator.clipboard.writeText(window.location.origin + url);
+                    copyUrlBtn.textContent = '✓';
+                    setTimeout(() => copyUrlBtn.textContent = '📋', 1500);
                 }
             });
 
@@ -2514,6 +2735,135 @@
 
             function closeFolderModal() {
                 document.getElementById('folderModal').classList.remove('visible');
+            }
+
+            // =================================================================
+            // Endpoint Modal Functions
+            // =================================================================
+
+            let createEndpointGroupId = null;
+
+            function openCreateEndpointModal(groupId) {
+                createEndpointGroupId = groupId;
+                document.getElementById('endpointId').value = '';
+                document.getElementById('endpointName').value = '';
+                document.getElementById('endpointUrlPreview').style.display = 'none';
+                document.getElementById('endpointModal').classList.add('visible');
+
+                // Update URL preview as user types
+                document.getElementById('endpointId').oninput = function() {
+                    const epId = this.value.trim();
+                    const preview = document.getElementById('endpointUrlPreview');
+                    const urlValue = document.getElementById('endpointUrlValue');
+                    if (epId && /^[a-zA-Z0-9_\-]+$/.test(epId)) {
+                        const url = window.location.origin + '/display?group=' + encodeURIComponent(groupId) + '&endpoint=' + encodeURIComponent(epId);
+                        urlValue.value = url;
+                        preview.style.display = 'block';
+                    } else {
+                        preview.style.display = 'none';
+                    }
+                };
+            }
+
+            function closeEndpointModal() {
+                document.getElementById('endpointModal').classList.remove('visible');
+                createEndpointGroupId = null;
+            }
+
+            function copyEndpointUrl() {
+                const urlValue = document.getElementById('endpointUrlValue').value;
+                navigator.clipboard.writeText(urlValue);
+            }
+
+            async function submitCreateEndpoint() {
+                const endpointId = document.getElementById('endpointId').value.trim();
+                const endpointName = document.getElementById('endpointName').value.trim();
+
+                if (!endpointId) {
+                    alert('Endpoint ID is required');
+                    return;
+                }
+
+                if (!/^[a-zA-Z0-9_\-]+$/.test(endpointId)) {
+                    alert('Endpoint ID can only contain letters, numbers, dashes, and underscores');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(API_BASE + '/' + createEndpointGroupId + '/endpoints', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': csrfToken
+                        },
+                        body: JSON.stringify({
+                            endpoint_id: endpointId,
+                            name: endpointName || null
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const data = await response.json();
+                        throw new Error(data.detail || 'Failed to create endpoint');
+                    }
+
+                    closeEndpointModal();
+                    // Refresh will happen via WebSocket update
+                } catch (error) {
+                    alert('Error creating endpoint: ' + error.message);
+                }
+            }
+
+            async function promoteEndpoint(groupId, endpointId) {
+                const name = prompt('Enter a name for this endpoint (optional):', '');
+                if (name === null) return; // User cancelled
+
+                try {
+                    const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + endpointId, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': csrfToken
+                        },
+                        body: JSON.stringify({
+                            is_persistent: true,
+                            name: name || null
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const data = await response.json();
+                        throw new Error(data.detail || 'Failed to promote endpoint');
+                    }
+
+                    // Refresh will happen via WebSocket update
+                } catch (error) {
+                    alert('Error promoting endpoint: ' + error.message);
+                }
+            }
+
+            async function deleteEndpoint(groupId, endpointId) {
+                if (!confirm('Delete endpoint "' + endpointId + '"?\n\nThis cannot be undone.')) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + endpointId, {
+                        method: 'DELETE',
+                        headers: {
+                            'X-CSRF-Token': csrfToken
+                        }
+                    });
+
+                    if (!response.ok) {
+                        const data = await response.json();
+                        throw new Error(data.detail || 'Failed to delete endpoint');
+                    }
+
+                    // Refresh will happen via WebSocket update
+                } catch (error) {
+                    alert('Error deleting endpoint: ' + error.message);
+                }
             }
 
             async function createFolder() {
@@ -2980,6 +3330,55 @@
                     `;
                 }).join('');
 
+                // Build endpoints section
+                const connectedEndpointIds = new Set(group.browsers.map(b => b.endpoint_id));
+                const endpoints = group.endpoints || [];
+                const connectedCount = endpoints.filter(e => connectedEndpointIds.has(e.endpoint_id)).length;
+                const endpointsHtml = endpoints.length > 0 ? `
+                    <details class="endpoints-section" data-group-id="${groupIdSafe}">
+                        <summary>Endpoints (${endpoints.length} total, ${connectedCount} connected)</summary>
+                        <div class="endpoints-list">
+                            ${endpoints.map(ep => {
+                                const isConnected = connectedEndpointIds.has(ep.endpoint_id);
+                                const isPersistent = ep.is_persistent;
+                                const epIdSafe = escapeHtml(ep.endpoint_id);
+                                const epNameSafe = ep.name ? escapeHtml(ep.name) : '';
+                                const statusText = isConnected ? '● Connected' :
+                                    (ep.last_seen ? '○ Last seen ' + formatTimeAgo(ep.last_seen) : '○ Never connected');
+                                const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
+
+                                return `
+                                    <div class="endpoint-item ${isPersistent ? 'persistent' : 'anonymous'} ${isConnected ? 'connected' : 'disconnected'}">
+                                        <span class="endpoint-icon">${isPersistent ? '📺' : '🔗'}</span>
+                                        <span class="endpoint-name">${epIdSafe}</span>
+                                        ${epNameSafe ? `<span class="endpoint-label">${epNameSafe}</span>` : ''}
+                                        <span class="endpoint-status">${statusText}</span>
+                                        <div class="endpoint-url">
+                                            <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
+                                            <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
+                                        </div>
+                                        ${!isPersistent ? `<button class="btn-endpoint promote" data-group-id="${groupIdSafe}" data-endpoint-id="${epIdSafe}" title="Make persistent">⬆</button>` : ''}
+                                        ${!isConnected ? `<button class="btn-endpoint delete" data-group-id="${groupIdSafe}" data-endpoint-id="${epIdSafe}" title="Delete">✕</button>` : ''}
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                        <div class="endpoints-actions">
+                            <button class="btn btn-small btn-create-endpoint" data-group-id="${groupIdSafe}">+ New Endpoint</button>
+                        </div>
+                    </details>
+                ` : `
+                    <details class="endpoints-section" data-group-id="${groupIdSafe}">
+                        <summary>Endpoints (0)</summary>
+                        <div class="endpoints-list">
+                            <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints configured. Create one to get a persistent display URL.</div>
+                        </div>
+                        <div class="endpoints-actions">
+                            <button class="btn btn-small btn-create-endpoint" data-group-id="${groupIdSafe}">+ New Endpoint</button>
+                        </div>
+                    </details>
+                `;
+
                 // Countdown display (only if not paused and has next_switch_at)
                 const countdownHtml = isPaused ? '' :
                     `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
@@ -2997,6 +3396,7 @@
                             <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
                         </div>
                         ${browserHistoryHtml}
+                        ${endpointsHtml}
                         <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                         <div class="group-actions">
                             <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
