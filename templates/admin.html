@@ -96,6 +96,25 @@
                 color: #e94560;
                 margin-bottom: 4px;
             }
+            .status-badge {
+                display: inline-block;
+                font-size: 10px;
+                font-weight: 500;
+                padding: 2px 6px;
+                border-radius: 3px;
+                margin-left: 8px;
+                vertical-align: middle;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .status-badge.paused {
+                background: rgba(255, 152, 0, 0.2);
+                color: #ff9800;
+            }
+            .status-badge.on-demand {
+                background: rgba(156, 39, 176, 0.2);
+                color: #ce93d8;
+            }
             .group-meta {
                 font-size: 13px;
                 color: #888;
@@ -1192,14 +1211,14 @@
                     <details class="settings-section" open>
                         <summary>Basic Settings</summary>
                         <div class="section-content">
-                            <div class="form-row">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="auto_cycle" name="auto_cycle" checked onchange="toggleDurationVisibility()">
+                                <label for="auto_cycle" title="When disabled, images only change on manual request">Auto-cycle images</label>
+                            </div>
+                            <div class="form-row" id="durationRow">
                                 <label for="duration">Duration (seconds)</label>
                                 <input type="number" id="duration" name="duration" value="30" min="5" max="3600">
                                 <small>Time between image switches</small>
-                            </div>
-                            <div class="checkbox-row">
-                                <input type="checkbox" id="auto_cycle" name="auto_cycle" checked>
-                                <label for="auto_cycle" title="When disabled, images only change on manual request">Auto-cycle images</label>
                             </div>
                             <div class="form-row">
                                 <label for="folders">Folders</label>
@@ -1780,6 +1799,7 @@
             let groupSettingsCache = {};
             let cachedGroups = [];  // Full group data for endpoints panel
             let currentWebhooks = [];  // Webhooks being edited in the form
+            let pendingEndpoints = [];  // Endpoints to create with new group
             let folderTreeData = null;
             let selectedFolders = new Set();
             let folderBrowserMode = 'multi';  // 'multi' for display groups, 'single' for immich
@@ -2000,8 +2020,10 @@
                     groupIdRow.style.display = 'block';
                     document.getElementById('group_id').setAttribute('required', '');
                     resetForm();
-                    // Hide endpoints section in create mode
-                    endpointsSection.style.display = 'none';
+                    // Show endpoints section with pending endpoints in create mode
+                    endpointsSection.style.display = '';
+                    pendingEndpoints = [];
+                    renderPendingEndpoints();
                 }
 
                 panel.classList.add('open');
@@ -2014,6 +2036,13 @@
                 document.getElementById('panelOverlay').classList.remove('visible');
                 document.body.style.overflow = '';
                 editingGroupId = null;
+            }
+
+            // Toggle duration field visibility based on auto-cycle checkbox
+            function toggleDurationVisibility() {
+                const autoCycle = document.getElementById('auto_cycle').checked;
+                const durationRow = document.getElementById('durationRow');
+                durationRow.style.display = autoCycle ? '' : 'none';
             }
 
             // Form management
@@ -2063,6 +2092,8 @@
                 // Webhooks
                 currentWebhooks = [];
                 renderWebhooks();
+                // Update duration visibility
+                toggleDurationVisibility();
             }
 
             function populateForm(settings) {
@@ -2117,6 +2148,8 @@
                 // Webhooks
                 currentWebhooks = settings.webhooks ? JSON.parse(JSON.stringify(settings.webhooks)) : [];
                 renderWebhooks();
+                // Update duration visibility
+                toggleDurationVisibility();
             }
 
             function getFormData() {
@@ -2186,6 +2219,11 @@
 
                 // Webhooks
                 data.webhooks = currentWebhooks;
+
+                // Include pending endpoints in create mode
+                if (!editingGroupId && pendingEndpoints.length > 0) {
+                    data.endpoints = pendingEndpoints;
+                }
 
                 return data;
             }
@@ -2524,8 +2562,12 @@
                     const displayUrl = window.location.origin + '/display?group=' + encodeURIComponent(group.group_id);
                     const isPaused = group.paused;
 
-                    // Build summary line
-                    const summaryParts = [s.duration + 's', s.mode];
+                    // Build summary line (skip duration when on-demand)
+                    const summaryParts = [];
+                    if (s.auto_cycle !== false) {
+                        summaryParts.push(s.duration + 's');
+                    }
+                    summaryParts.push(s.mode);
                     if (s.width && s.height) {
                         summaryParts.push(s.width + '×' + s.height);
                     } else if (s.width) {
@@ -2539,9 +2581,11 @@
                     if (s.show_weather) summaryParts.push('Weather');
                     if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
 
-                    // Status indicator
+                    // Status badge (visual indicator instead of text)
                     const isOnDemand = s.auto_cycle === false;
-                    const statusText = isPaused ? ' (Paused)' : (isOnDemand ? ' (On-demand)' : '');
+                    const statusBadge = isPaused
+                        ? '<span class="status-badge paused">Paused</span>'
+                        : (isOnDemand ? '<span class="status-badge on-demand">On-demand</span>' : '');
 
                     // Error indicator
                     const errorHtml = group.error
@@ -2658,7 +2702,7 @@
 
                     return `
                         <div class="group-card${group.error ? ' has-error' : ''}">
-                            <div class="group-name">${groupIdSafe}${statusText}</div>
+                            <div class="group-name">${groupIdSafe}${statusBadge}</div>
                             ${errorHtml}
                             <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
                             ${countdownHtml}
@@ -3108,6 +3152,32 @@
                 `).join('');
             }
 
+            // Render pending endpoints for create mode
+            function renderPendingEndpoints() {
+                const container = document.getElementById('endpointsList');
+                if (pendingEndpoints.length === 0) {
+                    container.innerHTML = '<p style="color: #666; font-size: 12px;">No endpoints yet. Add endpoints below, or they will be created automatically when displays connect.</p>';
+                    return;
+                }
+
+                container.innerHTML = pendingEndpoints.map((ep, idx) => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; margin-bottom: 6px; background: rgba(255,255,255,0.03); border-radius: 6px; border-left: 3px solid #4CAF50;">
+                        <div style="flex: 1; min-width: 0;">
+                            <span style="font-family: monospace; color: #e94560;">${escapeHtml(ep.endpoint_id)}</span>
+                            ${ep.name ? `<span style="color: #888; margin-left: 8px;">${escapeHtml(ep.name)}</span>` : ''}
+                            <span style="color: #4CAF50; font-size: 11px; margin-left: 8px;">(will be created)</span>
+                        </div>
+                        <button type="button" class="btn btn-danger btn-small" onclick="removePendingEndpoint(${idx})">Remove</button>
+                    </div>
+                `).join('');
+            }
+
+            // Remove a pending endpoint from the create list
+            function removePendingEndpoint(index) {
+                pendingEndpoints.splice(index, 1);
+                renderPendingEndpoints();
+            }
+
             // Promote endpoint from the Edit panel (no popup - just promote directly)
             async function promoteEndpointFromPanel(groupId, endpointId, button) {
                 button.disabled = true;
@@ -3190,7 +3260,7 @@
             async function createEndpointFromPanel() {
                 const input = document.getElementById('newEndpointId');
                 const epId = input.value.trim();
-                if (!epId || !editingGroupId) {
+                if (!epId) {
                     alert('Please enter an endpoint ID');
                     return;
                 }
@@ -3200,25 +3270,37 @@
                     return;
                 }
 
-                try {
-                    const response = await fetch(API_BASE + '/' + editingGroupId + '/endpoints', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-Token': CSRF_TOKEN
-                        },
-                        body: JSON.stringify({ endpoint_id: epId, is_persistent: true })
-                    });
-                    if (!response.ok) {
-                        const data = await response.json();
-                        throw new Error(data.detail || 'Failed to create');
+                if (editingGroupId) {
+                    // Edit mode - API call to create endpoint immediately
+                    try {
+                        const response = await fetch(API_BASE + '/' + editingGroupId + '/endpoints', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-Token': CSRF_TOKEN
+                            },
+                            body: JSON.stringify({ endpoint_id: epId, is_persistent: true })
+                        });
+                        if (!response.ok) {
+                            const data = await response.json();
+                            throw new Error(data.detail || 'Failed to create');
+                        }
+                        input.value = '';
+                        // WebSocket update will refresh - re-render for responsiveness
+                        // Need to wait for cached data to update
+                        setTimeout(() => renderEndpointsInPanel(editingGroupId), 100);
+                    } catch (e) {
+                        alert('Error: ' + e.message);
                     }
+                } else {
+                    // Create mode - add to pending list (will be created with the group)
+                    if (pendingEndpoints.some(ep => ep.endpoint_id === epId)) {
+                        alert('Endpoint ID already in list');
+                        return;
+                    }
+                    pendingEndpoints.push({ endpoint_id: epId, name: null });
                     input.value = '';
-                    // WebSocket update will refresh - re-render for responsiveness
-                    // Need to wait for cached data to update
-                    setTimeout(() => renderEndpointsInPanel(editingGroupId), 100);
-                } catch (e) {
-                    alert('Error: ' + e.message);
+                    renderPendingEndpoints();
                 }
             }
 
@@ -3444,19 +3526,26 @@
                     meta.innerHTML = `${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}`;
                 }
 
-                // 2. Update group name (for pause/on-demand status)
+                // 2. Update group name and status badge
                 const groupName = card.querySelector('.group-name');
                 if (groupName) {
                     const isOnDemand = group.settings?.auto_cycle === false;
-                    const statusText = group.paused ? ' (Paused)' : (isOnDemand ? ' (On-demand)' : '');
-                    groupName.textContent = group.group_id + statusText;
+                    const statusBadge = group.paused
+                        ? '<span class="status-badge paused">Paused</span>'
+                        : (isOnDemand ? '<span class="status-badge on-demand">On-demand</span>' : '');
+                    groupName.innerHTML = escapeHtml(group.group_id) + statusBadge;
                 }
 
                 // 3. Update settings summary
                 const groupSummary = card.querySelector('.group-summary');
                 if (groupSummary && group.settings) {
                     const s = group.settings;
-                    const summaryParts = [s.duration + 's', s.mode];
+                    // Skip duration when on-demand
+                    const summaryParts = [];
+                    if (s.auto_cycle !== false) {
+                        summaryParts.push(s.duration + 's');
+                    }
+                    summaryParts.push(s.mode);
                     if (s.width && s.height) {
                         summaryParts.push(s.width + '×' + s.height);
                     } else if (s.width) {
@@ -3676,8 +3765,12 @@
                 const displayUrl = window.location.origin + '/display?group=' + encodeURIComponent(group.group_id);
                 const isPaused = group.paused;
 
-                // Build summary line
-                const summaryParts = [s.duration + 's', s.mode];
+                // Build summary line (skip duration when on-demand)
+                const summaryParts = [];
+                if (s.auto_cycle !== false) {
+                    summaryParts.push(s.duration + 's');
+                }
+                summaryParts.push(s.mode);
                 if (s.width && s.height) {
                     summaryParts.push(s.width + '×' + s.height);
                 } else if (s.width) {
@@ -3691,9 +3784,11 @@
                 if (s.show_weather) summaryParts.push('Weather');
                 if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
 
-                // Status indicator
+                // Status badge (visual indicator instead of text)
                 const isOnDemand = s.auto_cycle === false;
-                const statusText = isPaused ? ' (Paused)' : (isOnDemand ? ' (On-demand)' : '');
+                const statusBadge = isPaused
+                    ? '<span class="status-badge paused">Paused</span>'
+                    : (isOnDemand ? '<span class="status-badge on-demand">On-demand</span>' : '');
 
                 // Build unified endpoints section with inline history
                 const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
@@ -3805,7 +3900,7 @@
 
                 return `
                     <div class="group-card">
-                        <div class="group-name">${groupIdSafe}${statusText}</div>
+                        <div class="group-name">${groupIdSafe}${statusBadge}</div>
                         <div class="group-meta">${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}</div>
                         ${countdownHtml}
                         <div class="group-controls">

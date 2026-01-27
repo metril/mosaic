@@ -813,6 +813,11 @@ class DisplayGroupCreateRequest(BaseModel):
     burn_in_shift_interval: int = Field(60, ge=10, le=300, description="Shift interval (seconds)")
     # Webhook settings
     webhooks: List[WebhookConfig] = Field(default_factory=list, description="Webhook configurations")
+    # Endpoints to create with the group (optional)
+    endpoints: Optional[List["EndpointCreateRequest"]] = Field(
+        default=None,
+        description="Endpoints to create with the group"
+    )
 
 
 class DisplayGroupUpdateRequest(BaseModel):
@@ -1022,6 +1027,20 @@ async def create_display_group(
 
     try:
         group = await display_manager.create_group(body.group_id, settings)
+
+        # Create any endpoints specified in the request
+        if body.endpoints:
+            for ep in body.endpoints:
+                if ep.endpoint_id not in group.endpoints:
+                    endpoint = DisplayEndpoint(
+                        endpoint_id=ep.endpoint_id,
+                        name=ep.name,
+                        is_persistent=True,
+                    )
+                    group.endpoints[ep.endpoint_id] = endpoint
+            # Save config to persist the endpoints
+            display_manager.save_config()
+
         return JSONResponse(
             status_code=201,
             content=group.to_dict()
