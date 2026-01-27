@@ -12,3 +12,5 @@ authlib>=1.3.0
 httpx>=0.27.0
 itsdangerous>=2.1.0
 slowapi>=0.1.9
+# Duration parsing
+pytimeparse>=1.1.8

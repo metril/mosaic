@@ -1314,15 +1314,14 @@ class DisplayManager:
                 logger.info(f"Removing stale browser {browser_id}")
                 await self.remove_browser(group.group_id, browser_id)
 
-    async def cleanup_stale_endpoints(self, timeout_hours: int = 24) -> int:
+    async def cleanup_stale_endpoints(self, timeout_seconds: int = 86400) -> int:
         """
-        Remove anonymous endpoints that haven't been connected for timeout_hours.
+        Remove anonymous endpoints that haven't been connected for timeout_seconds.
 
         Only removes endpoints where is_persistent=False and no browser is connected.
         Returns the number of endpoints cleaned up.
         """
         now = _utc_now()
-        timeout_seconds = timeout_hours * 3600
         cleaned_count = 0
 
         # Take snapshot of groups to avoid modification during iteration

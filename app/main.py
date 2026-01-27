@@ -28,6 +28,7 @@ from app.services.homeassistant_provider import HomeAssistantProvider, HomeAssis
 from app.services.file_watcher import ImageFileWatcher
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException, error_response
+from pytimeparse import parse as parse_duration
 
 # Rate limiter for API endpoints
 limiter = Limiter(key_func=get_remote_address)
@@ -63,7 +64,7 @@ images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 async def periodic_cleanup(
     display_manager: DisplayManager,
     interval: int = 30,
-    endpoint_cleanup_hours: int = 24
+    endpoint_cleanup_seconds: int = 86400
 ):
     """Periodically clean up stale browser connections with resilience (#27)."""
     consecutive_failures = 0
@@ -80,11 +81,11 @@ async def periodic_cleanup(
             await display_manager.cleanup_stale_browsers(timeout_seconds=60)
 
             # Clean up anonymous endpoints less frequently (hourly)
-            # Set ENDPOINT_CLEANUP_HOURS=0 to disable cleanup entirely
-            if endpoint_cleanup_hours > 0 and iteration_count >= endpoint_cleanup_interval:
+            # Set ENDPOINT_CLEANUP=0 to disable cleanup entirely
+            if endpoint_cleanup_seconds > 0 and iteration_count >= endpoint_cleanup_interval:
                 iteration_count = 0
                 cleaned = await display_manager.cleanup_stale_endpoints(
-                    timeout_hours=endpoint_cleanup_hours
+                    timeout_seconds=endpoint_cleanup_seconds
                 )
                 if cleaned > 0:
                     logger.info(f"Cleaned up {cleaned} stale anonymous endpoints")
@@ -184,13 +185,15 @@ async def lifespan(app: FastAPI):
             logger.debug("Home Assistant not configured (HOMEASSISTANT_URL/TOKEN not set)")
 
         # Start cleanup task for stale browser connections
-        # ENDPOINT_CLEANUP_HOURS: how long before anonymous endpoints are removed (default 24h, 0=disabled)
-        endpoint_cleanup_hours = int(os.environ.get('ENDPOINT_CLEANUP_HOURS', '24'))
+        # ENDPOINT_CLEANUP: duration before anonymous endpoints are removed (default 24h, 0=disabled)
+        # Supports: "30m", "24h", "7d", "1w", "2h30m", or seconds as plain number
+        cleanup_duration_str = os.environ.get('ENDPOINT_CLEANUP', '24h')
+        endpoint_cleanup_seconds = parse_duration(cleanup_duration_str) or 0
         cleanup_task = asyncio.create_task(
-            periodic_cleanup(app.state.display_manager, endpoint_cleanup_hours=endpoint_cleanup_hours)
+            periodic_cleanup(app.state.display_manager, endpoint_cleanup_seconds=endpoint_cleanup_seconds)
         )
-        if endpoint_cleanup_hours > 0:
-            logger.info(f"Cleanup task started (endpoint cleanup: {endpoint_cleanup_hours}h)")
+        if endpoint_cleanup_seconds > 0:
+            logger.info(f"Cleanup task started (endpoint cleanup: {cleanup_duration_str})")
         else:
             logger.info("Cleanup task started (endpoint cleanup: disabled)")
 
