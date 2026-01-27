@@ -856,6 +856,66 @@
                 font-size: 11px;
             }
 
+            /* Unified Endpoints View - combines endpoint info with history */
+            .endpoints-unified {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+                padding: 10px 12px;
+            }
+            .endpoint-unified-item {
+                background: rgba(255, 255, 255, 0.03);
+                border-radius: 8px;
+                padding: 10px 12px;
+                border-left: 3px solid transparent;
+            }
+            .endpoint-unified-item.connected {
+                border-left-color: #4CAF50;
+            }
+            .endpoint-unified-item.disconnected {
+                border-left-color: #666;
+                opacity: 0.7;
+            }
+            .endpoint-unified-item.anonymous {
+                border-left-color: #ff9800;
+            }
+            .endpoint-header {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .endpoint-header .endpoint-id {
+                font-family: monospace;
+                color: #e94560;
+                font-weight: 500;
+            }
+            .endpoint-header .endpoint-name {
+                color: #888;
+                font-size: 12px;
+                max-width: none;
+            }
+            .endpoint-header .badge-anonymous {
+                color: #ff9800;
+                font-size: 11px;
+            }
+            .endpoint-header .status-dot {
+                font-size: 10px;
+            }
+            .endpoint-header .status-dot.connected { color: #4CAF50; }
+            .endpoint-header .status-dot.disconnected { color: #666; }
+            .endpoint-header .last-seen {
+                color: #666;
+                font-size: 11px;
+                margin-left: auto;
+            }
+            .endpoint-history-inline {
+                margin-top: 8px;
+            }
+            .endpoint-history-inline .history-strip {
+                overflow-x: auto;
+            }
+
             /* Countdown timer */
             .countdown {
                 font-size: 14px;
@@ -2281,21 +2341,8 @@
             });
 
             // Track open history details panels by group_id:browser_id
-            let openHistoryPanels = new Set();
-
             // Load groups
             async function loadGroups() {
-                // Save open history panels before refresh (by group_id:browser_id)
-                document.querySelectorAll('.history-details[open]').forEach(d => {
-                    const key = d.dataset.groupId + ':' + d.dataset.browserId;
-                    if (d.dataset.browserId) openHistoryPanels.add(key);
-                });
-                // Also remove closed panels from the set
-                document.querySelectorAll('.history-details:not([open])').forEach(d => {
-                    const key = d.dataset.groupId + ':' + d.dataset.browserId;
-                    if (d.dataset.browserId) openHistoryPanels.delete(key);
-                });
-
                 try {
                     const response = await fetch(API_BASE);
                     if (!response.ok) {
@@ -2304,12 +2351,8 @@
                     const groups = await response.json();
                     renderGroups(groups);
 
-                    // Restore open history panels after render
-                    openHistoryPanels.forEach(key => {
-                        const [groupId, browserId] = key.split(':');
-                        const details = document.querySelector(`.history-details[data-group-id="${groupId}"][data-browser-id="${browserId}"]`);
-                        if (details) details.open = true;
-                    });
+                    // Scroll all history strips to show current image
+                    setTimeout(scrollAllToCurrentImage, 100);
                 } catch (e) {
                     document.getElementById('groupsList').innerHTML =
                         '<div class="empty-state"><p>Failed to load groups</p><p style="color:#666">' + escapeHtml(e.message) + '</p></div>';
@@ -2370,19 +2413,29 @@
                         ? `<div class="group-error" title="${escapeHtml(group.error)}">⚠️ ${escapeHtml(group.error)}</div>`
                         : '';
 
-                    // Build history strip for each browser
-                    const browserHistoryHtml = group.browsers.map(browser => {
+                    // Build unified endpoints section with inline history
+                    const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
+
+                    // Map endpoint_id to browser data for quick lookup
+                    const browserByEndpoint = {};
+                    group.browsers.forEach(b => {
+                        if (b.endpoint_id) browserByEndpoint[b.endpoint_id] = b;
+                    });
+
+                    const endpoints = group.endpoints || [];
+                    const connectedCount = endpoints.filter(e => browserByEndpoint[e.endpoint_id]).length;
+
+                    // Helper to build history strip HTML for an endpoint
+                    const buildHistoryStrip = (ep, browser) => {
+                        if (!browser) return '';
+
                         const historyCount = browser.history_count || 0;
                         const forwardCount = browser.forward_count || 0;
                         const browserIdSafe = escapeHtml(browser.browser_id);
 
-                        // Build thumbnail strip
                         let thumbsHtml = '';
 
-                        // Helper to encode path preserving slashes
-                        const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
-
-                        // Past images (from image_history, oldest to newest)
+                        // Past images
                         if (browser.image_history && browser.image_history.length > 0) {
                             thumbsHtml += browser.image_history.map(img =>
                                 `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy">`
@@ -2394,64 +2447,58 @@
                             thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" alt="Current" loading="lazy">`;
                         }
 
-                        // Forward images (oldest to newest, next step closest to current)
+                        // Forward images
                         if (browser.forward_history && browser.forward_history.length > 0) {
                             thumbsHtml += browser.forward_history.map(img =>
                                 `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
                             ).join('');
                         }
 
-                        if (!thumbsHtml) {
-                            return '';  // No history section if nothing to show
-                        }
+                        if (!thumbsHtml) return '';
 
-                        // Summary for collapsible header - include endpoint ID
-                        const endpointLabel = browser.endpoint_id
-                            ? `<span class="history-endpoint">${escapeHtml(browser.endpoint_id)}</span> `
-                            : '';
-                        const historyInfo = forwardCount > 0
-                            ? `${historyCount} behind, ${forwardCount} ahead`
-                            : historyCount > 0
-                                ? `${historyCount} behind`
-                                : 'Current';
-
+                        // History strip with clickable thumbnails for navigation
                         return `
-                            <details class="history-details" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}">
-                                <summary>${endpointLabel}${historyInfo}</summary>
-                                <div class="history-strip">${thumbsHtml}</div>
-                            </details>
+                            <div class="endpoint-history-inline">
+                                <div class="history-strip" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}">${thumbsHtml}</div>
+                            </div>
                         `;
-                    }).join('');
+                    };
 
-                    // Build endpoints section
-                    const connectedEndpointIds = new Set(group.browsers.map(b => b.endpoint_id));
-                    const endpoints = group.endpoints || [];
-                    const connectedCount = endpoints.filter(e => connectedEndpointIds.has(e.endpoint_id)).length;
-                    const endpointsHtml = endpoints.length > 0 ? `
-                        <details class="endpoints-section" data-group-id="${groupIdSafe}">
-                            <summary>Endpoints (${endpoints.length} total, ${connectedCount} connected)</summary>
-                            <div class="endpoints-list">
-                                ${endpoints.map(ep => {
-                                    const isConnected = connectedEndpointIds.has(ep.endpoint_id);
+                    // Sort endpoints: connected first, then by endpoint_id
+                    const sortedEndpoints = [...endpoints].sort((a, b) => {
+                        const aConnected = browserByEndpoint[a.endpoint_id] ? 1 : 0;
+                        const bConnected = browserByEndpoint[b.endpoint_id] ? 1 : 0;
+                        if (aConnected !== bConnected) return bConnected - aConnected;
+                        return a.endpoint_id.localeCompare(b.endpoint_id);
+                    });
+
+                    const unifiedEndpointsHtml = endpoints.length > 0 ? `
+                        <details class="endpoints-section" data-group-id="${groupIdSafe}" open>
+                            <summary>Endpoints (${connectedCount} connected)</summary>
+                            <div class="endpoints-unified">
+                                ${sortedEndpoints.map(ep => {
+                                    const browser = browserByEndpoint[ep.endpoint_id];
+                                    const isConnected = !!browser;
                                     const isPersistent = ep.is_persistent;
                                     const epIdSafe = escapeHtml(ep.endpoint_id);
                                     const epNameSafe = ep.name ? escapeHtml(ep.name) : '';
-                                    const statusText = isConnected ? '● Connected' :
-                                        (ep.last_seen ? '○ Last seen ' + formatTimeAgo(ep.last_seen) : '○ Never connected');
-                                    const displayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
+                                    const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
+                                    const historyHtml = buildHistoryStrip(ep, browser);
 
                                     return `
-                                        <div class="endpoint-item ${isPersistent ? 'persistent' : 'anonymous'} ${isConnected ? 'connected' : 'disconnected'}">
-                                            <span class="endpoint-icon">${isPersistent ? '📺' : '🔗'}</span>
-                                            <span class="endpoint-name">${epIdSafe}</span>
-                                            ${epNameSafe ? `<span class="endpoint-label">${epNameSafe}</span>` : ''}
-                                            <span class="endpoint-status">${statusText}</span>
-                                            <div class="endpoint-url">
-                                                <input type="text" value="${displayUrl}" readonly onclick="this.select()">
-                                                <button class="btn-copy btn-endpoint" data-url="${displayUrl}" title="Copy URL">📋</button>
+                                        <div class="endpoint-unified-item ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}">
+                                            <div class="endpoint-header">
+                                                <span class="endpoint-id">${epIdSafe}</span>
+                                                ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
+                                                ${!isPersistent ? '<span class="badge-anonymous">(anonymous)</span>' : ''}
+                                                <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
+                                                ${!isConnected && ep.last_seen ? `<span class="last-seen">Last seen ${formatTimeAgo(ep.last_seen)}</span>` : ''}
+                                                <div class="endpoint-url">
+                                                    <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
+                                                    <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
+                                                </div>
                                             </div>
-                                            ${!isPersistent ? `<button class="btn-endpoint promote" data-group-id="${groupIdSafe}" data-endpoint-id="${epIdSafe}" title="Make persistent">⬆</button>` : ''}
-                                            ${!isConnected ? `<button class="btn-endpoint delete" data-group-id="${groupIdSafe}" data-endpoint-id="${epIdSafe}" title="Delete">✕</button>` : ''}
+                                            ${historyHtml}
                                         </div>
                                     `;
                                 }).join('')}
@@ -2460,7 +2507,7 @@
                     ` : `
                         <details class="endpoints-section" data-group-id="${groupIdSafe}">
                             <summary>Endpoints (0)</summary>
-                            <div class="endpoints-list">
+                            <div class="endpoints-unified">
                                 <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints yet. Use the Edit button to create one.</div>
                             </div>
                         </details>
@@ -2483,8 +2530,7 @@
                                 <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9654;</button>
                                 <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
                             </div>
-                            ${browserHistoryHtml}
-                            ${endpointsHtml}
+                            ${unifiedEndpointsHtml}
                             <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                             <div class="group-actions">
                                 <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
@@ -2511,8 +2557,6 @@
                 const deleteBtn = e.target.closest('.btn-delete');
                 const thumb = e.target.closest('.thumb');
                 const createEndpointBtn = e.target.closest('.btn-create-endpoint');
-                const promoteEndpointBtn = e.target.closest('.btn-endpoint.promote');
-                const deleteEndpointBtn = e.target.closest('.btn-endpoint.delete');
                 const copyUrlBtn = e.target.closest('.btn-copy');
 
                 if (controlBtn) {
@@ -2539,14 +2583,6 @@
                 } else if (createEndpointBtn) {
                     const groupId = createEndpointBtn.dataset.groupId;
                     openCreateEndpointModal(groupId);
-                } else if (promoteEndpointBtn) {
-                    const groupId = promoteEndpointBtn.dataset.groupId;
-                    const endpointId = promoteEndpointBtn.dataset.endpointId;
-                    await promoteEndpoint(groupId, endpointId);
-                } else if (deleteEndpointBtn) {
-                    const groupId = deleteEndpointBtn.dataset.groupId;
-                    const endpointId = deleteEndpointBtn.dataset.endpointId;
-                    await deleteEndpoint(groupId, endpointId);
                 } else if (copyUrlBtn) {
                     const url = copyUrlBtn.dataset.url;
                     await navigator.clipboard.writeText(window.location.origin + url);
@@ -2555,7 +2591,7 @@
                 }
             });
 
-            // Send playback control action
+            // Send playback control action (group-level)
             async function sendControlAction(groupId, action) {
                 try {
                     const response = await fetch(API_BASE + '/' + groupId + '/' + action, {
@@ -2859,7 +2895,39 @@
                 }
             }
 
-            async function promoteEndpoint(groupId, endpointId) {
+            // =================================================================
+            // Endpoint Panel Functions (for Edit panel)
+            // =================================================================
+
+            // Render endpoints list in the Edit panel with Promote and Delete buttons
+            function renderEndpointsInPanel(groupId) {
+                const container = document.getElementById('endpointsList');
+                // Find group from cached data
+                const group = cachedGroups ? cachedGroups.find(g => g.group_id === groupId) : null;
+                if (!group || !group.endpoints || group.endpoints.length === 0) {
+                    container.innerHTML = '<p style="color: #666; font-size: 12px;">No endpoints yet. Endpoints will be created automatically when displays connect.</p>';
+                    return;
+                }
+                // Each endpoint shows ID, optional name, Promote (if anonymous), and Delete button
+                container.innerHTML = group.endpoints.map(ep => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 6px;">
+                        <div style="flex: 1; min-width: 0;">
+                            <span style="font-family: monospace; color: #e94560;">${escapeHtml(ep.endpoint_id)}</span>
+                            ${ep.name ? `<span style="color: #888; margin-left: 8px;">${escapeHtml(ep.name)}</span>` : ''}
+                            ${ep.is_persistent ? '' : '<span style="color: #ff9800; font-size: 11px; margin-left: 8px;">(anonymous)</span>'}
+                        </div>
+                        <div style="display: flex; gap: 6px;">
+                            ${!ep.is_persistent ? `<button type="button" class="btn btn-secondary btn-small"
+                                    onclick="promoteEndpointFromPanel('${escapeHtml(groupId)}', '${escapeHtml(ep.endpoint_id)}')">Make Persistent</button>` : ''}
+                            <button type="button" class="btn btn-danger btn-small"
+                                    onclick="deleteEndpointFromPanel('${escapeHtml(groupId)}', '${escapeHtml(ep.endpoint_id)}')">Delete</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            // Promote endpoint from the Edit panel
+            async function promoteEndpointFromPanel(groupId, endpointId) {
                 const name = prompt('Enter a name for this endpoint (optional):', '');
                 if (name === null) return; // User cancelled
 
@@ -2881,61 +2949,11 @@
                         throw new Error(data.detail || 'Failed to promote endpoint');
                     }
 
-                    // Refresh will happen via WebSocket update
+                    // WebSocket update will refresh - re-render for responsiveness
+                    renderEndpointsInPanel(groupId);
                 } catch (error) {
                     alert('Error promoting endpoint: ' + error.message);
                 }
-            }
-
-            async function deleteEndpoint(groupId, endpointId) {
-                if (!confirm('Delete endpoint "' + endpointId + '"?\n\nThis cannot be undone.')) {
-                    return;
-                }
-
-                try {
-                    const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + endpointId, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-CSRF-Token': csrfToken
-                        }
-                    });
-
-                    if (!response.ok) {
-                        const data = await response.json();
-                        throw new Error(data.detail || 'Failed to delete endpoint');
-                    }
-
-                    // Refresh will happen via WebSocket update
-                } catch (error) {
-                    alert('Error deleting endpoint: ' + error.message);
-                }
-            }
-
-            // =================================================================
-            // Endpoint Panel Functions (for Edit panel)
-            // =================================================================
-
-            // Render endpoints list in the Edit panel
-            function renderEndpointsInPanel(groupId) {
-                const container = document.getElementById('endpointsList');
-                // Find group from cached data
-                const group = cachedGroups ? cachedGroups.find(g => g.group_id === groupId) : null;
-                if (!group || !group.endpoints || group.endpoints.length === 0) {
-                    container.innerHTML = '<p style="color: #666; font-size: 12px;">No endpoints yet. Endpoints will be created automatically when displays connect.</p>';
-                    return;
-                }
-                // Each endpoint shows ID, optional name, and Delete button
-                container.innerHTML = group.endpoints.map(ep => `
-                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 6px;">
-                        <div style="flex: 1; min-width: 0;">
-                            <span style="font-family: monospace; color: #e94560;">${escapeHtml(ep.endpoint_id)}</span>
-                            ${ep.name ? `<span style="color: #888; margin-left: 8px;">${escapeHtml(ep.name)}</span>` : ''}
-                            ${ep.is_persistent ? '' : '<span style="color: #ff9800; font-size: 11px; margin-left: 8px;">(anonymous)</span>'}
-                        </div>
-                        <button type="button" class="btn btn-danger btn-small"
-                                onclick="deleteEndpointFromPanel('${escapeHtml(groupId)}', '${escapeHtml(ep.endpoint_id)}')">Delete</button>
-                    </div>
-                `).join('');
             }
 
             // Delete endpoint from the Edit panel
@@ -3168,15 +3186,6 @@
                     return;
                 }
 
-                // Save open state for ALL history strips (by browser_id) - scroll position is set by scrollToCurrentImage()
-                const openDetails = new Set();
-                card.querySelectorAll('.history-details').forEach(details => {
-                    const browserId = details.dataset.browserId;
-                    if (details.open && browserId) {
-                        openDetails.add(browserId);
-                    }
-                });
-
                 // Update card content
                 const newCardHtml = buildGroupCardHtml(group);
                 const tempDiv = document.createElement('div');
@@ -3186,13 +3195,9 @@
                 // Replace the card
                 card.replaceWith(newCard);
 
-                // Restore open state for ALL details elements
-                newCard.querySelectorAll('.history-details').forEach(details => {
-                    const browserId = details.dataset.browserId;
-                    const key = group.group_id + ':' + browserId;
-                    if (openDetails.has(browserId) || openHistoryPanels.has(key)) {
-                        details.open = true;
-                    }
+                // Scroll history strips to show current image
+                newCard.querySelectorAll('.history-strip').forEach(strip => {
+                    setTimeout(() => scrollToCurrentImage(strip), 50);
                 });
 
                 // Start/stop countdown timer based on pause state
@@ -3213,10 +3218,10 @@
                     return;
                 }
 
-                // Check if browser count changed - need full rebuild
-                const existingBrowserSections = card.querySelectorAll('.history-details').length;
-                const newBrowserCount = group.browsers ? group.browsers.length : 0;
-                if (existingBrowserSections !== newBrowserCount) {
+                // Check if endpoint count changed - need full rebuild
+                const existingEndpointItems = card.querySelectorAll('.endpoint-unified-item').length;
+                const newEndpointCount = group.endpoints ? group.endpoints.length : 0;
+                if (existingEndpointItems !== newEndpointCount) {
                     updateGroupCard(group);
                     return;
                 }
@@ -3255,37 +3260,14 @@
                     groupSummary.innerHTML = summaryParts.join(' &bull; ');
                 }
 
-                // 4. Update history strips for each browser
+                // 4. Update history strips for each browser (within the unified endpoint items)
                 if (group.browsers) {
                     group.browsers.forEach(browser => {
                         const browserIdSafe = escapeHtml(browser.browser_id);
-                        const details = card.querySelector(`.history-details[data-browser-id="${browserIdSafe}"]`);
+                        const strip = card.querySelector(`.history-strip[data-browser-id="${browserIdSafe}"]`);
 
-                        if (!details) {
-                            // Browser section doesn't exist, need full rebuild
-                            updateGroupCard(group);
-                            return;
-                        }
-
-                        const strip = details.querySelector('.history-strip');
                         if (strip) {
                             updateHistoryStrip(strip, browser, groupIdSafe, browserIdSafe);
-                        }
-
-                        // Update summary text with endpoint label
-                        const summary = details.querySelector('summary');
-                        if (summary) {
-                            const historyCount = browser.history_count || 0;
-                            const forwardCount = browser.forward_count || 0;
-                            const endpointLabel = browser.endpoint_id
-                                ? `<span class="history-endpoint">${escapeHtml(browser.endpoint_id)}</span> `
-                                : '';
-                            const historyInfo = forwardCount > 0
-                                ? `${historyCount} behind, ${forwardCount} ahead`
-                                : historyCount > 0
-                                    ? `${historyCount} behind`
-                                    : 'Current';
-                            summary.innerHTML = endpointLabel + historyInfo;
                         }
                     });
                 }
@@ -3431,83 +3413,92 @@
                 const isOnDemand = s.auto_cycle === false;
                 const statusText = isPaused ? ' (Paused)' : (isOnDemand ? ' (On-demand)' : '');
 
-                // Build history strip for each browser
-                const browserHistoryHtml = group.browsers.map(browser => {
+                // Build unified endpoints section with inline history
+                const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
+
+                // Map endpoint_id to browser data for quick lookup
+                const browserByEndpoint = {};
+                group.browsers.forEach(b => {
+                    if (b.endpoint_id) browserByEndpoint[b.endpoint_id] = b;
+                });
+
+                const endpoints = group.endpoints || [];
+                const connectedCount = endpoints.filter(e => browserByEndpoint[e.endpoint_id]).length;
+
+                // Helper to build history strip HTML for an endpoint
+                const buildHistoryStrip = (ep, browser) => {
+                    if (!browser) return '';
+
                     const historyCount = browser.history_count || 0;
                     const forwardCount = browser.forward_count || 0;
                     const browserIdSafe = escapeHtml(browser.browser_id);
 
-                    // Build thumbnail strip
                     let thumbsHtml = '';
-                    const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
 
+                    // Past images
                     if (browser.image_history && browser.image_history.length > 0) {
                         thumbsHtml += browser.image_history.map(img =>
                             `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy">`
                         ).join('');
                     }
 
+                    // Current image
                     if (browser.current_image) {
                         thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" alt="Current" loading="lazy">`;
                     }
 
+                    // Forward images
                     if (browser.forward_history && browser.forward_history.length > 0) {
                         thumbsHtml += browser.forward_history.map(img =>
                             `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
                         ).join('');
                     }
 
-                    if (!thumbsHtml) {
-                        return '';
-                    }
+                    if (!thumbsHtml) return '';
 
-                    // Summary with endpoint label
-                    const endpointLabel = browser.endpoint_id
-                        ? `<span class="history-endpoint">${escapeHtml(browser.endpoint_id)}</span> `
-                        : '';
-                    const historyInfo = forwardCount > 0
-                        ? `${historyCount} behind, ${forwardCount} ahead`
-                        : historyCount > 0
-                            ? `${historyCount} behind`
-                            : 'Current';
-
+                    // History strip with clickable thumbnails for navigation
                     return `
-                        <details class="history-details" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}">
-                            <summary>${endpointLabel}${historyInfo}</summary>
-                            <div class="history-strip">${thumbsHtml}</div>
-                        </details>
+                        <div class="endpoint-history-inline">
+                            <div class="history-strip" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}">${thumbsHtml}</div>
+                        </div>
                     `;
-                }).join('');
+                };
 
-                // Build endpoints section
-                const connectedEndpointIds = new Set(group.browsers.map(b => b.endpoint_id));
-                const endpoints = group.endpoints || [];
-                const connectedCount = endpoints.filter(e => connectedEndpointIds.has(e.endpoint_id)).length;
-                const endpointsHtml = endpoints.length > 0 ? `
-                    <details class="endpoints-section" data-group-id="${groupIdSafe}">
-                        <summary>Endpoints (${endpoints.length} total, ${connectedCount} connected)</summary>
-                        <div class="endpoints-list">
-                            ${endpoints.map(ep => {
-                                const isConnected = connectedEndpointIds.has(ep.endpoint_id);
+                // Sort endpoints: connected first, then by endpoint_id
+                const sortedEndpoints = [...endpoints].sort((a, b) => {
+                    const aConnected = browserByEndpoint[a.endpoint_id] ? 1 : 0;
+                    const bConnected = browserByEndpoint[b.endpoint_id] ? 1 : 0;
+                    if (aConnected !== bConnected) return bConnected - aConnected;
+                    return a.endpoint_id.localeCompare(b.endpoint_id);
+                });
+
+                const unifiedEndpointsHtml = endpoints.length > 0 ? `
+                    <details class="endpoints-section" data-group-id="${groupIdSafe}" open>
+                        <summary>Endpoints (${connectedCount} connected)</summary>
+                        <div class="endpoints-unified">
+                            ${sortedEndpoints.map(ep => {
+                                const browser = browserByEndpoint[ep.endpoint_id];
+                                const isConnected = !!browser;
                                 const isPersistent = ep.is_persistent;
                                 const epIdSafe = escapeHtml(ep.endpoint_id);
                                 const epNameSafe = ep.name ? escapeHtml(ep.name) : '';
-                                const statusText = isConnected ? '● Connected' :
-                                    (ep.last_seen ? '○ Last seen ' + formatTimeAgo(ep.last_seen) : '○ Never connected');
                                 const epDisplayUrl = '/display?group=' + encodeURIComponent(group.group_id) + '&endpoint=' + encodeURIComponent(ep.endpoint_id);
+                                const historyHtml = buildHistoryStrip(ep, browser);
 
                                 return `
-                                    <div class="endpoint-item ${isPersistent ? 'persistent' : 'anonymous'} ${isConnected ? 'connected' : 'disconnected'}">
-                                        <span class="endpoint-icon">${isPersistent ? '📺' : '🔗'}</span>
-                                        <span class="endpoint-name">${epIdSafe}</span>
-                                        ${epNameSafe ? `<span class="endpoint-label">${epNameSafe}</span>` : ''}
-                                        <span class="endpoint-status">${statusText}</span>
-                                        <div class="endpoint-url">
-                                            <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
-                                            <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
+                                    <div class="endpoint-unified-item ${isConnected ? 'connected' : 'disconnected'} ${isPersistent ? 'persistent' : 'anonymous'}">
+                                        <div class="endpoint-header">
+                                            <span class="endpoint-id">${epIdSafe}</span>
+                                            ${epNameSafe ? `<span class="endpoint-name">${epNameSafe}</span>` : ''}
+                                            ${!isPersistent ? '<span class="badge-anonymous">(anonymous)</span>' : ''}
+                                            <span class="status-dot ${isConnected ? 'connected' : 'disconnected'}">${isConnected ? '●' : '○'}</span>
+                                            ${!isConnected && ep.last_seen ? `<span class="last-seen">Last seen ${formatTimeAgo(ep.last_seen)}</span>` : ''}
+                                            <div class="endpoint-url">
+                                                <input type="text" value="${epDisplayUrl}" readonly onclick="this.select()">
+                                                <button class="btn-copy btn-endpoint" data-url="${epDisplayUrl}" title="Copy URL">📋</button>
+                                            </div>
                                         </div>
-                                        ${!isPersistent ? `<button class="btn-endpoint promote" data-group-id="${groupIdSafe}" data-endpoint-id="${epIdSafe}" title="Make persistent">⬆</button>` : ''}
-                                        ${!isConnected ? `<button class="btn-endpoint delete" data-group-id="${groupIdSafe}" data-endpoint-id="${epIdSafe}" title="Delete">✕</button>` : ''}
+                                        ${historyHtml}
                                     </div>
                                 `;
                             }).join('')}
@@ -3516,7 +3507,7 @@
                 ` : `
                     <details class="endpoints-section" data-group-id="${groupIdSafe}">
                         <summary>Endpoints (0)</summary>
-                        <div class="endpoints-list">
+                        <div class="endpoints-unified">
                             <div style="padding: 8px; color: #888; font-size: 13px;">No endpoints yet. Use the Edit button to create one.</div>
                         </div>
                     </details>
@@ -3538,8 +3529,7 @@
                             <button class="btn-control" data-action="next" data-group-id="${groupIdSafe}" title="Next">&#9654;</button>
                             <button class="btn-control" data-action="forward-all" data-group-id="${groupIdSafe}" title="Forward All">&#9197;</button>
                         </div>
-                        ${browserHistoryHtml}
-                        ${endpointsHtml}
+                        ${unifiedEndpointsHtml}
                         <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                         <div class="group-actions">
                             <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
@@ -3567,14 +3557,13 @@
                 }
             }
 
-            // Listen for details toggle to scroll to current image
+            // Listen for endpoints-section toggle to scroll all history strips to current
             document.getElementById('groupsList').addEventListener('toggle', (e) => {
-                if (e.target.classList.contains('history-details') && e.target.open) {
-                    const strip = e.target.querySelector('.history-strip');
-                    if (strip) {
-                        // Small delay to let the DOM update
+                if (e.target.classList.contains('endpoints-section') && e.target.open) {
+                    // Scroll all history strips within this section to show current
+                    e.target.querySelectorAll('.history-strip').forEach(strip => {
                         setTimeout(() => scrollToCurrentImage(strip), 50);
-                    }
+                    });
                 }
             }, true);
 
