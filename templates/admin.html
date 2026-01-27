@@ -2709,8 +2709,8 @@
                         </div>
                     `;
 
-                    // Countdown display (only if not paused and has next_switch_at)
-                    const countdownHtml = isPaused ? '' :
+                    // Countdown display (only if not paused, not on-demand, and has next_switch_at)
+                    const countdownHtml = (isPaused || isOnDemand) ? '' :
                         `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
 
                     return `
@@ -2737,10 +2737,11 @@
                     `;
                 }).join('');
 
-                // Start countdown timers for all groups
+                // Start countdown timers for all groups (skip on-demand groups)
                 groups.forEach(group => {
-                    console.log('renderGroups - group:', group.group_id, 'paused:', group.paused, 'next_switch_at:', group.next_switch_at);
-                    if (!group.paused && group.next_switch_at) {
+                    const isOnDemand = group.settings?.auto_cycle === false;
+                    console.log('renderGroups - group:', group.group_id, 'paused:', group.paused, 'on-demand:', isOnDemand, 'next_switch_at:', group.next_switch_at);
+                    if (!group.paused && !isOnDemand && group.next_switch_at) {
                         startCountdown(group.group_id, group.next_switch_at);
                     }
                 });
@@ -3454,8 +3455,9 @@
                 container.insertAdjacentHTML('beforeend', cardHtml);
                 updateGroupCount();
 
-                // Start countdown timer if not paused
-                if (!group.paused && group.next_switch_at) {
+                // Start countdown timer if not paused and not on-demand
+                const isOnDemand = group.settings?.auto_cycle === false;
+                if (!group.paused && !isOnDemand && group.next_switch_at) {
                     startCountdown(group.group_id, group.next_switch_at);
                 }
             }
@@ -3506,8 +3508,9 @@
                     setTimeout(() => scrollToCurrentImage(strip), 50);
                 });
 
-                // Start/stop countdown timer based on pause state
-                if (!group.paused && group.next_switch_at) {
+                // Start/stop countdown timer based on pause state and on-demand mode
+                const isOnDemand = group.settings?.auto_cycle === false;
+                if (!group.paused && !isOnDemand && group.next_switch_at) {
                     startCountdown(group.group_id, group.next_switch_at);
                 } else {
                     stopCountdown(group.group_id);
@@ -3694,9 +3697,10 @@
                     playPauseBtn.classList.toggle('playing', !group.paused);
                 }
 
-                // 6. Handle countdown visibility
+                // 6. Handle countdown visibility (skip for on-demand mode)
+                const isOnDemandPartial = group.settings?.auto_cycle === false;
                 let countdownEl = card.querySelector('.countdown');
-                if (!group.paused && group.next_switch_at) {
+                if (!group.paused && !isOnDemandPartial && group.next_switch_at) {
                     if (!countdownEl) {
                         // Need to add countdown element - fall back to full update
                         updateGroupCard(group);
@@ -3952,8 +3956,8 @@
                     </div>
                 `;
 
-                // Countdown display (only if not paused and has next_switch_at)
-                const countdownHtml = isPaused ? '' :
+                // Countdown display (only if not paused, not on-demand, and has next_switch_at)
+                const countdownHtml = (isPaused || isOnDemand) ? '' :
                     `<div class="countdown" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
 
                 return `
