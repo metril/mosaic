@@ -24,8 +24,8 @@ from slowapi.util import get_remote_address
 from datetime import datetime, timezone
 from app.services.image_service import ImageService
 from app.services.sync_manager import (
-    SyncManager,
-    SyncGroupSettings,
+    DisplayManager,
+    DisplayGroupSettings,
     WebhookConfig,
     WebhookTrigger,
     WebhookPayloadOption,
@@ -312,7 +312,7 @@ async def get_metrics():
     Return application metrics for observability.
 
     Provides counters (monotonically increasing) and gauges (current values)
-    for monitoring sync group and WebSocket connection health.
+    for monitoring display group and WebSocket connection health.
     """
     return metrics.to_dict()
 
@@ -744,11 +744,11 @@ async def get_blur_background(
 
 
 # =============================================================================
-# Sync Group API - Pydantic Models
+# Display Group API - Pydantic Models
 # =============================================================================
 
-class SyncGroupCreateRequest(BaseModel):
-    """Request body for creating a sync group"""
+class DisplayGroupCreateRequest(BaseModel):
+    """Request body for creating a display group"""
     # Alphanumeric, dash, underscore only (#17)
     group_id: str = Field(
         ...,
@@ -813,8 +813,8 @@ class SyncGroupCreateRequest(BaseModel):
     webhooks: List[WebhookConfig] = Field(default_factory=list, description="Webhook configurations")
 
 
-class SyncGroupUpdateRequest(BaseModel):
-    """Request body for updating a sync group (all fields optional)"""
+class DisplayGroupUpdateRequest(BaseModel):
+    """Request body for updating a display group (all fields optional)"""
     duration: Optional[int] = Field(None, ge=5, le=3600, description="Cycle duration in seconds")
     # Limit length to prevent DoS (#9)
     folders: Optional[str] = Field(
@@ -876,12 +876,12 @@ class SyncGroupUpdateRequest(BaseModel):
 
 
 # =============================================================================
-# Sync Group API - Endpoints
+# Display Group API - Endpoints
 # =============================================================================
 
-def get_sync_manager(request: Request) -> SyncManager:
-    """Get the SyncManager from app state"""
-    return request.app.state.sync_manager
+def get_display_manager(request: Request) -> DisplayManager:
+    """Get the DisplayManager from app state"""
+    return request.app.state.display_manager
 
 
 @router.get("/admin", include_in_schema=False)
@@ -890,7 +890,7 @@ async def admin_page(request: Request, user: Optional[User] = Depends(get_option
     Serve the unified admin dashboard.
 
     This HTML page provides tabbed access to:
-    - Sync Groups: Manage synchronized browser displays
+    - Display Groups: Manage synchronized browser displays
     - Immich: Configure and trigger image pulls from Immich servers
 
     Requires authentication if OIDC is configured.
@@ -914,15 +914,15 @@ async def admin_page(request: Request, user: Optional[User] = Depends(get_option
     )
 
 
-@router.get("/sync/admin", include_in_schema=False)
-async def sync_admin_redirect():
-    """Redirect old sync admin URL to new unified admin page."""
+@router.get("/display/admin", include_in_schema=False)
+async def display_admin_redirect():
+    """Redirect display admin URL to unified admin page."""
     return RedirectResponse(url="/admin", status_code=302)
 
 
-@router.get("/api/sync/groups", responses={
+@router.get("/api/display/groups", responses={
     200: {
-        "description": "List of all active sync groups",
+        "description": "List of all active display groups",
         "content": {
             "application/json": {
                 "example": [{
@@ -937,34 +937,34 @@ async def sync_admin_redirect():
     },
     401: {"description": "Not authenticated"}
 })
-async def list_sync_groups(request: Request, user: User = Depends(get_current_user)):
+async def list_display_groups(request: Request, user: User = Depends(get_current_user)):
     """
-    List all active sync groups with their settings and connected browser count.
+    List all active display groups with their settings and connected browser count.
 
     Requires authentication.
 
     Returns:
-        List of sync groups with their configuration and status.
+        List of display groups with their configuration and status.
     """
-    sync_manager = get_sync_manager(request)
-    groups = await sync_manager.list_groups()
+    display_manager = get_display_manager(request)
+    groups = await display_manager.list_groups()
     return JSONResponse(content=groups)
 
 
-@router.post("/api/sync/groups", responses={
+@router.post("/api/display/groups", responses={
     201: {"description": "Sync group created successfully"},
     400: {"description": "Group already exists or invalid parameters"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"}
 })
-async def create_sync_group(
+async def create_display_group(
     request: Request,
-    body: SyncGroupCreateRequest,
+    body: DisplayGroupCreateRequest,
     user: User = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
-    Create a new sync group with the specified settings.
+    Create a new display group with the specified settings.
 
     Requires authentication.
 
@@ -974,13 +974,13 @@ async def create_sync_group(
     - Image processing: width, height, mode, eink, etc.
 
     Returns:
-        The created sync group configuration.
+        The created display group configuration.
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} creating sync group: {body.group_id}")
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} creating display group: {body.group_id}")
 
     # Build settings from request body
-    settings = SyncGroupSettings(
+    settings = DisplayGroupSettings(
         duration=body.duration,
         folders=body.folders,
         recursive=body.recursive,
@@ -1017,7 +1017,7 @@ async def create_sync_group(
     )
 
     try:
-        group = await sync_manager.create_group(body.group_id, settings)
+        group = await display_manager.create_group(body.group_id, settings)
         return JSONResponse(
             status_code=201,
             content=group.to_dict()
@@ -1026,21 +1026,21 @@ async def create_sync_group(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.patch("/api/sync/groups/{group_id}", responses={
+@router.patch("/api/display/groups/{group_id}", responses={
     200: {"description": "Sync group updated successfully"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
     404: {"description": "Group not found"}
 })
-async def update_sync_group(
+async def update_display_group(
     request: Request,
     group_id: str,
-    body: SyncGroupUpdateRequest,
+    body: DisplayGroupUpdateRequest,
     user: User = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
-    Update settings for an existing sync group.
+    Update settings for an existing display group.
 
     Requires authentication.
 
@@ -1049,10 +1049,10 @@ async def update_sync_group(
     and adjust their behavior accordingly.
 
     Returns:
-        The updated sync group configuration.
+        The updated display group configuration.
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} updating sync group: {group_id}")
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} updating display group: {group_id}")
 
     # Build updates dict from non-None fields
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -1060,27 +1060,27 @@ async def update_sync_group(
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
 
-    group = await sync_manager.update_group_settings(group_id, updates)
+    group = await display_manager.update_group_settings(group_id, updates)
     if not group:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
 
     return JSONResponse(content=group.to_dict())
 
 
-@router.delete("/api/sync/groups/{group_id}", responses={
+@router.delete("/api/display/groups/{group_id}", responses={
     200: {"description": "Sync group deleted"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
     404: {"description": "Group not found"}
 })
-async def delete_sync_group(
+async def delete_display_group(
     request: Request,
     group_id: str,
     user: User = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
-    Delete a sync group.
+    Delete a display group.
 
     Requires authentication.
 
@@ -1090,9 +1090,9 @@ async def delete_sync_group(
     Returns:
         Confirmation of deletion.
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} deleting sync group: {group_id}")
-    deleted = await sync_manager.delete_group(group_id)
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} deleting display group: {group_id}")
+    deleted = await display_manager.delete_group(group_id)
 
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
@@ -1100,51 +1100,51 @@ async def delete_sync_group(
     return JSONResponse(content={"deleted": group_id})
 
 
-@router.post("/api/sync/save-config", responses={
+@router.post("/api/display/save-config", responses={
     200: {"description": "Configuration saved"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"}
 })
-async def save_sync_config(
+async def save_display_config(
     request: Request,
     user: User = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf_token),
-    sync_manager: SyncManager = Depends(get_sync_manager)
+    display_manager: DisplayManager = Depends(get_display_manager)
 ):
     """
-    Save current sync groups configuration to file.
+    Save current display groups configuration to file.
 
-    Saves all sync groups and their settings to the TOML config file.
+    Saves all display groups and their settings to the TOML config file.
     Groups will be automatically restored on application restart.
     """
-    logger.info(f"User {user.email} saving sync config")
-    saved = sync_manager.save_config()
+    logger.info(f"User {user.email} saving display config")
+    saved = display_manager.save_config()
     return JSONResponse(content={"saved": saved, "message": f"Saved {saved} groups to config"})
 
 
 # --- Sync Group Playback Controls ---
 
-@router.post("/api/sync/groups/{group_id}/pause", responses={
+@router.post("/api/display/groups/{group_id}/pause", responses={
     200: {"description": "Group paused"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
     404: {"description": "Group not found"}
 })
-async def pause_sync_group(
+async def pause_display_group(
     request: Request,
     group_id: str,
     user: User = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
-    Pause a sync group's image cycling.
+    Pause a display group's image cycling.
 
     Requires authentication.
     Connected browsers will stay on their current image until resumed.
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} pausing sync group: {group_id}")
-    success = await sync_manager.pause_group(group_id)
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} pausing display group: {group_id}")
+    success = await display_manager.pause_group(group_id)
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
@@ -1152,26 +1152,26 @@ async def pause_sync_group(
     return JSONResponse(content={"status": "paused", "group_id": group_id})
 
 
-@router.post("/api/sync/groups/{group_id}/play", responses={
+@router.post("/api/display/groups/{group_id}/play", responses={
     200: {"description": "Group resumed"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
     404: {"description": "Group not found"}
 })
-async def play_sync_group(
+async def play_display_group(
     request: Request,
     group_id: str,
     user: User = Depends(get_current_user),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
-    Resume a sync group's image cycling.
+    Resume a display group's image cycling.
 
     Requires authentication.
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} resuming sync group: {group_id}")
-    success = await sync_manager.play_group(group_id)
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} resuming display group: {group_id}")
+    success = await display_manager.play_group(group_id)
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
@@ -1179,13 +1179,13 @@ async def play_sync_group(
     return JSONResponse(content={"status": "playing", "group_id": group_id})
 
 
-@router.post("/api/sync/groups/{group_id}/next", responses={
+@router.post("/api/display/groups/{group_id}/next", responses={
     200: {"description": "Skipped to next image"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
     404: {"description": "Group not found or no browsers connected"}
 })
-async def next_sync_group(
+async def next_display_group(
     request: Request,
     group_id: str,
     user: User = Depends(get_current_user),
@@ -1197,9 +1197,9 @@ async def next_sync_group(
     Requires authentication.
     All browsers advance to their next image.
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} skipping sync group: {group_id}")
-    success = await sync_manager.skip_group(group_id)
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} skipping display group: {group_id}")
+    success = await display_manager.skip_group(group_id)
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found or no browsers connected")
@@ -1207,13 +1207,13 @@ async def next_sync_group(
     return JSONResponse(content={"status": "skipped", "group_id": group_id})
 
 
-@router.post("/api/sync/groups/{group_id}/previous", responses={
+@router.post("/api/display/groups/{group_id}/previous", responses={
     200: {"description": "Went to previous image"},
     401: {"description": "Not authenticated"},
     403: {"description": "CSRF token invalid"},
     404: {"description": "Group not found or no history available"}
 })
-async def previous_sync_group(
+async def previous_display_group(
     request: Request,
     group_id: str,
     user: User = Depends(get_current_user),
@@ -1226,9 +1226,9 @@ async def previous_sync_group(
     Each browser goes back to its own previous image from history.
     Can be called multiple times to go further back (up to 100 images).
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} going to previous for sync group: {group_id}")
-    success = await sync_manager.previous_group(group_id)
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} going to previous for display group: {group_id}")
+    success = await display_manager.previous_group(group_id)
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found or no history available")
@@ -1236,7 +1236,7 @@ async def previous_sync_group(
     return JSONResponse(content={"status": "rewound", "group_id": group_id})
 
 
-@router.post("/api/sync/groups/{group_id}/rewind-all")
+@router.post("/api/display/groups/{group_id}/rewind-all")
 async def rewind_all_group(
     group_id: str,
     request: Request,
@@ -1250,9 +1250,9 @@ async def rewind_all_group(
     This is a bulk operation - moves instantly to the beginning of history
     without stepping through each image.
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} rewinding all for sync group: {group_id}")
-    success = await sync_manager.rewind_all_group(group_id)
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} rewinding all for display group: {group_id}")
+    success = await display_manager.rewind_all_group(group_id)
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found or no history available")
@@ -1260,7 +1260,7 @@ async def rewind_all_group(
     return JSONResponse(content={"status": "rewound_all", "group_id": group_id})
 
 
-@router.post("/api/sync/groups/{group_id}/forward-all")
+@router.post("/api/display/groups/{group_id}/forward-all")
 async def forward_all_group(
     group_id: str,
     request: Request,
@@ -1274,9 +1274,9 @@ async def forward_all_group(
     This is a bulk operation - moves instantly to the most recent image
     without stepping through each one.
     """
-    sync_manager = get_sync_manager(request)
-    logger.info(f"User {user.email} forwarding all for sync group: {group_id}")
-    success = await sync_manager.forward_all_group(group_id)
+    display_manager = get_display_manager(request)
+    logger.info(f"User {user.email} forwarding all for display group: {group_id}")
+    success = await display_manager.forward_all_group(group_id)
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found or no forward history available")
@@ -1284,7 +1284,7 @@ async def forward_all_group(
     return JSONResponse(content={"status": "forwarded_all", "group_id": group_id})
 
 
-@router.post("/api/sync/groups/{group_id}/refresh", responses={
+@router.post("/api/display/groups/{group_id}/refresh", responses={
     200: {"description": "Image list refreshed"},
     401: {"description": "Not authenticated"},
     404: {"description": "Group not found"}
@@ -1296,14 +1296,14 @@ async def refresh_group_images(
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
-    Refresh the image list for a sync group after files have changed.
+    Refresh the image list for a display group after files have changed.
 
     Requires authentication.
     Call this after adding/removing files to the group's image folders
     to update the available images without recreating the group.
     """
-    sync_manager = get_sync_manager(request)
-    count = await sync_manager.refresh_group_images(group_id)
+    display_manager = get_display_manager(request)
+    count = await display_manager.refresh_group_images(group_id)
 
     if count is None:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
@@ -1312,7 +1312,7 @@ async def refresh_group_images(
     return JSONResponse(content={"group_id": group_id, "image_count": count})
 
 
-@router.post("/api/sync/groups/{group_id}/browsers/{browser_id}/jump")
+@router.post("/api/display/groups/{group_id}/browsers/{browser_id}/jump")
 async def jump_to_image(
     group_id: str,
     browser_id: str,
@@ -1332,9 +1332,9 @@ async def jump_to_image(
     if not image_path:
         raise HTTPException(status_code=400, detail="image_path required")
 
-    sync_manager = get_sync_manager(request)
+    display_manager = get_display_manager(request)
     logger.info(f"User {user.email} jumping browser {browser_id} in group {group_id} to {image_path}")
-    success = await sync_manager.jump_to_image(group_id, browser_id, image_path)
+    success = await display_manager.jump_to_image(group_id, browser_id, image_path)
 
     if not success:
         raise HTTPException(
@@ -1345,7 +1345,7 @@ async def jump_to_image(
     return JSONResponse(content={"status": "jumped", "image_path": image_path})
 
 
-@router.post("/api/sync/groups/{group_id}/webhooks/{webhook_id}/test")
+@router.post("/api/display/groups/{group_id}/webhooks/{webhook_id}/test")
 async def test_webhook(
     group_id: str,
     webhook_id: str,
@@ -1364,8 +1364,8 @@ async def test_webhook(
     import json
     from datetime import datetime, timezone
 
-    sync_manager = get_sync_manager(request)
-    group = await sync_manager.get_group(group_id)
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
 
     if not group:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
@@ -1420,41 +1420,41 @@ async def test_webhook(
         )
 
 
-@router.get("/sync", include_in_schema=False)
-async def sync_page(
+@router.get("/display", include_in_schema=False)
+async def display_page(
     request: Request,
-    sync: str = Query(..., description="Sync group ID to join")
+    group: str = Query(..., description="Display group ID to join")
 ):
     """
-    Serve the sync display page for a browser to join a sync group.
+    Serve the display page for a browser to join a display group.
 
-    The browser connects via WebSocket to the specified sync group
+    The browser connects via WebSocket to the specified display group
     and displays images synchronized with other browsers in the group.
 
     Query Parameters:
-        sync: The group ID to join (must exist, created via admin API)
+        group: The group ID to join (must exist, created via admin API)
     """
-    sync_manager = get_sync_manager(request)
-    group = await sync_manager.get_group(sync)
+    display_manager = get_display_manager(request)
+    display_group = await display_manager.get_group(group)
 
-    if not group:
+    if not display_group:
         raise HTTPException(
             status_code=404,
-            detail=f"Sync group '{sync}' not found. Create it via /admin first."
+            detail=f"Display group '{group}' not found. Create it via /admin first."
         )
 
     # Get WebSocket URL - check X-Forwarded-Proto for reverse proxy support
     original_scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
     ws_scheme = "wss" if original_scheme == "https" else "ws"
-    ws_url = f"{ws_scheme}://{request.url.netloc}/ws/sync/{sync}"
+    ws_url = f"{ws_scheme}://{request.url.netloc}/ws/display/{group}"
 
     return templates.TemplateResponse(
-        "sync.html",
+        "display.html",
         {
             "request": request,
-            "group_id": sync,
+            "group_id": group,
             "ws_url": ws_url,
-            "settings": group.settings.to_dict()
+            "settings": display_group.settings.to_dict()
         }
     )
 
@@ -1462,7 +1462,7 @@ async def sync_page(
 @router.websocket("/ws/admin")
 async def websocket_admin(websocket: WebSocket):
     """
-    WebSocket endpoint for sync admin real-time updates.
+    WebSocket endpoint for display admin real-time updates.
 
     Protocol:
         Server -> Client:
@@ -1475,7 +1475,7 @@ async def websocket_admin(websocket: WebSocket):
         Client -> Server:
         - PONG: Response to PING
     """
-    sync_manager = websocket.app.state.sync_manager
+    display_manager = websocket.app.state.display_manager
     oidc_config = get_oidc_config()
 
     # Authentication check
@@ -1487,12 +1487,12 @@ async def websocket_admin(websocket: WebSocket):
             return
 
     await websocket.accept()
-    await sync_manager.register_admin(websocket)
+    await display_manager.register_admin(websocket)
     logger.info("Admin WebSocket connected")
 
     try:
         # Send initial state
-        groups = await sync_manager.list_groups()
+        groups = await display_manager.list_groups()
         await websocket.send_json({
             "type": "INITIAL_STATE",
             "groups": groups
@@ -1522,12 +1522,12 @@ async def websocket_admin(websocket: WebSocket):
                 break
 
     finally:
-        await sync_manager.unregister_admin(websocket)
+        await display_manager.unregister_admin(websocket)
         logger.info("Admin WebSocket disconnected")
 
 
-@router.websocket("/ws/sync/{group_id}")
-async def websocket_sync(websocket: WebSocket, group_id: str):
+@router.websocket("/ws/display/{group_id}")
+async def websocket_display(websocket: WebSocket, group_id: str):
     """
     WebSocket endpoint for synchronized image display.
 
@@ -1546,7 +1546,7 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
         - HEARTBEAT: keep-alive
         - SWITCH_COMPLETE: transition done
     """
-    sync_manager = websocket.app.state.sync_manager
+    display_manager = websocket.app.state.display_manager
     browser = None  # Track for cleanup
 
     # Origin validation (S2) - only if ALLOWED_WS_ORIGINS is configured
@@ -1558,16 +1558,16 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
             return
 
     # Set base URL from first request
-    if not sync_manager._base_url:
+    if not display_manager._base_url:
         base_url = os.environ.get('BASE_URL', '')
         if not base_url:
             scheme = "https" if websocket.url.scheme == "wss" else "http"
             host = websocket.headers.get("host", "localhost")
             base_url = f"{scheme}://{host}"
-        sync_manager.set_base_url(base_url)
+        display_manager.set_base_url(base_url)
 
     # Check if group exists BEFORE accepting (#4)
-    group = await sync_manager.get_group(group_id)
+    group = await display_manager.get_group(group_id)
     if not group:
         # Close without accepting - client receives close frame
         await websocket.close(code=4004, reason=f"Group '{group_id}' not found")
@@ -1579,7 +1579,7 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
     try:
         # Add browser to group (may fail if group deleted or limit reached)
         try:
-            browser = await sync_manager.add_browser(group_id, websocket)
+            browser = await display_manager.add_browser(group_id, websocket)
         except ValueError as e:
             # Connection limit reached (A10)
             await websocket.close(code=4008, reason=str(e))
@@ -1590,7 +1590,7 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
             return
 
         # Refresh group reference after adding browser
-        group = await sync_manager.get_group(group_id)
+        group = await display_manager.get_group(group_id)
         if not group:
             await websocket.close(code=4004, reason="Group no longer exists")
             return
@@ -1606,11 +1606,11 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
 
         # Send initial image assignment
         if browser.current_image:
-            image_url = sync_manager.build_image_url(
+            image_url = display_manager.build_image_url(
                 browser.current_image,
                 group.settings
             )
-            blur_url = sync_manager.build_blur_url(
+            blur_url = display_manager.build_blur_url(
                 browser.current_image,
                 group.settings
             )
@@ -1626,7 +1626,7 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
         while True:
             try:
                 data = await websocket.receive_json()
-                await sync_manager.handle_browser_message(
+                await display_manager.handle_browser_message(
                     group_id,
                     browser.browser_id,
                     data
@@ -1648,7 +1648,7 @@ async def websocket_sync(websocket: WebSocket, group_id: str):
         # Clean up browser state
         if browser:
             try:
-                await sync_manager.remove_browser(group_id, browser.browser_id)
+                await display_manager.remove_browser(group_id, browser.browser_id)
                 logger.info(f"Browser {browser.browser_id} disconnected from {group_id}")
             except Exception as e:
                 logger.error(f"Error during browser cleanup: {e}")

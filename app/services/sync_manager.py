@@ -1,9 +1,9 @@
 """
-Synchronization Manager for Multi-Browser Image Display
+Display Manager for Multi-Browser Image Display
 
-Manages synchronized image display across multiple browsers using WebSocket connections.
-Each browser in a sync group displays a unique image, and all browsers switch images
-at exactly the same time.
+Manages image display across multiple browsers using WebSocket connections.
+Each browser in a display group displays a unique image, with optional synchronized
+switching or on-demand image cycling.
 """
 
 import asyncio
@@ -83,8 +83,8 @@ class WebhookConfig(BaseModel):
     headers: Dict[str, str] = Field(default_factory=dict)
 
 
-class SyncGroupSettings(BaseModel):
-    """All configurable parameters for a sync group"""
+class DisplayGroupSettings(BaseModel):
+    """All configurable parameters for a display group"""
     model_config = ConfigDict(extra='ignore')  # Ignore unknown keys from old configs
 
     # Basic settings
@@ -165,12 +165,12 @@ class SyncGroupSettings(BaseModel):
         return data
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SyncGroupSettings":
+    def from_dict(cls, data: Dict[str, Any]) -> "DisplayGroupSettings":
         """Create from dictionary, handling nested eink section (alias for from_config_dict)"""
         return cls.from_config_dict(data)
 
     @classmethod
-    def from_config_dict(cls, data: Dict[str, Any]) -> "SyncGroupSettings":
+    def from_config_dict(cls, data: Dict[str, Any]) -> "DisplayGroupSettings":
         """Create from YAML config dict, handling nested eink section."""
         data = data.copy()
         if 'eink' in data and isinstance(data['eink'], dict):
@@ -203,7 +203,7 @@ def _next_cron_time(duration: int) -> datetime:
 
 @dataclass
 class BrowserState:
-    """State of a connected browser in a sync group"""
+    """State of a connected browser in a display group"""
     browser_id: str
     websocket: WebSocket
     current_image: Optional[str] = None
@@ -221,7 +221,7 @@ class ImagePool:
     and no repeats until all images have been shown.
     """
 
-    def __init__(self, image_service: ImageService, settings: SyncGroupSettings):
+    def __init__(self, image_service: ImageService, settings: DisplayGroupSettings):
         self.image_service = image_service
         self.settings = settings
         self._all_images: List[Path] = []
@@ -275,7 +275,7 @@ class ImagePool:
 
         If all images have been shown, resets the cycle.
 
-        IMPORTANT: Caller must hold the ImagePool._lock or SyncGroup._lock
+        IMPORTANT: Caller must hold the ImagePool._lock or DisplayGroup._lock
         to ensure atomic assignment and prevent duplicate images (#1).
         """
         # Handle empty image pool (#28)
@@ -333,7 +333,7 @@ class ImagePool:
         """Get the currently assigned image for a browser"""
         return self._assigned_images.get(browser_id)
 
-    def update_settings(self, settings: SyncGroupSettings) -> None:
+    def update_settings(self, settings: DisplayGroupSettings) -> None:
         """Update settings and refresh image list if folders changed"""
         old_folders = self.settings.folders
         old_recursive = self.settings.recursive
@@ -353,10 +353,10 @@ class ImagePool:
 
 
 @dataclass
-class SyncGroup:
+class DisplayGroup:
     """A synchronized group of browsers displaying images"""
     group_id: str
-    settings: SyncGroupSettings
+    settings: DisplayGroupSettings
     image_pool: ImagePool
     browsers: Dict[str, BrowserState] = field(default_factory=dict)
     created_at: datetime = field(default_factory=_utc_now)
@@ -395,28 +395,28 @@ class SyncGroup:
         }
 
 
-class SyncManager:
+class DisplayManager:
     """
-    Manages all sync groups and coordinates browser synchronization.
+    Manages all display groups and coordinates browser synchronization.
     """
 
     def __init__(self, image_service: ImageService, config_path: Optional[Path] = None):
         self.image_service = image_service
-        self.groups: Dict[str, SyncGroup] = {}
+        self.groups: Dict[str, DisplayGroup] = {}
         self._lock = asyncio.Lock()
         self._base_url: str = ""
         # Admin WebSocket connections for real-time updates
         self.admin_connections: Set[WebSocket] = set()
         self._admin_lock = asyncio.Lock()
         # Config file path for persistence
-        self.config_path = config_path or Path("config/sync_groups.yaml")
+        self.config_path = config_path or Path("config/display_groups.yaml")
 
     def set_base_url(self, base_url: str) -> None:
         """Set the base URL for image URLs"""
         self._base_url = base_url.rstrip("/")
 
     async def load_config(self) -> int:
-        """Load sync groups from YAML config file.
+        """Load display groups from YAML config file.
 
         Returns the number of groups loaded.
         """
@@ -431,9 +431,9 @@ class SyncManager:
         loaded = 0
         for group_id, settings_dict in config.get("groups", {}).items():
             try:
-                settings = SyncGroupSettings.from_dict(settings_dict)
+                settings = DisplayGroupSettings.from_dict(settings_dict)
                 await self.create_group(group_id, settings)
-                logger.info(f"Loaded sync group from config: {group_id}")
+                logger.info(f"Loaded display group from config: {group_id}")
                 loaded += 1
             except Exception as e:
                 logger.warning(f"Failed to load group '{group_id}' from config: {e}")
@@ -441,7 +441,7 @@ class SyncManager:
         return loaded
 
     def save_config(self) -> int:
-        """Save current sync groups to YAML config file.
+        """Save current display groups to YAML config file.
 
         Returns the number of groups saved.
         """
@@ -458,7 +458,7 @@ class SyncManager:
         with open(self.config_path, "w") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
-        logger.info(f"Saved {len(self.groups)} sync groups to config: {self.config_path}")
+        logger.info(f"Saved {len(self.groups)} display groups to config: {self.config_path}")
         return len(self.groups)
 
     async def register_admin(self, websocket: WebSocket) -> None:
@@ -495,7 +495,7 @@ class SyncManager:
 
     async def _trigger_webhooks(
         self,
-        group: SyncGroup,
+        group: DisplayGroup,
         trigger: WebhookTrigger,
         extra_data: Optional[Dict[str, Any]] = None
     ) -> None:
@@ -581,7 +581,7 @@ class SyncManager:
             except Exception as e:
                 logger.error(f"Error preparing webhook {webhook.id}: {e}")
 
-    def _start_webhook_interval_tasks(self, group: SyncGroup) -> None:
+    def _start_webhook_interval_tasks(self, group: DisplayGroup) -> None:
         """Start interval-based webhook tasks for a group."""
         # Cancel existing interval tasks
         for task in group._webhook_interval_tasks.values():
@@ -607,7 +607,7 @@ class SyncManager:
 
     async def _run_webhook_interval(
         self,
-        group: SyncGroup,
+        group: DisplayGroup,
         webhook: WebhookConfig
     ) -> None:
         """Run a webhook on a fixed interval."""
@@ -635,9 +635,9 @@ class SyncManager:
     async def create_group(
         self,
         group_id: str,
-        settings: Optional[SyncGroupSettings] = None
-    ) -> SyncGroup:
-        """Create a new sync group"""
+        settings: Optional[DisplayGroupSettings] = None
+    ) -> DisplayGroup:
+        """Create a new display group"""
         async with self._lock:
             if group_id in self.groups:
                 raise ValueError(f"Group '{group_id}' already exists")
@@ -647,17 +647,17 @@ class SyncManager:
                 raise ValueError(f"Maximum number of groups ({MAX_GROUPS}) reached")
 
             if settings is None:
-                settings = SyncGroupSettings()
+                settings = DisplayGroupSettings()
 
             image_pool = ImagePool(self.image_service, settings)
-            group = SyncGroup(
+            group = DisplayGroup(
                 group_id=group_id,
                 settings=settings,
                 image_pool=image_pool
             )
             self.groups[group_id] = group
             metrics.record_group_created()  # A6
-            logger.info(f"Created sync group: {group_id}")
+            logger.info(f"Created display group: {group_id}")
 
         # Notify admin clients (outside lock to avoid deadlock)
         await self._notify_admins({
@@ -670,12 +670,12 @@ class SyncManager:
 
         return group
 
-    async def get_group(self, group_id: str) -> Optional[SyncGroup]:
-        """Get a sync group by ID"""
+    async def get_group(self, group_id: str) -> Optional[DisplayGroup]:
+        """Get a display group by ID"""
         return self.groups.get(group_id)
 
     async def delete_group(self, group_id: str) -> bool:
-        """Delete a sync group and disconnect all browsers"""
+        """Delete a display group and disconnect all browsers"""
         async with self._lock:
             group = self.groups.get(group_id)
             if not group:
@@ -703,7 +703,7 @@ class SyncManager:
 
             del self.groups[group_id]
             metrics.record_group_deleted()  # A6
-            logger.info(f"Deleted sync group: {group_id}")
+            logger.info(f"Deleted display group: {group_id}")
 
         # Notify admin clients (outside lock to avoid deadlock)
         await self._notify_admins({
@@ -716,8 +716,8 @@ class SyncManager:
         self,
         group_id: str,
         updates: Dict[str, Any]
-    ) -> Optional[SyncGroup]:
-        """Update settings for a sync group and notify all browsers.
+    ) -> Optional[DisplayGroup]:
+        """Update settings for a display group and notify all browsers.
 
         Cancels and restarts the cycle task to apply new settings immediately.
         Uses 3-phase approach to avoid deadlock with _broadcast_to_group.
@@ -730,7 +730,7 @@ class SyncManager:
         async with group._lock:
             current_dict = group.settings.to_dict()
             current_dict.update(updates)
-            group.settings = SyncGroupSettings.from_dict(current_dict)
+            group.settings = DisplayGroupSettings.from_dict(current_dict)
             group.image_pool.update_settings(group.settings)
 
             # Cancel existing cycle task to pick up new settings
@@ -779,11 +779,11 @@ class SyncManager:
         return group
 
     async def list_groups(self) -> List[Dict[str, Any]]:
-        """List all active sync groups"""
+        """List all active display groups"""
         return [group.to_dict() for group in self.groups.values()]
 
     async def refresh_group_images(self, group_id: str) -> Optional[int]:
-        """Refresh image list for a sync group. Returns image count or None if group not found."""
+        """Refresh image list for a display group. Returns image count or None if group not found."""
         group = self.groups.get(group_id)
         if not group:
             return None
@@ -816,7 +816,7 @@ class SyncManager:
         websocket: WebSocket
     ) -> Optional[BrowserState]:
         """
-        Add a browser to a sync group.
+        Add a browser to a display group.
 
         Returns None if group doesn't exist.
         Raises ValueError if browser limit is reached (A10).
@@ -872,7 +872,7 @@ class SyncManager:
         return browser
 
     async def remove_browser(self, group_id: str, browser_id: str) -> None:
-        """Remove a browser from a sync group"""
+        """Remove a browser from a display group"""
         group = self.groups.get(group_id)
         if not group:
             return
@@ -959,7 +959,7 @@ class SyncManager:
                 "group": group.to_dict()
             })
 
-    def build_image_url(self, image_path: str, settings: SyncGroupSettings) -> str:
+    def build_image_url(self, image_path: str, settings: DisplayGroupSettings) -> str:
         """Build a full image URL with processing parameters"""
         params = []
 
@@ -992,7 +992,7 @@ class SyncManager:
             url += "?" + "&".join(params)
         return url
 
-    def build_blur_url(self, image_path: str, settings: SyncGroupSettings) -> Optional[str]:
+    def build_blur_url(self, image_path: str, settings: DisplayGroupSettings) -> Optional[str]:
         """Generate blur data URL for image if blur is enabled.
 
         Returns a base64 data URL of the blurred image, or None if blur is disabled
@@ -1032,7 +1032,7 @@ class SyncManager:
 
     async def _broadcast_to_group(
         self,
-        group: SyncGroup,
+        group: DisplayGroup,
         message: Dict[str, Any]
     ) -> None:
         """Send a message to all browsers in a group (A2 - parallel sends)."""
@@ -1064,7 +1064,7 @@ class SyncManager:
         for browser_id in disconnected:
             await self.remove_browser(group.group_id, browser_id)
 
-    async def _run_cycle_loop(self, group: SyncGroup) -> None:
+    async def _run_cycle_loop(self, group: DisplayGroup) -> None:
         """Main loop that coordinates image cycling for a group with cron-aligned timing.
 
         Images switch at clock-aligned boundaries (like cron):
@@ -1572,7 +1572,7 @@ class SyncManager:
 
         return True
 
-    async def _advance_browsers(self, group: SyncGroup) -> None:
+    async def _advance_browsers(self, group: DisplayGroup) -> None:
         """Immediately advance all browsers to next image."""
         settings = group.settings
         browsers_to_assign = []
@@ -1616,7 +1616,7 @@ class SyncManager:
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
 
-    async def _forward_browsers(self, group: SyncGroup) -> None:
+    async def _forward_browsers(self, group: DisplayGroup) -> None:
         """Move forward through forward_history (replay previously seen images)."""
         settings = group.settings
         browsers_to_assign = []
@@ -1657,7 +1657,7 @@ class SyncManager:
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
 
-    async def _rewind_browsers(self, group: SyncGroup) -> None:
+    async def _rewind_browsers(self, group: DisplayGroup) -> None:
         """Rewind each browser to its own previous image."""
         settings = group.settings
 

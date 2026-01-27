@@ -913,9 +913,9 @@
 
         <!-- Tab Navigation -->
         <nav class="tab-nav">
-            <button class="tab-btn active" data-tab="sync" onclick="switchTab('sync')">Sync Groups</button>
+            <button class="tab-btn active" data-tab="display" onclick="switchTab('display')">Display Groups</button>
             <button class="tab-btn" data-tab="immich" onclick="switchTab('immich')">Immich</button>
-            <div class="tab-actions" id="syncTabActions">
+            <div class="tab-actions" id="displayTabActions">
                 <button class="btn btn-secondary" onclick="saveConfig()" id="saveConfigBtn">Save Config</button>
                 <button class="btn btn-primary" onclick="openPanel('create')">+ Create Group</button>
             </div>
@@ -925,8 +925,8 @@
             </div>
         </nav>
 
-        <!-- Sync Groups Tab -->
-        <main class="main tab-content" id="tab-sync">
+        <!-- Display Groups Tab -->
+        <main class="main tab-content" id="tab-display">
             <div id="message"></div>
 
             <div class="section-header">
@@ -971,7 +971,7 @@
                                placeholder="e.g., living-room"
                                pattern="[a-zA-Z0-9_\-]+"
                                title="Letters, numbers, dashes, underscores only">
-                        <small>Used in the sync URL</small>
+                        <small>Used in the display URL</small>
                     </div>
 
                     <!-- Basic Settings -->
@@ -1504,14 +1504,14 @@
         </div>
 
         <script type="text/javascript">
-            const API_BASE = '/api/sync/groups';
+            const API_BASE = '/api/display/groups';
             const CSRF_TOKEN = '{{ csrf_token }}';
             let editingGroupId = null;
             let groupSettingsCache = {};
             let currentWebhooks = [];  // Webhooks being edited in the form
             let folderTreeData = null;
             let selectedFolders = new Set();
-            let folderBrowserMode = 'multi';  // 'multi' for sync groups, 'single' for immich
+            let folderBrowserMode = 'multi';  // 'multi' for display groups, 'single' for immich
             let folderBrowserTarget = null;   // input element to populate
 
             // Countdown timer management
@@ -2122,7 +2122,7 @@
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">&#128247;</div>
-                            <p>No sync groups yet</p>
+                            <p>No display groups yet</p>
                             <button class="btn btn-primary" onclick="openPanel('create')">Create your first group</button>
                         </div>
                     `;
@@ -2136,7 +2136,7 @@
                 container.innerHTML = groups.map(group => {
                     const s = group.settings;
                     const groupIdSafe = escapeHtml(group.group_id);
-                    const syncUrl = window.location.origin + '/sync?sync=' + encodeURIComponent(group.group_id);
+                    const displayUrl = window.location.origin + '/display?group=' + encodeURIComponent(group.group_id);
                     const isPaused = group.paused;
 
                     // Build summary line
@@ -2232,7 +2232,7 @@
                             ${browserHistoryHtml}
                             <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                             <div class="group-actions">
-                                <a href="${syncUrl}" target="_blank" class="btn btn-link">Open Display</a>
+                                <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
                                 <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
                                 <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
                             </div>
@@ -2332,7 +2332,7 @@
                 btn.disabled = true;
 
                 try {
-                    const response = await fetch('/api/sync/save-config', {
+                    const response = await fetch('/api/display/save-config', {
                         method: 'POST',
                         headers: {
                             'X-CSRF-Token': CSRF_TOKEN
@@ -2652,7 +2652,7 @@
                     container.innerHTML = `
                         <div class="empty-state">
                             <div class="empty-state-icon">&#128247;</div>
-                            <p>No sync groups yet</p>
+                            <p>No display groups yet</p>
                             <button class="btn btn-primary" onclick="openPanel('create')">Create your first group</button>
                         </div>
                     `;
@@ -2904,7 +2904,7 @@
             function buildGroupCardHtml(group) {
                 const s = group.settings;
                 const groupIdSafe = escapeHtml(group.group_id);
-                const syncUrl = window.location.origin + '/sync?sync=' + encodeURIComponent(group.group_id);
+                const displayUrl = window.location.origin + '/display?group=' + encodeURIComponent(group.group_id);
                 const isPaused = group.paused;
 
                 // Build summary line
@@ -2988,7 +2988,7 @@
                         ${browserHistoryHtml}
                         <div class="group-summary">${summaryParts.join(' &bull; ')}</div>
                         <div class="group-actions">
-                            <a href="${syncUrl}" target="_blank" class="btn btn-link">Open Display</a>
+                            <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
                             <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
                             <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
                         </div>
@@ -3041,7 +3041,7 @@
             // Tab Switching
             // =================================================================
 
-            let currentTab = 'sync';
+            let currentTab = 'display';
             let immichPullsLoaded = false;
 
             function switchTab(tab) {
@@ -3058,7 +3058,7 @@
                 });
 
                 // Update tab actions
-                document.getElementById('syncTabActions').classList.toggle('hidden', tab !== 'sync');
+                document.getElementById('displayTabActions').classList.toggle('hidden', tab !== 'display');
                 document.getElementById('immichTabActions').classList.toggle('hidden', tab !== 'immich');
 
                 // Load Immich pulls on first switch

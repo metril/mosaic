@@ -22,7 +22,7 @@ from pathlib import Path
 from app.api.routes import router, image_service
 from app.auth.routes import router as auth_router
 from app.auth.oidc import get_oidc_config
-from app.services.sync_manager import SyncManager
+from app.services.sync_manager import DisplayManager
 from app.services.immich_provider import ImmichProvider
 from app.services.homeassistant_provider import HomeAssistantProvider, HomeAssistantConfig
 from app.services.file_watcher import ImageFileWatcher
@@ -60,7 +60,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 
 
-async def periodic_cleanup(sync_manager: SyncManager, interval: int = 30):
+async def periodic_cleanup(display_manager: DisplayManager, interval: int = 30):
     """Periodically clean up stale browser connections with resilience (#27)."""
     consecutive_failures = 0
     max_failures = 5
@@ -69,7 +69,7 @@ async def periodic_cleanup(sync_manager: SyncManager, interval: int = 30):
     while True:
         await asyncio.sleep(backoff_delay)
         try:
-            await sync_manager.cleanup_stale_browsers(timeout_seconds=60)
+            await display_manager.cleanup_stale_browsers(timeout_seconds=60)
             # Reset on success
             consecutive_failures = 0
             backoff_delay = interval
@@ -105,14 +105,21 @@ async def lifespan(app: FastAPI):
         base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
         logger.info(f"Base URL: {base_url}")
 
-        # Initialize SyncManager for synchronized multi-browser display
-        app.state.sync_manager = SyncManager(image_service)
-        logger.info("SyncManager initialized")
+        # Initialize DisplayManager for synchronized multi-browser display
+        app.state.display_manager = DisplayManager(image_service)
+        logger.info("DisplayManager initialized")
 
-        # Load sync groups from config file
-        loaded_groups = await app.state.sync_manager.load_config()
+        # Migrate old config file name if it exists
+        old_config = Path("config/sync_groups.yaml")
+        new_config = Path("config/display_groups.yaml")
+        if old_config.exists() and not new_config.exists():
+            old_config.rename(new_config)
+            logger.info("Migrated config/sync_groups.yaml to config/display_groups.yaml")
+
+        # Load display groups from config file
+        loaded_groups = await app.state.display_manager.load_config()
         if loaded_groups > 0:
-            logger.info(f"Loaded {loaded_groups} sync groups from config")
+            logger.info(f"Loaded {loaded_groups} display groups from config")
 
         # Initialize Immich provider for pulling images from Immich servers
         app.state.immich_provider = ImmichProvider(image_service.image_dir)
@@ -123,12 +130,12 @@ async def lifespan(app: FastAPI):
         # Set up file watcher for image directory changes
         # This handles both external file changes AND Immich pull completions
         async def on_folder_changed(folder: str) -> None:
-            """Handle file system changes by refreshing affected sync groups."""
+            """Handle file system changes by refreshing affected display groups."""
             try:
                 # Convert absolute path to relative for matching
                 folder_path = Path(folder)
                 relative = folder_path.relative_to(image_service.image_dir)
-                refreshed = await app.state.sync_manager.refresh_groups_by_folder(str(relative))
+                refreshed = await app.state.display_manager.refresh_groups_by_folder(str(relative))
                 if refreshed:
                     logger.info(
                         f"Folder changed '{relative}', "
@@ -158,7 +165,7 @@ async def lifespan(app: FastAPI):
             logger.debug("Home Assistant not configured (HOMEASSISTANT_URL/TOKEN not set)")
 
         # Start cleanup task for stale browser connections
-        cleanup_task = asyncio.create_task(periodic_cleanup(app.state.sync_manager))
+        cleanup_task = asyncio.create_task(periodic_cleanup(app.state.display_manager))
         logger.info("Cleanup task started")
 
         logger.info("=" * 60)
