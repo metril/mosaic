@@ -2712,9 +2712,10 @@
                         </div>
                     `;
 
-                    // Countdown display on its own row (only shown if not paused and not on-demand)
-                    const countdownHtml = (isPaused || isOnDemand) ? '' :
-                        `<div class="countdown-row" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
+                    // Countdown display on its own row (visibility:hidden for paused/on-demand to preserve layout)
+                    const countdownHtml = (isPaused || isOnDemand)
+                        ? `<div class="countdown-row" style="visibility: hidden;">&nbsp;</div>`
+                        : `<div class="countdown-row" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
 
                     return `
                         <div class="group-card${group.error ? ' has-error' : ''}">
@@ -3649,22 +3650,39 @@
                             return;
                         }
 
-                        if (strip && ep.current_image) {
-                            // Update or replace the current image thumbnail
+                        if (strip) {
+                            // Rebuild entire history strip with full history data
                             const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
-                            const existingThumb = strip.querySelector('.thumb.current');
-                            if (existingThumb) {
-                                const existingPath = existingThumb.dataset.imagePath;
-                                if (existingPath !== ep.current_image) {
-                                    existingThumb.src = `/api/image/${encodePath(ep.current_image)}?width=260&height=173`;
-                                    existingThumb.dataset.imagePath = ep.current_image;
-                                }
-                            } else if (ep.current_image) {
-                                // No current thumb, create one
-                                strip.innerHTML = `<img src="/api/image/${encodePath(ep.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${escapeHtml(epBrowserId)}" data-image-path="${escapeHtml(ep.current_image)}" alt="Current" loading="lazy">`;
+                            const currentImage = ep.current_image;
+                            const imageHistory = ep.image_history || [];
+                            const forwardHistory = ep.forward_history || [];
+
+                            let thumbsHtml = '';
+
+                            // Past images
+                            if (imageHistory.length > 0) {
+                                thumbsHtml += imageHistory.map(img =>
+                                    `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${escapeHtml(epBrowserId)}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy">`
+                                ).join('');
                             }
-                            // Scroll to show the current image
-                            setTimeout(() => scrollToCurrentImage(strip), 50);
+
+                            // Current image
+                            if (currentImage) {
+                                thumbsHtml += `<img src="/api/image/${encodePath(currentImage)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${escapeHtml(epBrowserId)}" data-image-path="${escapeHtml(currentImage)}" alt="Current" loading="lazy">`;
+                            }
+
+                            // Forward images
+                            if (forwardHistory.length > 0) {
+                                thumbsHtml += forwardHistory.map(img =>
+                                    `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${escapeHtml(epBrowserId)}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
+                                ).join('');
+                            }
+
+                            if (thumbsHtml) {
+                                strip.innerHTML = thumbsHtml;
+                                // Scroll to show the current image
+                                setTimeout(() => scrollToCurrentImage(strip), 50);
+                            }
                         }
                     });
                 }
@@ -3750,12 +3768,12 @@
                         updateGroupCard(group, savedStates);
                         return;
                     }
-                    countdownEl.style.display = '';
+                    countdownEl.style.visibility = '';
                     startCountdown(group.group_id, group.next_switch_at);
                 } else {
                     stopCountdown(group.group_id);
                     if (countdownEl) {
-                        countdownEl.style.display = 'none';
+                        countdownEl.style.visibility = 'hidden';
                     }
                 }
                 } catch (e) {
@@ -4003,9 +4021,10 @@
                     </div>
                 `;
 
-                // Countdown display on its own row (only shown if not paused and not on-demand)
-                const countdownHtml = (isPaused || isOnDemand) ? '' :
-                    `<div class="countdown-row" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
+                // Countdown display on its own row (visibility:hidden for paused/on-demand to preserve layout)
+                const countdownHtml = (isPaused || isOnDemand)
+                    ? `<div class="countdown-row" style="visibility: hidden;">&nbsp;</div>`
+                    : `<div class="countdown-row" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
 
                 return `
                     <div class="group-card">
