@@ -983,6 +983,11 @@
                                 <input type="number" id="duration" name="duration" value="30" min="5" max="3600">
                                 <small>Time between image switches</small>
                             </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="auto_cycle" name="auto_cycle" checked>
+                                <label for="auto_cycle">Auto-cycle images</label>
+                                <small>When disabled, images only change on manual request</small>
+                            </div>
                             <div class="form-row">
                                 <label for="folders">Folders</label>
                                 <div class="input-with-button">
@@ -1623,6 +1628,7 @@
                 const form = document.getElementById('groupForm');
                 form.reset();
                 document.getElementById('duration').value = 30;
+                document.getElementById('auto_cycle').checked = true;
                 document.getElementById('pad_color').value = 'black';
                 document.getElementById('saturation').value = 2.5;
                 document.getElementById('contrast').value = 1.2;
@@ -1669,6 +1675,7 @@
             function populateForm(settings) {
                 if (!settings) return;
                 document.getElementById('duration').value = settings.duration || 30;
+                document.getElementById('auto_cycle').checked = settings.auto_cycle ?? true;
                 document.getElementById('folders').value = settings.folders || '';
                 document.getElementById('recursive').checked = settings.recursive || false;
                 document.getElementById('width').value = settings.width || '';
@@ -1729,6 +1736,7 @@
 
                 const duration = parseInt(form.duration.value);
                 if (!isNaN(duration)) data.duration = duration;
+                data.auto_cycle = form.auto_cycle.checked;
 
                 const folders = form.folders.value.trim();
                 data.folders = folders || null;
@@ -2155,7 +2163,8 @@
                     if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
 
                     // Status indicator
-                    const statusText = isPaused ? ' (Paused)' : '';
+                    const isOnDemand = s.auto_cycle === false;
+                    const statusText = isPaused ? ' (Paused)' : (isOnDemand ? ' (On-demand)' : '');
 
                     // Error indicator
                     const errorHtml = group.error
@@ -2727,10 +2736,11 @@
                     meta.innerHTML = `${group.browser_count} browser${group.browser_count !== 1 ? 's' : ''} connected &bull; Cycle ${group.current_cycle}`;
                 }
 
-                // 2. Update group name (for pause status)
+                // 2. Update group name (for pause/on-demand status)
                 const groupName = card.querySelector('.group-name');
                 if (groupName) {
-                    const statusText = group.paused ? ' (Paused)' : '';
+                    const isOnDemand = group.settings?.auto_cycle === false;
+                    const statusText = group.paused ? ' (Paused)' : (isOnDemand ? ' (On-demand)' : '');
                     groupName.textContent = group.group_id + statusText;
                 }
 
@@ -2923,7 +2933,8 @@
                 if (s.folders) summaryParts.push('📁 ' + escapeHtml(s.folders));
 
                 // Status indicator
-                const statusText = isPaused ? ' (Paused)' : '';
+                const isOnDemand = s.auto_cycle === false;
+                const statusText = isPaused ? ' (Paused)' : (isOnDemand ? ' (On-demand)' : '');
 
                 // Build history strip for each browser
                 const browserHistoryHtml = group.browsers.map(browser => {

@@ -89,6 +89,7 @@ class DisplayGroupSettings(BaseModel):
 
     # Basic settings
     duration: int = Field(default=30, ge=5, le=3600)
+    auto_cycle: bool = True  # When False, images only change on manual request
     folders: Optional[str] = None
     recursive: bool = False
     width: Optional[int] = Field(default=None, ge=1)
@@ -749,9 +750,9 @@ class DisplayManager:
         }
         await self._broadcast_to_group(group, message)
 
-        # Phase 3: Restart cycle under lock
+        # Phase 3: Restart cycle under lock (only if auto_cycle enabled)
         async with group._lock:
-            if not group.paused and group.browsers:
+            if not group.paused and group.settings.auto_cycle and group.browsers:
                 group._cycle_task = asyncio.create_task(
                     self._run_cycle_loop(group)
                 )
@@ -847,10 +848,11 @@ class DisplayManager:
                 if image_path:
                     browser.current_image = image_path
 
-                # Start cycle task if needed (#2, #11) and not paused
+                # Start cycle task if needed (#2, #11), not paused, and auto_cycle enabled
                 # Check both: first browser OR crashed task
                 should_start_task = (
                     not group.paused and
+                    group.settings.auto_cycle and
                     (len(group.browsers) == 1 or
                      (group._cycle_task is not None and group._cycle_task.done()))
                 )
@@ -1225,8 +1227,8 @@ class DisplayManager:
                 return True  # Already playing
 
             group.paused = False
-            # Restart the cycle task if there are browsers
-            if len(group.browsers) > 0:
+            # Restart the cycle task if there are browsers and auto_cycle is enabled
+            if len(group.browsers) > 0 and group.settings.auto_cycle:
                 group._cycle_task = asyncio.create_task(
                     self._run_cycle_loop(group)
                 )
@@ -1271,8 +1273,8 @@ class DisplayManager:
             await self._advance_browsers(group)
 
         async with group._lock:
-            # Restart cycle task if not paused
-            if not group.paused and group.browsers:
+            # Restart cycle task if not paused and auto_cycle enabled
+            if not group.paused and group.settings.auto_cycle and group.browsers:
                 group._cycle_task = asyncio.create_task(
                     self._run_cycle_loop(group)
                 )
@@ -1321,8 +1323,8 @@ class DisplayManager:
         await self._rewind_browsers(group)
 
         async with group._lock:
-            # Restart cycle task if not paused
-            if not group.paused and group.browsers:
+            # Restart cycle task if not paused and auto_cycle enabled
+            if not group.paused and group.settings.auto_cycle and group.browsers:
                 group._cycle_task = asyncio.create_task(
                     self._run_cycle_loop(group)
                 )
@@ -1390,9 +1392,9 @@ class DisplayManager:
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
 
-        # Restart cycle if not paused
+        # Restart cycle if not paused and auto_cycle enabled
         async with group._lock:
-            if not group.paused and group.browsers:
+            if not group.paused and group.settings.auto_cycle and group.browsers:
                 group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
 
         logger.info(f"Group {group_id} rewound to first image")
@@ -1462,9 +1464,9 @@ class DisplayManager:
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
 
-        # Restart cycle if not paused
+        # Restart cycle if not paused and auto_cycle enabled
         async with group._lock:
-            if not group.paused and group.browsers:
+            if not group.paused and group.settings.auto_cycle and group.browsers:
                 group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
 
         logger.info(f"Group {group_id} forwarded to most recent image")
@@ -1555,9 +1557,9 @@ class DisplayManager:
             logger.warning(f"Failed to send jump assign to {browser_id}: {e}")
             return False
 
-        # Restart cycle if not paused
+        # Restart cycle if not paused and auto_cycle enabled
         async with group._lock:
-            if not group.paused and group.browsers:
+            if not group.paused and group.settings.auto_cycle and group.browsers:
                 group._cycle_task = asyncio.create_task(
                     self._run_cycle_loop(group)
                 )

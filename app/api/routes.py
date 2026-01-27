@@ -758,6 +758,7 @@ class DisplayGroupCreateRequest(BaseModel):
         description="Unique identifier for the group (alphanumeric, dash, underscore)"
     )
     duration: int = Field(30, ge=5, le=3600, description="Cycle duration in seconds (5-3600)")
+    auto_cycle: bool = Field(True, description="Automatic image cycling (False = on-demand mode)")
     # Limit length to prevent DoS (#9)
     folders: Optional[str] = Field(
         None,
@@ -816,6 +817,7 @@ class DisplayGroupCreateRequest(BaseModel):
 class DisplayGroupUpdateRequest(BaseModel):
     """Request body for updating a display group (all fields optional)"""
     duration: Optional[int] = Field(None, ge=5, le=3600, description="Cycle duration in seconds")
+    auto_cycle: Optional[bool] = Field(None, description="Automatic image cycling (False = on-demand mode)")
     # Limit length to prevent DoS (#9)
     folders: Optional[str] = Field(
         None,
@@ -982,6 +984,7 @@ async def create_display_group(
     # Build settings from request body
     settings = DisplayGroupSettings(
         duration=body.duration,
+        auto_cycle=body.auto_cycle,
         folders=body.folders,
         recursive=body.recursive,
         width=body.width,
