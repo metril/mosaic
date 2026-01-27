@@ -199,6 +199,16 @@
                 background: #e94560;
                 color: white;
             }
+            .btn-danger.confirming {
+                background: #ff1744;
+                color: white;
+                border-color: #ff1744;
+                animation: pulse-confirm 0.5s ease-in-out infinite alternate;
+            }
+            @keyframes pulse-confirm {
+                from { opacity: 0.85; }
+                to { opacity: 1; }
+            }
             .btn-link {
                 background: none;
                 color: #4caf50;
@@ -2569,7 +2579,7 @@
                     openPanel('edit', groupId);
                 } else if (deleteBtn) {
                     const groupId = deleteBtn.dataset.groupId;
-                    deleteGroup(groupId);
+                    deleteGroup(groupId, deleteBtn);
                 } else if (thumb && !thumb.classList.contains('current')) {
                     // Thumbnail click - jump to that image (not for current image)
                     // Extract data synchronously before any await - this captures the
@@ -2683,29 +2693,49 @@
                 }
             }
 
-            // Delete group
-            async function deleteGroup(groupId) {
-                if (!confirm('Delete "' + groupId + '"?\n\nAll connected browsers will be disconnected.')) {
-                    return;
-                }
+            // Delete group with inline confirmation (no browser popup)
+            async function deleteGroup(groupId, button) {
+                // Check if already in confirm mode
+                if (button.dataset.confirming === 'true') {
+                    // Actually delete
+                    button.disabled = true;
+                    button.textContent = 'Deleting...';
 
-                try {
-                    const response = await fetch(API_BASE + '/' + groupId, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-CSRF-Token': CSRF_TOKEN
+                    try {
+                        const response = await fetch(API_BASE + '/' + groupId, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-CSRF-Token': CSRF_TOKEN
+                            }
+                        });
+
+                        if (response.ok) {
+                            showMessage('Group deleted', 'success');
+                            loadGroups();
+                        } else {
+                            const err = await response.json();
+                            showMessage(err.detail || 'Failed to delete', 'error');
+                            button.disabled = false;
+                            resetDeleteButton(button);
                         }
-                    });
-
-                    if (response.ok) {
-                        showMessage('Group deleted', 'success');
-                        loadGroups();
-                    } else {
-                        const err = await response.json();
-                        showMessage(err.detail || 'Failed to delete', 'error');
+                    } catch (e) {
+                        showMessage('Delete failed: ' + e.message, 'error');
+                        button.disabled = false;
+                        resetDeleteButton(button);
                     }
-                } catch (e) {
-                    showMessage('Delete failed: ' + e.message, 'error');
+                } else {
+                    // Enter confirm mode
+                    button.dataset.confirming = 'true';
+                    button.dataset.originalText = button.textContent;
+                    button.textContent = 'Confirm?';
+                    button.classList.add('confirming');
+
+                    // Auto-reset after 3 seconds
+                    setTimeout(() => {
+                        if (button.dataset.confirming === 'true') {
+                            resetDeleteButton(button);
+                        }
+                    }, 3000);
                 }
             }
 
@@ -2893,7 +2923,7 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-Token': csrfToken
+                            'X-CSRF-Token': CSRF_TOKEN
                         },
                         body: JSON.stringify({
                             endpoint_id: endpointId,
@@ -2936,30 +2966,27 @@
                         </div>
                         <div style="display: flex; gap: 6px;">
                             ${!ep.is_persistent ? `<button type="button" class="btn btn-secondary btn-small"
-                                    onclick="promoteEndpointFromPanel('${escapeHtml(groupId)}', '${escapeHtml(ep.endpoint_id)}')">Make Persistent</button>` : ''}
+                                    onclick="promoteEndpointFromPanel('${escapeHtml(groupId)}', '${escapeHtml(ep.endpoint_id)}', this)">Make Persistent</button>` : ''}
                             <button type="button" class="btn btn-danger btn-small"
-                                    onclick="deleteEndpointFromPanel('${escapeHtml(groupId)}', '${escapeHtml(ep.endpoint_id)}')">Delete</button>
+                                    onclick="deleteEndpointFromPanel('${escapeHtml(groupId)}', '${escapeHtml(ep.endpoint_id)}', this)">Delete</button>
                         </div>
                     </div>
                 `).join('');
             }
 
-            // Promote endpoint from the Edit panel
-            async function promoteEndpointFromPanel(groupId, endpointId) {
-                const name = prompt('Enter a name for this endpoint (optional):', '');
-                if (name === null) return; // User cancelled
+            // Promote endpoint from the Edit panel (no popup - just promote directly)
+            async function promoteEndpointFromPanel(groupId, endpointId, button) {
+                button.disabled = true;
+                button.textContent = 'Promoting...';
 
                 try {
                     const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + endpointId, {
                         method: 'PATCH',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-Token': csrfToken
+                            'X-CSRF-Token': CSRF_TOKEN
                         },
-                        body: JSON.stringify({
-                            is_persistent: true,
-                            name: name || null
-                        })
+                        body: JSON.stringify({ is_persistent: true })
                     });
 
                     if (!response.ok) {
@@ -2967,34 +2994,62 @@
                         throw new Error(data.detail || 'Failed to promote endpoint');
                     }
 
+                    showMessage('Endpoint promoted to persistent', 'success');
                     // WebSocket update will refresh - re-render for responsiveness
                     renderEndpointsInPanel(groupId);
                 } catch (error) {
-                    alert('Error promoting endpoint: ' + error.message);
+                    showMessage('Error: ' + error.message, 'error');
+                    button.disabled = false;
+                    button.textContent = 'Make Persistent';
                 }
             }
 
-            // Delete endpoint from the Edit panel
-            async function deleteEndpointFromPanel(groupId, endpointId) {
-                if (!confirm('Delete endpoint "' + endpointId + '"?\n\nThis will remove its image history and cannot be undone.')) {
-                    return;
-                }
-                try {
-                    const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + endpointId, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-CSRF-Token': csrfToken
+            // Delete endpoint from the Edit panel (inline confirmation)
+            async function deleteEndpointFromPanel(groupId, endpointId, button) {
+                // Check if already in confirm mode
+                if (button.dataset.confirming === 'true') {
+                    // Actually delete
+                    button.disabled = true;
+                    button.textContent = 'Deleting...';
+                    try {
+                        const response = await fetch(API_BASE + '/' + groupId + '/endpoints/' + endpointId, {
+                            method: 'DELETE',
+                            headers: {
+                                'X-CSRF-Token': CSRF_TOKEN
+                            }
+                        });
+                        if (!response.ok) {
+                            const data = await response.json();
+                            throw new Error(data.detail || 'Failed to delete');
                         }
-                    });
-                    if (!response.ok) {
-                        const data = await response.json();
-                        throw new Error(data.detail || 'Failed to delete');
+                        // WebSocket update will refresh the panel
+                        showMessage('Endpoint deleted', 'success');
+                    } catch (e) {
+                        showMessage('Error: ' + e.message, 'error');
+                        button.disabled = false;
+                        resetDeleteButton(button);
                     }
-                    // WebSocket update will refresh the panel - re-render immediately for responsiveness
-                    renderEndpointsInPanel(groupId);
-                } catch (e) {
-                    alert('Error: ' + e.message);
+                } else {
+                    // Enter confirm mode
+                    button.dataset.confirming = 'true';
+                    button.dataset.originalText = button.textContent;
+                    button.textContent = 'Confirm?';
+                    button.classList.add('confirming');
+
+                    // Auto-reset after 3 seconds
+                    setTimeout(() => {
+                        if (button.dataset.confirming === 'true') {
+                            resetDeleteButton(button);
+                        }
+                    }, 3000);
                 }
+            }
+
+            // Reset delete button to normal state
+            function resetDeleteButton(button) {
+                button.dataset.confirming = 'false';
+                button.textContent = button.dataset.originalText || 'Delete';
+                button.classList.remove('confirming');
             }
 
             // Create endpoint from the Edit panel
@@ -3016,7 +3071,7 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-Token': csrfToken
+                            'X-CSRF-Token': CSRF_TOKEN
                         },
                         body: JSON.stringify({ endpoint_id: epId, is_persistent: true })
                     });
