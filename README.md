@@ -589,6 +589,11 @@ HTTPS_ONLY=true
 # Connection Limits
 MAX_BROWSERS_PER_GROUP=100
 MAX_GROUPS=50
+
+# Display Endpoint Cleanup
+# Supports: "30m", "24h", "7d", "1w", "2h30m", or plain seconds
+# Set to "0" to disable cleanup of anonymous endpoints
+ENDPOINT_CLEANUP=24h
 ```
 
 **Dimension Limits:** Width and height parameters are capped at 8192px to prevent memory exhaustion.
