@@ -1728,7 +1728,7 @@ async def endpoint_next_image(
         await display_manager._advance_browsers(group, [browser.browser_id])
     else:
         # No browser - use helper method
-        await display_manager.advance_endpoint_no_browser(group, endpoint)
+        display_manager.advance_endpoint_no_browser(group, endpoint)
 
     logger.info(f"User {user.email} requested next image for endpoint '{endpoint_id}'")
 
@@ -1836,7 +1836,7 @@ async def display_page(
             if browser:
                 await display_manager._advance_browsers(display_group, [browser.browser_id])
             else:
-                await display_manager.advance_endpoint_no_browser(display_group, endpoint_obj)
+                display_manager.advance_endpoint_no_browser(display_group, endpoint_obj)
         elif action == "previous":
             if browser:
                 await display_manager._rewind_browsers(display_group, [browser.browser_id])

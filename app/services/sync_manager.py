@@ -2055,7 +2055,7 @@ class DisplayManager:
             logger.warning(f"Failed to send replacement to {browser_id}: {e}")
             return False
 
-    async def advance_endpoint_no_browser(
+    def advance_endpoint_no_browser(
         self, group: DisplayGroup, endpoint: DisplayEndpoint
     ) -> Optional[str]:
         """
@@ -2064,13 +2064,21 @@ class DisplayManager:
         Used by the /display?action=next URL and API endpoints.
         Returns the new current_image path, or None if no images available.
         """
-        images = await self.image_service.get_images(
-            subfolder=group.settings.folder,
-            sort=group.settings.sort,
-            filter_glob=group.settings.filter_glob
+        # Get folder paths from settings
+        folder_paths = None
+        if group.settings.folders:
+            folder_paths = [f.strip() for f in group.settings.folders.split(",") if f.strip()]
+
+        # get_image_files returns List[Path]
+        image_paths = self.image_service.get_image_files(
+            folder_paths=folder_paths,
+            recursive=group.settings.recursive
         )
-        if not images:
+        if not image_paths:
             return None
+
+        # Convert to relative string paths
+        images = [str(p.relative_to(self.image_service.image_dir)) for p in image_paths]
 
         import random
         if group.settings.sort == "random":
