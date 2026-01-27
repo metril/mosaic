@@ -1088,9 +1088,39 @@
                     padding: 12px 16px;
                 }
             }
+
+            /* Thumbnail context menu */
+            .context-menu {
+                position: fixed;
+                background: #1a1a2e;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 6px;
+                box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+                z-index: 10000;
+                min-width: 180px;
+                padding: 6px 0;
+            }
+
+            .context-menu-item {
+                padding: 10px 16px;
+                cursor: pointer;
+                color: #e94560;
+                font-size: 13px;
+                transition: background 0.15s, color 0.15s;
+            }
+
+            .context-menu-item:hover {
+                background: #e94560;
+                color: white;
+            }
         </style>
     </head>
     <body>
+        <!-- Custom context menu for thumbnails -->
+        <div id="thumbnailContextMenu" class="context-menu" style="display: none;">
+            <div class="context-menu-item" data-action="remove">Remove from history</div>
+        </div>
+
         <header class="header">
             <h1>Admin</h1>
         </header>
@@ -1787,6 +1817,82 @@
                     }).catch(e => console.warn('Failed to notify server of bad image:', e));
                 }
             }
+
+            // Context menu state
+            let contextMenuTarget = null;
+
+            // Show context menu on right-click of thumbnails
+            document.addEventListener('contextmenu', function(e) {
+                const thumb = e.target.closest('.thumb');
+                if (!thumb) return;
+
+                // Only show for past/forward thumbnails (not current)
+                if (thumb.classList.contains('current')) return;
+
+                e.preventDefault();
+
+                const menu = document.getElementById('thumbnailContextMenu');
+                contextMenuTarget = thumb;
+
+                // Position menu at cursor
+                menu.style.left = e.clientX + 'px';
+                menu.style.top = e.clientY + 'px';
+                menu.style.display = 'block';
+
+                // Adjust if menu goes off-screen
+                const rect = menu.getBoundingClientRect();
+                if (rect.right > window.innerWidth) {
+                    menu.style.left = (e.clientX - rect.width) + 'px';
+                }
+                if (rect.bottom > window.innerHeight) {
+                    menu.style.top = (e.clientY - rect.height) + 'px';
+                }
+            });
+
+            // Hide context menu on click elsewhere
+            document.addEventListener('click', function(e) {
+                const menu = document.getElementById('thumbnailContextMenu');
+                if (!menu.contains(e.target)) {
+                    menu.style.display = 'none';
+                    contextMenuTarget = null;
+                }
+            });
+
+            // Handle context menu actions
+            document.getElementById('thumbnailContextMenu').addEventListener('click', function(e) {
+                const action = e.target.dataset.action;
+                const menu = document.getElementById('thumbnailContextMenu');
+
+                if (action === 'remove' && contextMenuTarget) {
+                    const groupId = contextMenuTarget.dataset.groupId;
+                    const browserId = contextMenuTarget.dataset.browserId;
+                    const imagePath = contextMenuTarget.dataset.imagePath;
+
+                    if (groupId && browserId && imagePath) {
+                        // Fade out animation
+                        contextMenuTarget.style.transition = 'opacity 0.3s';
+                        contextMenuTarget.style.opacity = '0';
+                        const targetToRemove = contextMenuTarget;
+                        setTimeout(() => targetToRemove.remove(), 300);
+
+                        // Notify server
+                        fetch(API_BASE + '/' + groupId + '/browsers/' + browserId + '/history/' + encodeURIComponent(imagePath), {
+                            method: 'DELETE',
+                            headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                        }).catch(e => console.warn('Failed to remove image from history:', e));
+                    }
+                }
+
+                menu.style.display = 'none';
+                contextMenuTarget = null;
+            });
+
+            // Hide context menu on scroll
+            document.addEventListener('scroll', function() {
+                const menu = document.getElementById('thumbnailContextMenu');
+                menu.style.display = 'none';
+                contextMenuTarget = null;
+            }, true);
 
             // Countdown timer management
             const countdownTimers = {};
