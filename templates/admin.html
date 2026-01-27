@@ -1756,6 +1756,38 @@
             let folderBrowserMode = 'multi';  // 'multi' for display groups, 'single' for immich
             let folderBrowserTarget = null;   // input element to populate
 
+            // Sort endpoints by creation time (oldest first) for consistent ordering across all views
+            function sortEndpointsByCreationTime(endpoints) {
+                return [...endpoints].sort((a, b) => {
+                    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+                    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+                    return aTime - bTime;  // Ascending: oldest first, newest last
+                });
+            }
+
+            // Handle thumbnail load failure:
+            // 1. Immediately removes thumbnail from DOM (fade out animation)
+            // 2. Notifies server to remove from image_history/forward_history (preserves order)
+            // 3. Server persists change and broadcasts to all admin clients
+            function handleThumbnailError(img) {
+                const groupId = img.dataset.groupId;
+                const browserId = img.dataset.browserId;
+                const imagePath = img.dataset.imagePath;
+
+                // 1. Remove from DOM with fade animation
+                img.style.transition = 'opacity 0.3s';
+                img.style.opacity = '0';
+                setTimeout(() => img.remove(), 300);
+
+                // 2. Notify server to remove from history arrays (order preserved)
+                if (groupId && browserId && imagePath) {
+                    fetch(API_BASE + '/' + groupId + '/browsers/' + browserId + '/history/' + encodeURIComponent(imagePath), {
+                        method: 'DELETE',
+                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    }).catch(e => console.warn('Failed to notify server of bad image:', e));
+                }
+            }
+
             // Countdown timer management
             const countdownTimers = {};
 
@@ -2436,19 +2468,19 @@
                         // Past images
                         if (browser.image_history && browser.image_history.length > 0) {
                             thumbsHtml += browser.image_history.map(img =>
-                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy">`
+                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy" onerror="handleThumbnailError(this)">`
                             ).join('');
                         }
 
                         // Current image
                         if (browser.current_image) {
-                            thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" alt="Current" loading="lazy">`;
+                            thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(browser.current_image)}" alt="Current" loading="lazy" onerror="handleThumbnailError(this)">`;
                         }
 
                         // Forward images
                         if (browser.forward_history && browser.forward_history.length > 0) {
                             thumbsHtml += browser.forward_history.map(img =>
-                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
+                                `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy" onerror="handleThumbnailError(this)">`
                             ).join('');
                         }
 
@@ -2462,13 +2494,8 @@
                         `;
                     };
 
-                    // Sort endpoints: connected first, then by endpoint_id
-                    const sortedEndpoints = [...endpoints].sort((a, b) => {
-                        const aConnected = browserByEndpoint[a.endpoint_id] ? 1 : 0;
-                        const bConnected = browserByEndpoint[b.endpoint_id] ? 1 : 0;
-                        if (aConnected !== bConnected) return bConnected - aConnected;
-                        return a.endpoint_id.localeCompare(b.endpoint_id);
-                    });
+                    // Sort endpoints by creation time (oldest first, newest last)
+                    const sortedEndpoints = sortEndpointsByCreationTime(endpoints);
 
                     const endpointSectionsHtml = endpoints.length > 0 ? `
                         <div class="endpoints-container" data-group-id="${groupIdSafe}">
@@ -2956,8 +2983,10 @@
                     container.innerHTML = '<p style="color: #666; font-size: 12px;">No endpoints yet. Endpoints will be created automatically when displays connect.</p>';
                     return;
                 }
+                // Sort endpoints by creation time (oldest first, newest last) for consistency
+                const sortedEndpoints = sortEndpointsByCreationTime(group.endpoints);
                 // Each endpoint shows ID, optional name, Promote (if anonymous), and Delete button
-                container.innerHTML = group.endpoints.map(ep => `
+                container.innerHTML = sortedEndpoints.map(ep => `
                     <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 6px;">
                         <div style="flex: 1; min-width: 0;">
                             <span style="font-family: monospace; color: #e94560;">${escapeHtml(ep.endpoint_id)}</span>
@@ -3586,19 +3615,19 @@
                     // Past images
                     if (browser.image_history && browser.image_history.length > 0) {
                         thumbsHtml += browser.image_history.map(img =>
-                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy">`
+                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy" onerror="handleThumbnailError(this)">`
                         ).join('');
                     }
 
                     // Current image
                     if (browser.current_image) {
-                        thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" alt="Current" loading="lazy">`;
+                        thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(browser.current_image)}" alt="Current" loading="lazy" onerror="handleThumbnailError(this)">`;
                     }
 
                     // Forward images
                     if (browser.forward_history && browser.forward_history.length > 0) {
                         thumbsHtml += browser.forward_history.map(img =>
-                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy">`
+                            `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy" onerror="handleThumbnailError(this)">`
                         ).join('');
                     }
 
@@ -3612,13 +3641,8 @@
                     `;
                 };
 
-                // Sort endpoints: connected first, then by endpoint_id
-                const sortedEndpoints = [...endpoints].sort((a, b) => {
-                    const aConnected = browserByEndpoint[a.endpoint_id] ? 1 : 0;
-                    const bConnected = browserByEndpoint[b.endpoint_id] ? 1 : 0;
-                    if (aConnected !== bConnected) return bConnected - aConnected;
-                    return a.endpoint_id.localeCompare(b.endpoint_id);
-                });
+                // Sort endpoints by creation time (oldest first, newest last)
+                const sortedEndpoints = sortEndpointsByCreationTime(endpoints);
 
                 const endpointSectionsHtml = endpoints.length > 0 ? `
                     <div class="endpoints-container" data-group-id="${groupIdSafe}">

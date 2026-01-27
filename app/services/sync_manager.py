@@ -904,6 +904,18 @@ class DisplayManager:
             return None
         count = group.image_pool.refresh_images()
         logger.info(f"Refreshed images for group '{group_id}': {count} images")
+
+        # Clean up stale history references (images that no longer exist)
+        total_cleaned = 0
+        for endpoint in group.endpoints.values():
+            cleaned = self._clean_endpoint_history(endpoint)
+            total_cleaned += cleaned
+
+        if total_cleaned > 0:
+            logger.info(f"Cleaned {total_cleaned} stale history entries in group {group_id}")
+            self.save_config()
+            await self._notify_admins({"type": "GROUP_UPDATED", "group": group.to_dict()})
+
         return count
 
     def get_groups_by_folder(self, folder: str) -> List[str]:
@@ -1096,13 +1108,23 @@ class DisplayManager:
                 # Request previous image (go back in history)
                 pass  # Handled outside lock below
 
-        # Handle NEXT_IMAGE/PREVIOUS_IMAGE outside lock (they acquire their own locks)
+            elif msg_type == "IMAGE_LOAD_FAILED":
+                # Image failed to load after retries - will assign replacement outside lock
+                pass  # Handled outside lock below
+
+        # Handle NEXT_IMAGE/PREVIOUS_IMAGE/IMAGE_LOAD_FAILED outside lock (they acquire their own locks)
         if msg_type == "NEXT_IMAGE":
             await self._advance_browsers(group, [browser_id])
             should_notify_admins = True
         elif msg_type == "PREVIOUS_IMAGE":
             await self._rewind_browsers(group, [browser_id])
             should_notify_admins = True
+        elif msg_type == "IMAGE_LOAD_FAILED":
+            failed_path = message.get("image_path")
+            if failed_path:
+                logger.warning(f"Browser {browser_id} failed to load image: {failed_path}")
+                await self._assign_replacement_image(group, browser_id, failed_path)
+                should_notify_admins = True
 
         # Notify admin clients outside lock
         if should_notify_admins:
@@ -1699,6 +1721,13 @@ class DisplayManager:
         if not endpoint:
             return False
 
+        # Validate the target image still exists on disk
+        if not self._validate_image_path(image_path):
+            logger.warning(f"Jump target no longer exists: {image_path}")
+            # Clean up stale history entries
+            self._clean_endpoint_history(endpoint)
+            return False
+
         # Cancel current cycle task
         async with group._lock:
             if group._cycle_task and not group._cycle_task.done():
@@ -1941,3 +1970,94 @@ class DisplayManager:
                 logger.info(f"_rewind_browsers: browser {browser.browser_id}: ASSIGN sent successfully")
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
+
+    async def _assign_replacement_image(
+        self, group: DisplayGroup, browser_id: str, failed_path: str
+    ) -> bool:
+        """
+        Assign a replacement image when one fails to load.
+
+        Called when browser reports IMAGE_LOAD_FAILED after exhausting retries.
+        Immediately assigns a new image so display doesn't stay blank/stuck.
+        """
+        browser = group.browsers.get(browser_id)
+        if not browser:
+            return False
+
+        endpoint = group.endpoints.get(browser.endpoint_id)
+        if not endpoint:
+            return False
+
+        async with group._lock:
+            # Release the failed image from pool assignment
+            if group.image_pool._assigned_images.get(browser_id) == failed_path:
+                group.image_pool.release_image(browser_id)
+
+            # Get new image
+            new_image = group.image_pool.assign_unique_image(browser_id)
+            if not new_image:
+                logger.warning(f"No replacement image available for {browser_id}")
+                return False
+
+            # Update endpoint state
+            endpoint.current_image = new_image
+            endpoint.next_image = None
+            browser.status = BrowserStatus.READY
+
+        # Send replacement assignment
+        image_url = self.build_image_url(new_image, group.settings)
+        blur_url = self.build_blur_url(new_image, group.settings)
+
+        try:
+            await asyncio.wait_for(
+                browser.websocket.send_json({
+                    "type": "ASSIGN",
+                    "image_url": image_url,
+                    "blur_url": blur_url,
+                    "image_id": new_image,
+                    "cycle": group.current_cycle
+                }),
+                timeout=5.0
+            )
+            logger.info(f"Sent replacement image {new_image} to {browser_id} (failed: {failed_path})")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to send replacement to {browser_id}: {e}")
+            return False
+
+    def _validate_image_path(self, path: str) -> bool:
+        """Check if an image path still exists on disk."""
+        if not path:
+            return False
+        full_path = self.image_service.image_dir / path
+        return full_path.exists() and full_path.is_file()
+
+    def _clean_endpoint_history(self, endpoint: DisplayEndpoint) -> int:
+        """
+        Remove invalid paths from endpoint history.
+
+        Called during refresh_group_images and jump_to_image to clean up
+        references to deleted images. Returns count of removed items.
+        """
+        removed = 0
+
+        # Clean image_history
+        valid_history = [p for p in endpoint.image_history if self._validate_image_path(p)]
+        removed += len(endpoint.image_history) - len(valid_history)
+        endpoint.image_history = valid_history
+
+        # Clean forward_history
+        valid_forward = [p for p in endpoint.forward_history if self._validate_image_path(p)]
+        removed += len(endpoint.forward_history) - len(valid_forward)
+        endpoint.forward_history = valid_forward
+
+        # Validate current_image
+        if endpoint.current_image and not self._validate_image_path(endpoint.current_image):
+            logger.warning(
+                f"Endpoint {endpoint.endpoint_id} current_image no longer exists: "
+                f"{endpoint.current_image}"
+            )
+            endpoint.current_image = None
+            removed += 1
+
+        return removed

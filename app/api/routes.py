@@ -1620,6 +1620,60 @@ async def delete_endpoint(
     return JSONResponse(content={"status": "deleted", "endpoint_id": endpoint_id})
 
 
+@router.delete("/api/display/groups/{group_id}/browsers/{browser_id}/history/{image_path:path}", responses={
+    200: {"description": "Image removed from history"},
+    404: {"description": "Group, browser, or image not found"},
+})
+async def remove_from_history(
+    group_id: str = PathParam(...),
+    browser_id: str = PathParam(...),
+    image_path: str = PathParam(...),
+    request: Request = None,
+):
+    """
+    Remove a specific image from a browser's history.
+
+    Called by the admin UI when a thumbnail fails to load, indicating
+    the image file no longer exists. Removes from both image_history
+    and forward_history arrays while preserving order of remaining items.
+    """
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    browser = group.browsers.get(browser_id)
+    if not browser:
+        raise HTTPException(status_code=404, detail=f"Browser '{browser_id}' not found")
+
+    endpoint = group.endpoints.get(browser.endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail=f"Endpoint not found for browser")
+
+    # Decode the image path (it's URL-encoded in the path)
+    decoded_path = unquote(image_path)
+
+    # Remove from history arrays - list.remove() preserves order of remaining items
+    removed = False
+    if decoded_path in endpoint.image_history:
+        endpoint.image_history.remove(decoded_path)
+        removed = True
+    if decoded_path in endpoint.forward_history:
+        endpoint.forward_history.remove(decoded_path)
+        removed = True
+
+    if removed:
+        # Persist cleaned history and notify admin clients for real-time UI update
+        display_manager.save_config()
+        await display_manager._notify_admins({
+            "type": "GROUP_UPDATED",
+            "group": group.to_dict()
+        })
+        logger.info(f"Removed stale image '{decoded_path}' from history for browser '{browser_id}'")
+
+    return JSONResponse(content={"status": "removed" if removed else "not_found", "image_path": decoded_path})
+
+
 @router.post("/api/display/groups/{group_id}/endpoints/{endpoint_id}/next")
 async def endpoint_next_image(
     group_id: str = PathParam(...),

@@ -1202,7 +1202,15 @@
                             }, delay);
                         } else {
                             console.error('Max retries exceeded for image:', url);
-                            // Callback anyway to not block sync
+                            // Report failure to server for replacement
+                            const pathMatch = url.match(/\/api\/image\/([^?]+)/);
+                            if (pathMatch) {
+                                send({
+                                    type: 'IMAGE_LOAD_FAILED',
+                                    image_path: decodeURIComponent(pathMatch[1])
+                                });
+                            }
+                            // Callback anyway to not block sync (server will send replacement)
                             if (callback) callback();
                         }
                     };
