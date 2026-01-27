@@ -2616,29 +2616,32 @@
 
                     // Helper to build history strip HTML for an endpoint
                     const buildHistoryStrip = (ep, browser) => {
-                        if (!browser) return '';
+                        // Use browser data if connected, otherwise use endpoint data
+                        const currentImage = browser ? browser.current_image : ep.current_image;
+                        const imageHistory = browser ? (browser.image_history || []) : [];
+                        const forwardHistory = browser ? (browser.forward_history || []) : [];
+                        const browserIdSafe = browser ? escapeHtml(browser.browser_id) : escapeHtml('ep-' + ep.endpoint_id);
 
-                        const historyCount = browser.history_count || 0;
-                        const forwardCount = browser.forward_count || 0;
-                        const browserIdSafe = escapeHtml(browser.browser_id);
+                        // Skip if no current image at all
+                        if (!currentImage && imageHistory.length === 0) return '';
 
                         let thumbsHtml = '';
 
-                        // Past images
-                        if (browser.image_history && browser.image_history.length > 0) {
-                            thumbsHtml += browser.image_history.map(img =>
+                        // Past images (only available with connected browser)
+                        if (imageHistory.length > 0) {
+                            thumbsHtml += imageHistory.map(img =>
                                 `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy" onerror="handleThumbnailError(this)">`
                             ).join('');
                         }
 
-                        // Current image
-                        if (browser.current_image) {
-                            thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(browser.current_image)}" alt="Current" loading="lazy" onerror="handleThumbnailError(this)">`;
+                        // Current image (available even for disconnected endpoints)
+                        if (currentImage) {
+                            thumbsHtml += `<img src="/api/image/${encodePath(currentImage)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(currentImage)}" alt="Current" loading="lazy" onerror="handleThumbnailError(this)">`;
                         }
 
-                        // Forward images
-                        if (browser.forward_history && browser.forward_history.length > 0) {
-                            thumbsHtml += browser.forward_history.map(img =>
+                        // Forward images (only available with connected browser)
+                        if (forwardHistory.length > 0) {
+                            thumbsHtml += forwardHistory.map(img =>
                                 `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy" onerror="handleThumbnailError(this)">`
                             ).join('');
                         }
@@ -3588,6 +3591,38 @@
                     });
                 }
 
+                // 4.1 Update history strips for disconnected endpoints (using endpoint data)
+                if (group.endpoints) {
+                    const browserByEndpoint = {};
+                    (group.browsers || []).forEach(b => {
+                        browserByEndpoint[b.endpoint_id] = b;
+                    });
+
+                    group.endpoints.forEach(ep => {
+                        const browser = browserByEndpoint[ep.endpoint_id];
+                        if (browser) return; // Already handled in step 4
+
+                        // Disconnected endpoint - update using endpoint data
+                        const epBrowserId = 'ep-' + ep.endpoint_id;
+                        const strip = card.querySelector(`.history-strip[data-browser-id="${escapeHtml(epBrowserId)}"]`);
+                        if (strip && ep.current_image) {
+                            // Update or replace the current image thumbnail
+                            const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
+                            const existingThumb = strip.querySelector('.thumb.current');
+                            if (existingThumb) {
+                                const existingPath = existingThumb.dataset.imagePath;
+                                if (existingPath !== ep.current_image) {
+                                    existingThumb.src = `/api/image/${encodePath(ep.current_image)}?width=260&height=173`;
+                                    existingThumb.dataset.imagePath = ep.current_image;
+                                }
+                            } else if (ep.current_image) {
+                                // No current thumb, create one
+                                strip.innerHTML = `<img src="/api/image/${encodePath(ep.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${escapeHtml(epBrowserId)}" data-image-path="${escapeHtml(ep.current_image)}" alt="Current" loading="lazy">`;
+                            }
+                        }
+                    });
+                }
+
                 // 4.5 Update history-info in endpoint summaries
                 if (group.endpoints && group.browsers) {
                     // Build browser lookup by endpoint_id
@@ -3824,29 +3859,32 @@
 
                 // Helper to build history strip HTML for an endpoint
                 const buildHistoryStrip = (ep, browser) => {
-                    if (!browser) return '';
+                    // Use browser data if connected, otherwise use endpoint data
+                    const currentImage = browser ? browser.current_image : ep.current_image;
+                    const imageHistory = browser ? (browser.image_history || []) : [];
+                    const forwardHistory = browser ? (browser.forward_history || []) : [];
+                    const browserIdSafe = browser ? escapeHtml(browser.browser_id) : escapeHtml('ep-' + ep.endpoint_id);
 
-                    const historyCount = browser.history_count || 0;
-                    const forwardCount = browser.forward_count || 0;
-                    const browserIdSafe = escapeHtml(browser.browser_id);
+                    // Skip if no current image at all
+                    if (!currentImage && imageHistory.length === 0) return '';
 
                     let thumbsHtml = '';
 
-                    // Past images
-                    if (browser.image_history && browser.image_history.length > 0) {
-                        thumbsHtml += browser.image_history.map(img =>
+                    // Past images (only available with connected browser)
+                    if (imageHistory.length > 0) {
+                        thumbsHtml += imageHistory.map(img =>
                             `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb past" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Past" loading="lazy" onerror="handleThumbnailError(this)">`
                         ).join('');
                     }
 
-                    // Current image
-                    if (browser.current_image) {
-                        thumbsHtml += `<img src="/api/image/${encodePath(browser.current_image)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(browser.current_image)}" alt="Current" loading="lazy" onerror="handleThumbnailError(this)">`;
+                    // Current image (available even for disconnected endpoints)
+                    if (currentImage) {
+                        thumbsHtml += `<img src="/api/image/${encodePath(currentImage)}?width=260&height=173" class="thumb current" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(currentImage)}" alt="Current" loading="lazy" onerror="handleThumbnailError(this)">`;
                     }
 
-                    // Forward images
-                    if (browser.forward_history && browser.forward_history.length > 0) {
-                        thumbsHtml += browser.forward_history.map(img =>
+                    // Forward images (only available with connected browser)
+                    if (forwardHistory.length > 0) {
+                        thumbsHtml += forwardHistory.map(img =>
                             `<img src="/api/image/${encodePath(img)}?width=200&height=133" class="thumb forward" data-group-id="${groupIdSafe}" data-browser-id="${browserIdSafe}" data-image-path="${escapeHtml(img)}" alt="Forward" loading="lazy" onerror="handleThumbnailError(this)">`
                         ).join('');
                     }
