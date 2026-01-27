@@ -267,13 +267,15 @@ DELETE /api/display/groups/{group_id}/endpoints/{endpoint_id}
 ### On-Demand Mode
 
 When `auto_cycle` is set to `false`, images don't automatically rotate. Instead, images only change when:
-- User requests next/previous via the display interface (arrow keys or swipe)
+- URL action parameter: `/display?group=X&endpoint=Y&action=next`
+- API endpoint: `POST /api/display/groups/{group}/endpoints/{endpoint}/next`
 - Admin navigates via history thumbnails in the dashboard
 
 This is useful for:
 - Displays that should show the same image indefinitely
 - Manual control over image changes
 - Kiosk-style presentations
+- IoT buttons or scripts that trigger image changes via URL
 
 **Enable on-demand mode:**
 ```bash
@@ -283,6 +285,24 @@ POST /api/display/groups
     "auto_cycle": false,
     "folders": "presentations"
 }
+```
+
+**Navigate via URL:**
+```bash
+# Advance to next image
+/display?group=kiosk&endpoint=my-display&action=next
+
+# Go to previous image
+/display?group=kiosk&endpoint=my-display&action=previous
+```
+
+**Navigate via API:**
+```bash
+# Advance to next image
+POST /api/display/groups/{group_id}/endpoints/{endpoint_id}/next
+
+# Go to previous image
+POST /api/display/groups/{group_id}/endpoints/{endpoint_id}/previous
 ```
 
 ### Clock & Weather Overlays
