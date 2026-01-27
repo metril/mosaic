@@ -1727,30 +1727,8 @@ async def endpoint_next_image(
         # Browser connected - use _advance_browsers
         await display_manager._advance_browsers(group, [browser.browser_id])
     else:
-        # No browser - directly update endpoint state
-        images = await display_manager.image_service.get_images(
-            subfolder=group.settings.folder,
-            sort=group.settings.sort,
-            filter_glob=group.settings.filter_glob
-        )
-        if images:
-            import random
-            if group.settings.sort == "random":
-                next_img = random.choice(images)
-            else:
-                # Find current index and advance
-                try:
-                    idx = images.index(endpoint.current_image) if endpoint.current_image else -1
-                    next_img = images[(idx + 1) % len(images)]
-                except ValueError:
-                    next_img = images[0]
-
-            # Push current to history and set new image
-            if endpoint.current_image:
-                endpoint.image_history.append(endpoint.current_image)
-            endpoint.image_history.extend(endpoint.forward_history)
-            endpoint.forward_history.clear()
-            endpoint.current_image = next_img
+        # No browser - use helper method
+        await display_manager.advance_endpoint_no_browser(group, endpoint)
 
     logger.info(f"User {user.email} requested next image for endpoint '{endpoint_id}'")
 
@@ -1792,11 +1770,8 @@ async def endpoint_previous_image(
         # Browser connected - use _rewind_browsers
         await display_manager._rewind_browsers(group, [browser.browser_id])
     else:
-        # No browser - directly update endpoint state
-        if endpoint.image_history:
-            if endpoint.current_image:
-                endpoint.forward_history.insert(0, endpoint.current_image)
-            endpoint.current_image = endpoint.image_history.pop()
+        # No browser - use helper method
+        display_manager.rewind_endpoint_no_browser(endpoint)
 
     logger.info(f"User {user.email} requested previous image for endpoint '{endpoint_id}'")
 
@@ -1817,6 +1792,11 @@ async def display_page(
         description="Endpoint ID for persistent history",
         pattern=r"^[a-zA-Z0-9_\-]+$",
         max_length=64
+    ),
+    action: Optional[str] = Query(
+        None,
+        description="Action to perform: 'next' or 'previous'",
+        pattern=r"^(next|previous)$"
     )
 ):
     """
@@ -1828,6 +1808,7 @@ async def display_page(
     Query Parameters:
         group: The group ID to join (must exist, created via admin API)
         endpoint: Optional endpoint ID for persistent history across reconnects
+        action: Optional action to perform before rendering ('next' or 'previous')
     """
     display_manager = get_display_manager(request)
     display_group = await display_manager.get_group(group)
@@ -1837,6 +1818,30 @@ async def display_page(
             status_code=404,
             detail=f"Display group '{group}' not found. Create it via /admin first."
         )
+
+    # Handle action parameter for on-demand navigation
+    if action and endpoint:
+        endpoint_obj = display_group.endpoints.get(endpoint)
+        if not endpoint_obj:
+            # Create endpoint if it doesn't exist
+            endpoint_obj = display_group.get_or_create_endpoint(endpoint)
+
+        # Find connected browser for this endpoint
+        browser = next(
+            (b for b in display_group.browsers.values() if b.endpoint_id == endpoint),
+            None
+        )
+
+        if action == "next":
+            if browser:
+                await display_manager._advance_browsers(display_group, [browser.browser_id])
+            else:
+                await display_manager.advance_endpoint_no_browser(display_group, endpoint_obj)
+        elif action == "previous":
+            if browser:
+                await display_manager._rewind_browsers(display_group, [browser.browser_id])
+            else:
+                display_manager.rewind_endpoint_no_browser(endpoint_obj)
 
     # Get WebSocket URL - check X-Forwarded-Proto for reverse proxy support
     original_scheme = request.headers.get("x-forwarded-proto", request.url.scheme)

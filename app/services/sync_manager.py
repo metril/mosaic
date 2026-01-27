@@ -1822,13 +1822,23 @@ class DisplayManager:
 
         return True
 
-    async def _advance_browsers(self, group: DisplayGroup) -> None:
-        """Immediately advance all browsers to next image."""
+    async def _advance_browsers(
+        self, group: DisplayGroup, browser_ids: Optional[List[str]] = None
+    ) -> None:
+        """Immediately advance browsers to next image.
+
+        Args:
+            group: The display group
+            browser_ids: Optional list of browser IDs to advance. If None, advances all.
+        """
         settings = group.settings
         browsers_to_assign = []
 
         async with group._lock:
-            for browser in list(group.browsers.values()):
+            browsers = list(group.browsers.values())
+            if browser_ids is not None:
+                browsers = [b for b in browsers if b.browser_id in browser_ids]
+            for browser in browsers:
                 endpoint = group.endpoints.get(browser.endpoint_id)
                 if not endpoint:
                     continue
@@ -1912,15 +1922,25 @@ class DisplayManager:
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
 
-    async def _rewind_browsers(self, group: DisplayGroup) -> None:
-        """Rewind each browser to its own previous image."""
+    async def _rewind_browsers(
+        self, group: DisplayGroup, browser_ids: Optional[List[str]] = None
+    ) -> None:
+        """Rewind browsers to their previous images.
+
+        Args:
+            group: The display group
+            browser_ids: Optional list of browser IDs to rewind. If None, rewinds all.
+        """
         settings = group.settings
 
         # Collect what to send while holding the lock to prevent race with SWITCH_COMPLETE
         browsers_to_assign = []
 
         async with group._lock:
-            for browser in list(group.browsers.values()):
+            browsers = list(group.browsers.values())
+            if browser_ids is not None:
+                browsers = [b for b in browsers if b.browser_id in browser_ids]
+            for browser in browsers:
                 endpoint = group.endpoints.get(browser.endpoint_id)
                 if not endpoint:
                     continue
@@ -2034,6 +2054,58 @@ class DisplayManager:
         except Exception as e:
             logger.warning(f"Failed to send replacement to {browser_id}: {e}")
             return False
+
+    async def advance_endpoint_no_browser(
+        self, group: DisplayGroup, endpoint: DisplayEndpoint
+    ) -> Optional[str]:
+        """
+        Advance endpoint to next image when no browser is connected.
+
+        Used by the /display?action=next URL and API endpoints.
+        Returns the new current_image path, or None if no images available.
+        """
+        images = await self.image_service.get_images(
+            subfolder=group.settings.folder,
+            sort=group.settings.sort,
+            filter_glob=group.settings.filter_glob
+        )
+        if not images:
+            return None
+
+        import random
+        if group.settings.sort == "random":
+            next_img = random.choice(images)
+        else:
+            try:
+                idx = images.index(endpoint.current_image) if endpoint.current_image else -1
+                next_img = images[(idx + 1) % len(images)]
+            except ValueError:
+                next_img = images[0]
+
+        # Update endpoint history
+        if endpoint.current_image:
+            endpoint.image_history.append(endpoint.current_image)
+        endpoint.image_history.extend(endpoint.forward_history)
+        endpoint.forward_history.clear()
+        endpoint.current_image = next_img
+
+        return next_img
+
+    def rewind_endpoint_no_browser(self, endpoint: DisplayEndpoint) -> Optional[str]:
+        """
+        Rewind endpoint to previous image when no browser is connected.
+
+        Used by the /display?action=previous URL and API endpoints.
+        Returns the new current_image path, or None if no history.
+        """
+        if not endpoint.image_history:
+            return endpoint.current_image  # Nothing to rewind to
+
+        if endpoint.current_image:
+            endpoint.forward_history.insert(0, endpoint.current_image)
+        endpoint.current_image = endpoint.image_history.pop()
+
+        return endpoint.current_image
 
     def _validate_image_path(self, path: str) -> bool:
         """Check if an image path still exists on disk."""
