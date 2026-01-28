@@ -1119,6 +1119,60 @@
                 color: #888;
             }
 
+            /* API Keys */
+            .api-keys-list {
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }
+            .api-key-card {
+                background: #16213e;
+                border: 1px solid #0f3460;
+                border-radius: 10px;
+                padding: 16px 20px;
+            }
+            .api-key-card:hover {
+                border-color: #1a4a7a;
+            }
+            .api-key-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+            .api-key-name {
+                font-weight: 600;
+                font-size: 15px;
+            }
+            .api-key-status {
+                font-size: 12px;
+                padding: 2px 8px;
+                border-radius: 4px;
+            }
+            .api-key-status.enabled {
+                background: rgba(76, 175, 80, 0.2);
+                color: #4caf50;
+            }
+            .api-key-status.disabled {
+                background: rgba(233, 69, 96, 0.2);
+                color: #e94560;
+            }
+            .api-key-prefix {
+                font-family: monospace;
+                font-size: 13px;
+                color: #888;
+                margin-bottom: 8px;
+            }
+            .api-key-meta {
+                font-size: 12px;
+                color: #666;
+                margin-bottom: 12px;
+            }
+            .api-key-actions {
+                display: flex;
+                gap: 8px;
+            }
+
             /* Responsive */
             @media (max-width: 500px) {
                 .panel {
@@ -1184,6 +1238,7 @@
         <nav class="tab-nav">
             <button class="tab-btn active" data-tab="display" onclick="switchTab('display')">Display Groups</button>
             <button class="tab-btn" data-tab="immich" onclick="switchTab('immich')">Immich</button>
+            <button class="tab-btn" data-tab="apikeys" onclick="switchTab('apikeys')">API Keys</button>
             <div class="tab-actions" id="displayTabActions">
                 <button class="btn btn-secondary" onclick="saveConfig()" id="saveConfigBtn">Save Config</button>
                 <button class="btn btn-primary" onclick="openPanel('create')">+ Create Group</button>
@@ -1191,6 +1246,10 @@
             <div class="tab-actions hidden" id="immichTabActions">
                 <button class="btn btn-secondary" onclick="saveImmichConfig()" id="saveImmichConfigBtn">Save Config</button>
                 <button class="btn btn-primary" onclick="openImmichPanel('create')">+ Create Pull</button>
+            </div>
+            <div class="tab-actions hidden" id="apikeysTabActions">
+                <button class="btn btn-secondary" onclick="saveApiKeysConfig()" id="saveApiKeysConfigBtn">Save Config</button>
+                <button class="btn btn-primary" onclick="openApiKeyModal()">+ Create Key</button>
             </div>
         </nav>
 
@@ -1219,6 +1278,25 @@
 
             <div id="pullsList" class="pulls-grid">
                 <div class="loading">Loading pulls...</div>
+            </div>
+        </main>
+
+        <!-- API Keys Tab -->
+        <main class="main tab-content hidden" id="tab-apikeys">
+            <div id="apikeysMessage"></div>
+
+            <div class="section-header">
+                <span class="section-title">API Keys</span>
+                <span class="section-count" id="apiKeysCount">0</span>
+            </div>
+
+            <p style="color: #888; margin-bottom: 16px;">
+                API keys allow display devices to access images without browser login.
+                Keys are shown only once when created - store them securely.
+            </p>
+
+            <div id="apiKeysList" class="api-keys-list">
+                <div class="loading">Loading API keys...</div>
             </div>
         </main>
 
@@ -1710,6 +1788,41 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-ghost" onclick="closeEndpointModal()">Cancel</button>
                     <button type="button" class="btn btn-primary" onclick="submitCreateEndpoint()">Create</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Key modal -->
+        <div class="modal" id="apiKeyModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <span class="modal-title">Create API Key</span>
+                    <button class="modal-close" onclick="closeApiKeyModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div id="apiKeyCreateForm">
+                        <div class="form-group">
+                            <label for="apiKeyName">Key Name</label>
+                            <input type="text" id="apiKeyName" placeholder="e.g., Living Room Display" required>
+                            <small style="color: #888; font-size: 12px;">A descriptive name to identify this key</small>
+                        </div>
+                    </div>
+                    <div id="apiKeyCreated" style="display: none;">
+                        <div style="background: #ff980020; border: 1px solid #ff9800; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+                            <strong>Copy this key now!</strong> It will not be shown again.
+                        </div>
+                        <div class="form-group">
+                            <label>API Key</label>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="newApiKeyValue" readonly style="font-family: monospace; flex: 1;">
+                                <button type="button" class="btn btn-secondary" onclick="copyApiKey()">Copy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-ghost" onclick="closeApiKeyModal()">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="createApiKeyBtn" onclick="createApiKey()">Create Key</button>
                 </div>
             </div>
         </div>
@@ -4154,6 +4267,7 @@
 
             let currentTab = 'display';
             let immichPullsLoaded = false;
+            let apiKeysLoaded = false;
 
             function switchTab(tab) {
                 currentTab = tab;
@@ -4171,11 +4285,18 @@
                 // Update tab actions
                 document.getElementById('displayTabActions').classList.toggle('hidden', tab !== 'display');
                 document.getElementById('immichTabActions').classList.toggle('hidden', tab !== 'immich');
+                document.getElementById('apikeysTabActions').classList.toggle('hidden', tab !== 'apikeys');
 
                 // Load Immich pulls on first switch
                 if (tab === 'immich' && !immichPullsLoaded) {
                     loadImmichPulls();
                     immichPullsLoaded = true;
+                }
+
+                // Load API keys on first switch
+                if (tab === 'apikeys' && !apiKeysLoaded) {
+                    loadApiKeys();
+                    apiKeysLoaded = true;
                 }
             }
 
@@ -4751,6 +4872,264 @@
             function showImmichMessage(text, type = 'info') {
                 const container = document.getElementById('immichMessage');
                 if (!container) return;
+
+                const colors = {
+                    success: '#4caf50',
+                    error: '#e94560',
+                    info: '#2196f3'
+                };
+
+                container.innerHTML = `
+                    <div style="padding: 12px 16px; background: ${colors[type]}22; border: 1px solid ${colors[type]}; border-radius: 6px; margin-bottom: 16px; color: ${colors[type]};">
+                        ${escapeHtml(text)}
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    container.innerHTML = '';
+                }, 5000);
+            }
+
+
+            // =================================================================
+            // API Key Management
+            // =================================================================
+
+            const API_KEYS_BASE = '/api/keys';
+
+            async function loadApiKeys() {
+                try {
+                    const response = await fetch(API_KEYS_BASE);
+                    if (!response.ok) throw new Error('Failed to load API keys');
+                    const data = await response.json();
+                    renderApiKeys(data.keys);
+                } catch (e) {
+                    document.getElementById('apiKeysList').innerHTML =
+                        '<div class="empty-state"><p>Failed to load API keys</p><p style="color:#666">' + escapeHtml(e.message) + '</p></div>';
+                }
+            }
+
+            function renderApiKeys(keys) {
+                const container = document.getElementById('apiKeysList');
+                document.getElementById('apiKeysCount').textContent = keys.length;
+
+                if (keys.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>No API keys created yet</p><p style="color:#666">Create a key to authenticate display devices</p></div>';
+                    return;
+                }
+
+                container.innerHTML = keys.map(key => `
+                    <div class="api-key-card">
+                        <div class="api-key-header">
+                            <span class="api-key-name">${escapeHtml(key.name)}</span>
+                            <span class="api-key-status ${key.enabled ? 'enabled' : 'disabled'}">
+                                ${key.enabled ? 'Enabled' : 'Disabled'}
+                            </span>
+                        </div>
+                        <div class="api-key-prefix">${escapeHtml(key.key_prefix)}</div>
+                        <div class="api-key-meta">
+                            Created: ${formatDate(key.created_at)}
+                            ${key.last_used ? ' &bull; Last used: ' + formatRelativeTime(key.last_used) : ' &bull; Never used'}
+                        </div>
+                        <div class="api-key-actions">
+                            <button class="btn btn-ghost" onclick="toggleApiKey('${key.id}', ${!key.enabled})">
+                                ${key.enabled ? 'Disable' : 'Enable'}
+                            </button>
+                            <button class="btn btn-danger" onclick="revokeApiKey('${key.id}', this)">Revoke</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            function formatDate(isoString) {
+                if (!isoString) return 'Unknown';
+                const date = new Date(isoString);
+                return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+            }
+
+            function formatRelativeTime(isoString) {
+                if (!isoString) return '';
+                const date = new Date(isoString);
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+
+                if (diffMins < 1) return 'Just now';
+                if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+                if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+                if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+                return formatDate(isoString);
+            }
+
+            function openApiKeyModal() {
+                document.getElementById('apiKeyModal').classList.add('visible');
+                document.getElementById('apiKeyCreateForm').style.display = 'block';
+                document.getElementById('apiKeyCreated').style.display = 'none';
+                document.getElementById('apiKeyName').value = '';
+                document.getElementById('createApiKeyBtn').style.display = 'inline-flex';
+                document.getElementById('createApiKeyBtn').disabled = false;
+                document.getElementById('createApiKeyBtn').textContent = 'Create Key';
+            }
+
+            function closeApiKeyModal() {
+                document.getElementById('apiKeyModal').classList.remove('visible');
+            }
+
+            async function createApiKey() {
+                const name = document.getElementById('apiKeyName').value.trim();
+                if (!name) {
+                    document.getElementById('apiKeyName').focus();
+                    return;
+                }
+
+                const btn = document.getElementById('createApiKeyBtn');
+                btn.disabled = true;
+                btn.textContent = 'Creating...';
+
+                try {
+                    const response = await fetch(API_KEYS_BASE, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN
+                        },
+                        body: JSON.stringify({ name })
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.detail || 'Failed to create key');
+                    }
+
+                    const data = await response.json();
+
+                    // Show the key (only time it's visible)
+                    document.getElementById('apiKeyCreateForm').style.display = 'none';
+                    document.getElementById('apiKeyCreated').style.display = 'block';
+                    document.getElementById('newApiKeyValue').value = data.key;
+                    btn.style.display = 'none';
+
+                    // Reload list
+                    loadApiKeys();
+                    showApiKeysMessage('API key created successfully', 'success');
+                } catch (e) {
+                    showApiKeysMessage(e.message, 'error');
+                    btn.disabled = false;
+                    btn.textContent = 'Create Key';
+                }
+            }
+
+            function copyApiKey() {
+                const input = document.getElementById('newApiKeyValue');
+                input.select();
+                navigator.clipboard.writeText(input.value).then(() => {
+                    showApiKeysMessage('Key copied to clipboard', 'success');
+                }).catch(() => {
+                    // Fallback for older browsers
+                    document.execCommand('copy');
+                    showApiKeysMessage('Key copied to clipboard', 'success');
+                });
+            }
+
+            async function toggleApiKey(keyId, enabled) {
+                try {
+                    const response = await fetch(`${API_KEYS_BASE}/${keyId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN
+                        },
+                        body: JSON.stringify({ enabled })
+                    });
+
+                    if (response.ok) {
+                        loadApiKeys();
+                        showApiKeysMessage(enabled ? 'Key enabled' : 'Key disabled', 'success');
+                    } else {
+                        const err = await response.json();
+                        showApiKeysMessage(err.detail || 'Failed to update key', 'error');
+                    }
+                } catch (e) {
+                    showApiKeysMessage('Failed to update key: ' + e.message, 'error');
+                }
+            }
+
+            async function revokeApiKey(keyId, button) {
+                if (button.dataset.confirming === 'true') {
+                    button.disabled = true;
+                    button.textContent = 'Revoking...';
+
+                    try {
+                        const response = await fetch(`${API_KEYS_BASE}/${keyId}`, {
+                            method: 'DELETE',
+                            headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                        });
+
+                        if (response.ok) {
+                            showApiKeysMessage('Key revoked', 'success');
+                            loadApiKeys();
+                        } else {
+                            const err = await response.json();
+                            showApiKeysMessage(err.detail || 'Failed to revoke key', 'error');
+                            button.disabled = false;
+                            resetRevokeButton(button);
+                        }
+                    } catch (e) {
+                        showApiKeysMessage('Failed to revoke key: ' + e.message, 'error');
+                        button.disabled = false;
+                        resetRevokeButton(button);
+                    }
+                } else {
+                    button.dataset.confirming = 'true';
+                    button.dataset.originalText = button.textContent;
+                    button.textContent = 'Confirm?';
+                    button.classList.add('confirming');
+
+                    setTimeout(() => {
+                        if (button.dataset.confirming === 'true') {
+                            resetRevokeButton(button);
+                        }
+                    }, 3000);
+                }
+            }
+
+            function resetRevokeButton(button) {
+                button.textContent = button.dataset.originalText || 'Revoke';
+                button.classList.remove('confirming');
+                delete button.dataset.confirming;
+                delete button.dataset.originalText;
+            }
+
+            async function saveApiKeysConfig() {
+                const btn = document.getElementById('saveApiKeysConfigBtn');
+                const originalText = btn.textContent;
+                btn.textContent = 'Saving...';
+                btn.disabled = true;
+
+                try {
+                    const response = await fetch(`${API_KEYS_BASE}/save`, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-Token': CSRF_TOKEN }
+                    });
+
+                    if (response.ok) {
+                        showApiKeysMessage('API keys config saved', 'success');
+                    } else {
+                        const err = await response.json();
+                        showApiKeysMessage(err.detail || 'Failed to save config', 'error');
+                    }
+                } catch (e) {
+                    showApiKeysMessage('Save failed: ' + e.message, 'error');
+                } finally {
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            }
+
+            function showApiKeysMessage(text, type = 'info') {
+                const container = document.getElementById('apikeysMessage');
 
                 const colors = {
                     success: '#4caf50',

@@ -6,14 +6,23 @@ authenticating display devices and external integrations.
 """
 
 import secrets
-import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 import yaml
 
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
+
 from app.utils.logging import logger
+
+# Argon2id hasher (includes automatic salt)
+_hasher = PasswordHasher(
+    time_cost=2,        # iterations
+    memory_cost=65536,  # 64 MB
+    parallelism=1,
+)
 
 
 @dataclass
@@ -91,21 +100,22 @@ class APIKeyManager:
 
     def generate_key(self) -> tuple[str, str, str]:
         """
-        Generate a new API key.
+        Generate a new API key with Argon2id hash.
 
         Returns:
             Tuple of (full_key, key_hash, key_prefix)
         """
         # Generate 32 character hex key with sk_ prefix
         key = "sk_" + secrets.token_hex(16)
-        key_hash = f"sha256:{hashlib.sha256(key.encode()).hexdigest()}"
+        # Argon2 includes salt automatically in the hash string
+        key_hash = _hasher.hash(key)
         # Show first 4 and last 4 chars of the random part
         key_prefix = f"sk_{key[3:7]}...{key[-4:]}"
         return key, key_hash, key_prefix
 
     def verify_key(self, key: str) -> Optional[APIKey]:
         """
-        Verify an API key and return the APIKey if valid.
+        Verify an API key against stored Argon2id hash.
 
         Args:
             key: The full API key to verify
@@ -116,14 +126,18 @@ class APIKeyManager:
         if not key or not key.startswith("sk_"):
             return None
 
-        key_hash = f"sha256:{hashlib.sha256(key.encode()).hexdigest()}"
-
         for api_key in self.keys.values():
-            if api_key.key_hash == key_hash and api_key.enabled:
+            if not api_key.enabled:
+                continue
+            try:
+                # Argon2 verify handles salt extraction from stored hash
+                _hasher.verify(api_key.key_hash, key)
                 # Update last_used timestamp
                 api_key.last_used = datetime.now()
                 self._dirty = True
                 return api_key
+            except VerifyMismatchError:
+                continue
 
         return None
 
