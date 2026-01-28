@@ -918,6 +918,7 @@ async def admin_page(request: Request, user: Optional[User] = Depends(get_option
             "request": request,
             "user": user,
             "csrf_token": csrf_token,
+            "oidc_enabled": config.enabled,
         }
     )
 
