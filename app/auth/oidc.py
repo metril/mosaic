@@ -26,6 +26,7 @@ class OIDCConfig:
     client_secret: str
     redirect_uri: str
     session_secret: str
+    provider_name: str
     enabled: bool = True
 
     @classmethod
@@ -36,6 +37,7 @@ class OIDCConfig:
         client_secret = os.environ.get("OIDC_CLIENT_SECRET", "")
         redirect_uri = os.environ.get("OIDC_REDIRECT_URI", "")
         session_secret = os.environ.get("SESSION_SECRET", "")
+        provider_name = os.environ.get("OIDC_PROVIDER_NAME", "SSO")
 
         # Check if OIDC is configured
         enabled = bool(issuer and client_id and client_secret)
@@ -59,6 +61,7 @@ class OIDCConfig:
             client_secret=client_secret,
             redirect_uri=redirect_uri,
             session_secret=session_secret,
+            provider_name=provider_name,
             enabled=enabled,
         )
 

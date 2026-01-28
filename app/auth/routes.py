@@ -11,7 +11,7 @@ Endpoints:
 
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
@@ -25,42 +25,6 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 
 # Templates for login page
 templates = Jinja2Templates(directory=Path(__file__).parent.parent.parent / "templates")
-
-
-def _extract_provider_name(issuer: str) -> str:
-    """Extract a friendly provider name from the OIDC issuer URL."""
-    if not issuer:
-        return "SSO"
-
-    # Try to extract from common patterns
-    issuer_lower = issuer.lower()
-
-    if "keycloak" in issuer_lower:
-        return "Keycloak"
-    if "okta" in issuer_lower:
-        return "Okta"
-    if "auth0" in issuer_lower:
-        return "Auth0"
-    if "azure" in issuer_lower or "microsoft" in issuer_lower:
-        return "Microsoft"
-    if "google" in issuer_lower:
-        return "Google"
-    if "github" in issuer_lower:
-        return "GitHub"
-
-    # Fall back to domain name
-    try:
-        parsed = urlparse(issuer)
-        if parsed.netloc:
-            # Get first part of domain (e.g., "keycloak" from "keycloak.example.com")
-            parts = parsed.netloc.split(".")
-            if len(parts) > 1:
-                return parts[0].capitalize()
-            return parsed.netloc.capitalize()
-    except Exception:
-        pass
-
-    return "SSO"
 
 
 @router.get("/login")
@@ -102,14 +66,12 @@ async def login(
         return await client.authorize_redirect(request, redirect_uri)
 
     # Otherwise, show login page
-    provider_name = _extract_provider_name(config.issuer)
-
     return templates.TemplateResponse(
         "login.html",
         {
             "request": request,
             "redirect": redirect,
-            "provider_name": provider_name,
+            "provider_name": config.provider_name,
             "error": error,
         },
     )
@@ -217,5 +179,5 @@ async def auth_debug(request: Request):
         "oidc_redirect_uri": config.redirect_uri or "(auto-detect)",
         "session_has_user": "user" in request.session,
         "session_keys": list(request.session.keys()),
-        "provider_name": _extract_provider_name(config.issuer) if config.issuer else None,
+        "provider_name": config.provider_name,
     }
