@@ -635,6 +635,23 @@ class ImageService:
             logger.warning(f"Failed to extract EXIF data: {e}")
             return {"error": f"Failed to extract EXIF: {str(e)}"}
 
+    def get_folder_list(self) -> List[str]:
+        """
+        Get list of top-level folder names in the image directory.
+
+        Returns:
+            List of folder names (not full paths)
+        """
+        folders = []
+        try:
+            for item in self.image_dir.iterdir():
+                if item.is_dir() and not item.name.startswith('.'):
+                    folders.append(item.name)
+            folders.sort()
+        except Exception as e:
+            logger.error(f"Failed to list folders: {e}")
+        return folders
+
     def get_image_metadata(self, file_path: Path, include_exif: bool = False) -> Dict[str, Any]:
         """
         Extract metadata from an image file.
