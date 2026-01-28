@@ -2832,6 +2832,64 @@ async def create_api_key(
     })
 
 
+# Static routes must come BEFORE parameterized {key_id} routes
+@router.get(
+    "/api/keys/available-resources",
+    responses={
+        200: {"description": "Available groups, endpoints, and folders for scope configuration"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def get_available_resources(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """
+    Get all available groups, endpoints, and folders for API key scope configuration.
+
+    Returns structured data for the UI to render scope selection checkboxes.
+    """
+    display_manager = get_display_manager(request)
+
+    # Get groups with their endpoints and folders
+    groups = []
+    for group in display_manager.groups.values():
+        endpoints = [ep.endpoint_id for ep in group.endpoints.values()]
+        folders = [f.strip() for f in (group.settings.folders or "").split(",") if f.strip()]
+        groups.append({
+            "group_id": group.group_id,
+            "endpoints": endpoints,
+            "folders": folders
+        })
+
+    # Get all available folders from image service
+    all_folders = list(image_service.get_folder_list())
+
+    return JSONResponse(content={
+        "groups": groups,
+        "folders": all_folders
+    })
+
+
+@router.post(
+    "/api/keys/save",
+    responses={
+        200: {"description": "API keys saved to file"},
+        401: {"description": "Authentication required"},
+        403: {"description": "CSRF token invalid"},
+    }
+)
+async def save_api_keys(
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """Save API keys configuration to file."""
+    await api_key_manager.save_config()
+    return JSONResponse(content={"status": "saved"})
+
+
 @router.get(
     "/api/keys/{key_id}",
     responses={
@@ -2916,63 +2974,6 @@ async def revoke_api_key(
     await api_key_manager.save_config()
 
     return JSONResponse(content={"status": "revoked", "key_id": key_id})
-
-
-@router.get(
-    "/api/keys/available-resources",
-    responses={
-        200: {"description": "Available groups, endpoints, and folders for scope configuration"},
-        401: {"description": "Authentication required"},
-    }
-)
-async def get_available_resources(
-    request: Request,
-    user: User = Depends(get_current_user),
-):
-    """
-    Get all available groups, endpoints, and folders for API key scope configuration.
-
-    Returns structured data for the UI to render scope selection checkboxes.
-    """
-    display_manager = get_display_manager(request)
-
-    # Get groups with their endpoints and folders
-    groups = []
-    for group in display_manager.groups.values():
-        endpoints = [ep.endpoint_id for ep in group.endpoints.values()]
-        folders = [f.strip() for f in (group.settings.folders or "").split(",") if f.strip()]
-        groups.append({
-            "group_id": group.group_id,
-            "endpoints": endpoints,
-            "folders": folders
-        })
-
-    # Get all available folders from image service
-    all_folders = list(image_service.get_folder_list())
-
-    return JSONResponse(content={
-        "groups": groups,
-        "folders": all_folders
-    })
-
-
-@router.post(
-    "/api/keys/save",
-    responses={
-        200: {"description": "API keys saved to file"},
-        401: {"description": "Authentication required"},
-        403: {"description": "CSRF token invalid"},
-    }
-)
-async def save_api_keys(
-    request: Request,
-    user: User = Depends(get_current_user),
-    _csrf: None = Depends(verify_csrf_token),
-    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
-):
-    """Save API keys configuration to file."""
-    await api_key_manager.save_config()
-    return JSONResponse(content={"status": "saved"})
 
 
 # =============================================================================
