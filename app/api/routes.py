@@ -207,6 +207,10 @@ def check_scope_access(
 
         folder = path_parts[0]
 
+        # Wildcard folder scope - access all folders
+        if "folder:*" in scopes:
+            return True
+
         # Direct folder scope
         if f"folder:{folder}" in scopes:
             return True

@@ -1385,6 +1385,24 @@
                 font-size: 13px;
             }
 
+            /* All folders option */
+            .all-folders-option {
+                border-bottom: 1px solid #0f3460;
+                margin-bottom: 4px;
+                padding-bottom: 8px !important;
+            }
+
+            /* Scope hint */
+            .scope-hint {
+                padding: 8px 12px;
+                background: rgba(33, 150, 243, 0.1);
+                border: 1px solid rgba(33, 150, 243, 0.3);
+                border-radius: 4px;
+                margin-bottom: 8px;
+                color: #64b5f6;
+                font-size: 12px;
+            }
+
             /* Responsive */
             @media (max-width: 500px) {
                 .panel {
@@ -5554,12 +5572,34 @@
                 }
                 document.getElementById('accessEndpointsList').innerHTML = endpointsHtml || '<div style="color:#666;padding:8px;">No groups configured</div>';
 
-                // Render folders
-                const foldersHtml = resources.folders.map(f => `
-                    <label class="scope-item" data-search="${f.toLowerCase()}">
+                // Render folders with "All Folders" option
+                const allFoldersChecked = selectedScopes.includes('folder:*');
+
+                // Check if we need to show folder hint
+                const hasEndpointScopes = selectedScopes.some(s => s.startsWith('endpoint:'));
+                const hasFolderScopes = selectedScopes.some(s => s.startsWith('folder:'));
+                const hasGroupScopes = selectedScopes.some(s => s.startsWith('group:'));
+                const hasFullAccess = document.getElementById('scopeFullAccess').checked;
+                const showFolderHint = hasEndpointScopes && !hasFolderScopes && !hasGroupScopes && !hasFullAccess;
+
+                let foldersHtml = showFolderHint ?
+                    '<div class="scope-hint">💡 Endpoint scopes need folder access to load images. Add folders below or use a group scope.</div>' : '';
+
+                foldersHtml += `
+                    <label class="scope-item all-folders-option" data-search="all folders">
+                        <input type="checkbox"
+                               value="folder:*"
+                               ${allFoldersChecked ? 'checked' : ''}
+                               onchange="toggleAllFolders(this)">
+                        <span style="font-weight:500;">All Folders</span>
+                    </label>
+                `;
+                foldersHtml += resources.folders.map(f => `
+                    <label class="scope-item" data-search="${f.toLowerCase()}" ${allFoldersChecked ? 'style="opacity:0.5;pointer-events:none;"' : ''}>
                         <input type="checkbox"
                                value="folder:${f}"
-                               ${selectedScopes.includes('folder:' + f) ? 'checked' : ''}
+                               ${selectedScopes.includes('folder:' + f) || allFoldersChecked ? 'checked' : ''}
+                               ${allFoldersChecked ? 'disabled' : ''}
                                onchange="toggleScope(this)">
                         <span>${escapeHtml(f)}</span>
                     </label>
@@ -5578,6 +5618,21 @@
                 } else {
                     selectedScopes = selectedScopes.filter(s => s !== scope);
                 }
+                renderSelectedTags();
+                updateScopeCounts();
+            }
+
+            function toggleAllFolders(checkbox) {
+                if (checkbox.checked) {
+                    // Remove individual folder scopes, add wildcard
+                    selectedScopes = selectedScopes.filter(s => !s.startsWith('folder:'));
+                    selectedScopes.push('folder:*');
+                } else {
+                    // Remove wildcard
+                    selectedScopes = selectedScopes.filter(s => s !== 'folder:*');
+                }
+                // Re-render to update individual checkboxes
+                renderScopeItems(availableResources);
                 renderSelectedTags();
                 updateScopeCounts();
             }
