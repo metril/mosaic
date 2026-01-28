@@ -53,6 +53,28 @@
                 background: rgba(239, 68, 68, 0.1);
                 border-color: rgba(239, 68, 68, 0.5);
             }
+            .header-actions {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+            }
+            .header-btn {
+                background: transparent;
+                border: 1px solid #0f3460;
+                color: #888;
+                padding: 8px;
+                border-radius: 6px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+            }
+            .header-btn:hover {
+                background: rgba(255, 255, 255, 0.05);
+                color: #eee;
+                border-color: #1a4a7a;
+            }
 
             /* Main content */
             .main {
@@ -1226,19 +1248,25 @@
 
         <header class="header">
             <h1>Admin</h1>
-            {% if oidc_enabled and user %}
-            <div class="header-user">
-                <span class="header-user-name">{{ user.name or user.email }}</span>
-                <a href="/auth/logout?redirect=/auth/login" class="header-logout">Logout</a>
+            <div class="header-actions">
+                <button class="header-btn" onclick="openApiKeysPanel()" title="API Keys">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                    </svg>
+                </button>
+                {% if oidc_enabled and user %}
+                <div class="header-user">
+                    <span class="header-user-name">{{ user.name or user.email }}</span>
+                    <a href="/auth/logout?redirect=/auth/login" class="header-logout">Logout</a>
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
         </header>
 
         <!-- Tab Navigation -->
         <nav class="tab-nav">
             <button class="tab-btn active" data-tab="display" onclick="switchTab('display')">Display Groups</button>
             <button class="tab-btn" data-tab="immich" onclick="switchTab('immich')">Immich</button>
-            <button class="tab-btn" data-tab="apikeys" onclick="switchTab('apikeys')">API Keys</button>
             <div class="tab-actions" id="displayTabActions">
                 <button class="btn btn-secondary" onclick="saveConfig()" id="saveConfigBtn">Save Config</button>
                 <button class="btn btn-primary" onclick="openPanel('create')">+ Create Group</button>
@@ -1246,10 +1274,6 @@
             <div class="tab-actions hidden" id="immichTabActions">
                 <button class="btn btn-secondary" onclick="saveImmichConfig()" id="saveImmichConfigBtn">Save Config</button>
                 <button class="btn btn-primary" onclick="openImmichPanel('create')">+ Create Pull</button>
-            </div>
-            <div class="tab-actions hidden" id="apikeysTabActions">
-                <button class="btn btn-secondary" onclick="saveApiKeysConfig()" id="saveApiKeysConfigBtn">Save Config</button>
-                <button class="btn btn-primary" onclick="openApiKeyModal()">+ Create Key</button>
             </div>
         </nav>
 
@@ -1278,25 +1302,6 @@
 
             <div id="pullsList" class="pulls-grid">
                 <div class="loading">Loading pulls...</div>
-            </div>
-        </main>
-
-        <!-- API Keys Tab -->
-        <main class="main tab-content hidden" id="tab-apikeys">
-            <div id="apikeysMessage"></div>
-
-            <div class="section-header">
-                <span class="section-title">API Keys</span>
-                <span class="section-count" id="apiKeysCount">0</span>
-            </div>
-
-            <p style="color: #888; margin-bottom: 16px;">
-                API keys allow display devices to access images without browser login.
-                Keys are shown only once when created - store them securely.
-            </p>
-
-            <div id="apiKeysList" class="api-keys-list">
-                <div class="loading">Loading API keys...</div>
             </div>
         </main>
 
@@ -1792,41 +1797,6 @@
             </div>
         </div>
 
-        <!-- API Key modal -->
-        <div class="modal" id="apiKeyModal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <span class="modal-title">Create API Key</span>
-                    <button class="modal-close" onclick="closeApiKeyModal()">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div id="apiKeyCreateForm">
-                        <div class="form-group">
-                            <label for="apiKeyName">Key Name</label>
-                            <input type="text" id="apiKeyName" placeholder="e.g., Living Room Display" required>
-                            <small style="color: #888; font-size: 12px;">A descriptive name to identify this key</small>
-                        </div>
-                    </div>
-                    <div id="apiKeyCreated" style="display: none;">
-                        <div style="background: #ff980020; border: 1px solid #ff9800; padding: 12px; border-radius: 6px; margin-bottom: 16px;">
-                            <strong>Copy this key now!</strong> It will not be shown again.
-                        </div>
-                        <div class="form-group">
-                            <label>API Key</label>
-                            <div style="display: flex; gap: 8px;">
-                                <input type="text" id="newApiKeyValue" readonly style="font-family: monospace; flex: 1;">
-                                <button type="button" class="btn btn-secondary" onclick="copyApiKey()">Copy</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-ghost" onclick="closeApiKeyModal()">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="createApiKeyBtn" onclick="createApiKey()">Create Key</button>
-                </div>
-            </div>
-        </div>
-
         <!-- Immich Panel overlay -->
         <div class="panel-overlay" id="immichPanelOverlay" onclick="closeImmichPanel()"></div>
 
@@ -1938,6 +1908,63 @@
             <div class="panel-footer">
                 <button type="button" class="btn btn-ghost" onclick="closeImmichPanel()">Cancel</button>
                 <button type="submit" form="immichForm" class="btn btn-primary" id="immichSubmitBtn">Create Pull</button>
+            </div>
+        </div>
+
+        <!-- API Keys Panel overlay -->
+        <div class="panel-overlay" id="apiKeysPanelOverlay" onclick="closeApiKeysPanel()"></div>
+
+        <!-- API Keys Slide-in panel -->
+        <div class="panel" id="apiKeysPanel">
+            <div class="panel-header">
+                <span class="panel-title">API Keys</span>
+                <button class="panel-close" onclick="closeApiKeysPanel()">&times;</button>
+            </div>
+            <div class="panel-body">
+                <div id="apikeysMessage"></div>
+                <p style="color: #888; margin-bottom: 16px; font-size: 13px;">
+                    API keys allow display devices to access images without browser login.
+                    Keys are shown only once when created.
+                </p>
+
+                <!-- Create New Key Section -->
+                <div id="apiKeyCreateSection" style="margin-bottom: 20px;">
+                    <div class="form-row">
+                        <label for="apiKeyName">Create New Key</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="apiKeyName" placeholder="e.g., Living Room Display">
+                            <button class="btn btn-primary" id="createApiKeyBtn" onclick="createApiKey()">Create</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- New Key Display (hidden by default) -->
+                <div id="apiKeyCreated" style="display: none; margin-bottom: 20px;">
+                    <div style="background: #ff980020; border: 1px solid #ff9800; padding: 12px; border-radius: 6px; margin-bottom: 12px;">
+                        <strong style="color: #ff9800;">Copy this key now!</strong>
+                        <span style="color: #888; font-size: 12px;"> It will not be shown again.</span>
+                    </div>
+                    <div class="form-row">
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="newApiKeyValue" readonly style="font-family: monospace; flex: 1;">
+                            <button class="btn btn-secondary" onclick="copyApiKey()">Copy</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-ghost" style="margin-top: 8px;" onclick="dismissNewKey()">Done</button>
+                </div>
+
+                <!-- Keys List -->
+                <div class="section-header" style="margin-bottom: 12px;">
+                    <span class="section-title">Existing Keys</span>
+                    <span class="section-count" id="apiKeysCount">0</span>
+                </div>
+                <div id="apiKeysList" class="api-keys-list">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+            <div class="panel-footer">
+                <button class="btn btn-ghost" onclick="closeApiKeysPanel()">Close</button>
+                <button class="btn btn-secondary" onclick="saveApiKeysConfig()">Save Config</button>
             </div>
         </div>
 
@@ -4285,18 +4312,11 @@
                 // Update tab actions
                 document.getElementById('displayTabActions').classList.toggle('hidden', tab !== 'display');
                 document.getElementById('immichTabActions').classList.toggle('hidden', tab !== 'immich');
-                document.getElementById('apikeysTabActions').classList.toggle('hidden', tab !== 'apikeys');
 
                 // Load Immich pulls on first switch
                 if (tab === 'immich' && !immichPullsLoaded) {
                     loadImmichPulls();
                     immichPullsLoaded = true;
-                }
-
-                // Load API keys on first switch
-                if (tab === 'apikeys' && !apiKeysLoaded) {
-                    loadApiKeys();
-                    apiKeysLoaded = true;
                 }
             }
 
@@ -4963,24 +4983,31 @@
                 return formatDate(isoString);
             }
 
-            function openApiKeyModal() {
-                document.getElementById('apiKeyModal').classList.add('visible');
-                document.getElementById('apiKeyCreateForm').style.display = 'block';
-                document.getElementById('apiKeyCreated').style.display = 'none';
-                document.getElementById('apiKeyName').value = '';
-                document.getElementById('createApiKeyBtn').style.display = 'inline-flex';
-                document.getElementById('createApiKeyBtn').disabled = false;
-                document.getElementById('createApiKeyBtn').textContent = 'Create Key';
+            function openApiKeysPanel() {
+                document.getElementById('apiKeysPanelOverlay').classList.add('visible');
+                document.getElementById('apiKeysPanel').classList.add('open');
+                if (!apiKeysLoaded) {
+                    loadApiKeys();
+                    apiKeysLoaded = true;
+                }
             }
 
-            function closeApiKeyModal() {
-                document.getElementById('apiKeyModal').classList.remove('visible');
+            function closeApiKeysPanel() {
+                document.getElementById('apiKeysPanelOverlay').classList.remove('visible');
+                document.getElementById('apiKeysPanel').classList.remove('open');
+            }
+
+            function dismissNewKey() {
+                document.getElementById('apiKeyCreated').style.display = 'none';
+                document.getElementById('apiKeyCreateSection').style.display = 'block';
+                document.getElementById('apiKeyName').value = '';
             }
 
             async function createApiKey() {
-                const name = document.getElementById('apiKeyName').value.trim();
+                const nameInput = document.getElementById('apiKeyName');
+                const name = nameInput.value.trim();
                 if (!name) {
-                    document.getElementById('apiKeyName').focus();
+                    nameInput.focus();
                     return;
                 }
 
@@ -5006,18 +5033,17 @@
                     const data = await response.json();
 
                     // Show the key (only time it's visible)
-                    document.getElementById('apiKeyCreateForm').style.display = 'none';
+                    document.getElementById('apiKeyCreateSection').style.display = 'none';
                     document.getElementById('apiKeyCreated').style.display = 'block';
                     document.getElementById('newApiKeyValue').value = data.key;
-                    btn.style.display = 'none';
 
                     // Reload list
                     loadApiKeys();
-                    showApiKeysMessage('API key created successfully', 'success');
                 } catch (e) {
-                    showApiKeysMessage(e.message, 'error');
+                    alert('Failed to create key: ' + e.message);
+                } finally {
                     btn.disabled = false;
-                    btn.textContent = 'Create Key';
+                    btn.textContent = 'Create';
                 }
             }
 
