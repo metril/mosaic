@@ -610,6 +610,50 @@ When OIDC is configured, admin endpoints require authentication. Unauthenticated
 | **GET /auth/logout** | Clears session and logs out user |
 | **GET /auth/me** | Returns current user info (email, name) |
 
+### API Keys
+
+API keys allow display devices and external integrations to access images without browser-based OIDC login. When OIDC is enabled, image serving endpoints (`/api/image/*`, `/display`) require authentication via either session cookie or API key.
+
+#### Creating API Keys
+
+1. Open the admin dashboard at `/admin`
+2. Click the key icon in the header
+3. Enter a descriptive name (e.g., "Living Room Display")
+4. Click **Create** and copy the key immediately - it will only be shown once
+
+#### Using API Keys
+
+**HTTP Header (recommended):**
+```bash
+curl -H "Authorization: Bearer sk_abc123..." https://your-server/api/image/photo.jpg
+```
+
+**Query Parameter:**
+```
+https://your-server/display?group=living-room&endpoint=tv&key=sk_abc123...
+```
+
+**Display URL with embedded key:**
+```
+https://your-server/display?group=living-room&endpoint=kitchen-display&key=sk_abc123...
+```
+
+#### Managing API Keys
+
+From the admin dashboard (key icon in header):
+
+- **Enable/Disable**: Temporarily disable a key without revoking it
+- **Revoke**: Permanently delete a key (requires confirmation)
+- **Save Config**: Persist changes to `config/api_keys.yaml`
+
+#### Security Notes
+
+- Keys are hashed with Argon2id before storage - the plaintext key cannot be recovered
+- Keys are shown only once at creation time - store them securely
+- Use descriptive names to identify which device uses each key
+- Revoke keys immediately if compromised
+- API keys are stored in `config/api_keys.yaml`
+
 ## Image Processing Details
 
 ### Resize Modes
