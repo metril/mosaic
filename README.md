@@ -305,6 +305,36 @@ POST /api/display/groups/{group_id}/endpoints/{endpoint_id}/next
 POST /api/display/groups/{group_id}/endpoints/{endpoint_id}/previous
 ```
 
+### Wallpanel & Iframe Embedding
+
+The display endpoint can be embedded in iframes for use with Home Assistant's [Wallpanel](https://github.com/j-a-n/lovelace-wallpanel), Fully Kiosk Browser, or similar panel applications.
+
+**Enable iframe embedding:**
+
+Set the following environment variables:
+
+```bash
+# Allow display pages to be embedded in iframes
+ALLOW_FRAME_EMBEDDING=true
+
+# Optionally restrict which origins can embed (space-separated)
+# Leave empty to allow any origin
+FRAME_ANCESTORS=https://homeassistant.local:8123
+```
+
+**Wallpanel Configuration:**
+
+1. Install Wallpanel from HACS
+2. Configure the screensaver panel in your Wallpanel settings:
+   - Set the screensaver URL: `http://your-server/display?group=your-group&endpoint=wallpanel`
+   - Enable full-screen mode for best experience
+3. The display will connect via WebSocket and cycle images automatically
+
+**Security Notes:**
+- Only display routes (`/display`, `/api/image/*`) allow iframe embedding
+- Admin dashboard remains protected with `X-Frame-Options: DENY`
+- Use `FRAME_ANCESTORS` to restrict embedding to trusted origins only
+
 ### Clock & Weather Overlays
 
 Display time, date, and weather information on the screensaver.
@@ -676,6 +706,10 @@ SESSION_SECRET=random-32-char-secret-for-sessions
 ALLOWED_ORIGINS=https://screensaver.example.com
 ALLOWED_WS_ORIGINS=https://screensaver.example.com
 HTTPS_ONLY=true
+
+# Iframe Embedding (for Wallpanel, Home Assistant, etc.)
+ALLOW_FRAME_EMBEDDING=false
+FRAME_ANCESTORS=
 
 # Connection Limits
 MAX_BROWSERS_PER_GROUP=100

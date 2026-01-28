@@ -33,18 +33,48 @@ from pytimeparse import parse as parse_duration
 # Rate limiter for API endpoints
 limiter = Limiter(key_func=get_remote_address)
 
+# Iframe embedding configuration (for Wallpanel, Home Assistant, etc.)
+ALLOW_FRAME_EMBEDDING = os.environ.get("ALLOW_FRAME_EMBEDDING", "false").lower() == "true"
+FRAME_ANCESTORS = os.environ.get("FRAME_ANCESTORS", "")  # e.g., "https://homeassistant.local:8123"
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add security headers to all responses."""
 
+    # Routes that can be embedded in iframes (display-related)
+    EMBEDDABLE_PATHS = ("/display", "/ws/display", "/api/image")
+
+    def _is_embeddable_path(self, path: str) -> bool:
+        """Check if path should allow iframe embedding."""
+        return any(path.startswith(p) for p in self.EMBEDDABLE_PATHS)
+
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
+
+        # Skip WebSocket upgrades (they don't need security headers)
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            return response
+
         # Prevent MIME type sniffing
         response.headers["X-Content-Type-Options"] = "nosniff"
-        # Prevent clickjacking
-        response.headers["X-Frame-Options"] = "DENY"
-        # Enable XSS protection in older browsers
-        response.headers["X-XSS-Protection"] = "1; mode=block"
+        # Referrer policy
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Determine frame policy based on path and config
+        is_embeddable = ALLOW_FRAME_EMBEDDING and self._is_embeddable_path(request.url.path)
+
+        if is_embeddable:
+            # Allow iframe embedding for display routes
+            if FRAME_ANCESTORS:
+                frame_policy = f"frame-ancestors {FRAME_ANCESTORS}"
+            else:
+                frame_policy = "frame-ancestors *"
+            # Don't set X-Frame-Options (let CSP frame-ancestors handle it)
+        else:
+            # Strict policy for admin and other routes
+            response.headers["X-Frame-Options"] = "DENY"
+            frame_policy = "frame-ancestors 'none'"
+
         # Content Security Policy (S6) - restrict script/style sources
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
@@ -52,7 +82,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
             "connect-src 'self' wss: ws:; "
-            "frame-ancestors 'none'"
+            f"{frame_policy}"
         )
         return response
 
