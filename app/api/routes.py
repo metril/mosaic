@@ -88,6 +88,8 @@ async def get_image_auth(
         if hasattr(request.app.state, 'api_key_manager'):
             api_key = request.app.state.api_key_manager.verify_key(key)
             if api_key:
+                if not api_key.scopes:
+                    raise HTTPException(status_code=403, detail="API key has no access configured")
                 return api_key
         # Invalid key provided = reject immediately
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -98,6 +100,8 @@ async def get_image_auth(
         if hasattr(request.app.state, 'api_key_manager'):
             api_key = request.app.state.api_key_manager.verify_key(key_param)
             if api_key:
+                if not api_key.scopes:
+                    raise HTTPException(status_code=403, detail="API key has no access configured")
                 # Store in session for subsequent requests (e.g., WebSocket)
                 request.session["api_key_id"] = api_key.id
                 return api_key
@@ -108,8 +112,7 @@ async def get_image_auth(
         if hasattr(request.app.state, 'api_key_manager'):
             api_key = request.app.state.api_key_manager.get_key(request.session["api_key_id"])
             # Only return API key if enabled AND has valid scopes
-            # Empty scopes or legacy ["images:read"] = no access
-            if api_key and api_key.enabled and api_key.scopes and api_key.scopes != ["images:read"]:
+            if api_key and api_key.enabled and api_key.scopes:
                 return api_key
 
     # Fall back to session auth
@@ -154,10 +157,6 @@ def check_scope_access(
 
     # Empty scopes = no access
     if not scopes:
-        return False
-
-    # Legacy scope = no access (migration path)
-    if scopes == ["images:read"]:
         return False
 
     # Full access
