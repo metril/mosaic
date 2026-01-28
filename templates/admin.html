@@ -1345,6 +1345,46 @@
                 padding-left: 24px;
             }
 
+            /* Add endpoint row in scope config */
+            .add-endpoint-row {
+                display: flex;
+                gap: 8px;
+                padding: 6px 8px 10px 24px;
+                margin-top: 4px;
+                border-top: 1px dashed #0f3460;
+            }
+            .add-endpoint-row input {
+                flex: 1;
+                padding: 6px 10px;
+                border: 1px solid #0f3460;
+                background: #1a1a2e;
+                color: #eee;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+            .add-endpoint-row input:focus {
+                outline: none;
+                border-color: #e94560;
+            }
+            .add-endpoint-row input::placeholder {
+                color: #555;
+            }
+            .add-endpoint-row .btn {
+                padding: 6px 10px;
+                font-size: 11px;
+            }
+
+            /* No-scope warning banner */
+            .no-scope-warning {
+                padding: 10px 14px;
+                background: rgba(255, 152, 0, 0.15);
+                border: 1px solid rgba(255, 152, 0, 0.5);
+                border-radius: 6px;
+                margin-bottom: 12px;
+                color: #ffb74d;
+                font-size: 13px;
+            }
+
             /* Responsive */
             @media (max-width: 500px) {
                 .panel {
@@ -2132,6 +2172,10 @@
 
                             <div class="scope-tags" id="selectedScopeTags">
                                 <span style="color:#666;font-size:12px;">No scopes selected (key will have no access)</span>
+                            </div>
+
+                            <div id="noScopeWarning" class="no-scope-warning">
+                                ⚠ No scopes selected — this key will have no access to any resources
                             </div>
 
                             <div class="scope-section">
@@ -5502,11 +5546,9 @@
 
                     // Add "new endpoint" input for this group
                     endpointsHtml += `
-                        <div class="add-endpoint-row" style="display:flex;gap:8px;padding:4px 0 8px 24px;">
-                            <input type="text" id="newEndpoint_${g.group_id}" placeholder="New endpoint name"
-                                   style="flex:1;padding:4px 8px;border:1px solid #444;background:#2a2a2a;color:#fff;border-radius:4px;font-size:12px;">
-                            <button type="button" class="btn btn-ghost" style="padding:4px 8px;font-size:11px;"
-                                    onclick="addNewEndpoint('${g.group_id}')">+ Add</button>
+                        <div class="add-endpoint-row">
+                            <input type="text" id="newEndpoint_${g.group_id}" placeholder="New endpoint name">
+                            <button type="button" class="btn btn-ghost" onclick="addNewEndpoint('${g.group_id}')">+ Add</button>
                         </div>
                     `;
                 }
@@ -5551,6 +5593,14 @@
 
             function renderSelectedTags() {
                 const tagsContainer = document.getElementById('selectedScopeTags');
+                const warningBanner = document.getElementById('noScopeWarning');
+                const isFullAccess = document.getElementById('scopeFullAccess').checked;
+
+                // Show/hide warning banner
+                if (warningBanner) {
+                    warningBanner.style.display = (!isFullAccess && selectedScopes.length === 0) ? 'block' : 'none';
+                }
+
                 if (selectedScopes.length === 0) {
                     tagsContainer.innerHTML = '<span style="color:#666;font-size:12px;">No scopes selected (key will have no access)</span>';
                     return;
@@ -5610,6 +5660,12 @@
             function toggleFullAccessScope() {
                 const isFullAccess = document.getElementById('scopeFullAccess').checked;
                 document.getElementById('scopeRestrictedOptions').style.display = isFullAccess ? 'none' : 'block';
+
+                // Update warning visibility
+                const warningBanner = document.getElementById('noScopeWarning');
+                if (warningBanner) {
+                    warningBanner.style.display = (!isFullAccess && selectedScopes.length === 0) ? 'block' : 'none';
+                }
             }
 
             async function addNewEndpoint(groupId) {
@@ -5663,12 +5719,8 @@
                 const isFullAccess = document.getElementById('scopeFullAccess').checked;
                 const scopes = isFullAccess ? ['*'] : selectedScopes;
 
-                // Warn if no access
-                if (scopes.length === 0) {
-                    if (!confirm('No scopes selected. This key will have no access. Continue?')) {
-                        return;
-                    }
-                }
+                // No confirm dialog needed - warning banner is already visible in the UI
+                // User has already seen the warning and chosen to proceed
 
                 try {
                     const response = await fetch('/api/keys/' + currentAccessKeyId, {
