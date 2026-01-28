@@ -2118,11 +2118,9 @@
                         <button class="panel-close" onclick="closeAccessConfig()">&times;</button>
                     </div>
                     <div class="access-config-body">
-                        <div class="form-row">
-                            <label class="toggle-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                                <input type="checkbox" id="scopeFullAccess" onchange="toggleFullAccessScope()">
-                                <span>Full Access (unrestricted access to everything)</span>
-                            </label>
+                        <div class="checkbox-row" style="padding: 12px; background: rgba(233, 69, 96, 0.1); border: 1px solid rgba(233, 69, 96, 0.3); border-radius: 6px; margin-bottom: 16px;">
+                            <input type="checkbox" id="scopeFullAccess" onchange="toggleFullAccessScope()">
+                            <label for="scopeFullAccess" style="font-weight: 500; margin-bottom: 0;">Full Access (unrestricted)</label>
                         </div>
 
                         <div id="scopeRestrictedOptions">
@@ -5415,8 +5413,8 @@
             let currentAccessKeyId = null;
             let selectedScopes = [];
 
-            async function loadAvailableResources() {
-                if (availableResources) return availableResources;
+            async function loadAvailableResources(forceReload = false) {
+                if (availableResources && !forceReload) return availableResources;
                 try {
                     const response = await fetch('/api/keys/available-resources');
                     if (!response.ok) throw new Error('Failed to load resources');
@@ -5446,10 +5444,22 @@
                 // Filter out legacy and full access scopes for display
                 selectedScopes = selectedScopes.filter(s => s !== 'images:read' && s !== '*');
 
-                // Load available resources and render
-                const resources = await loadAvailableResources();
+                // Reset all sections to collapsed state
+                ['groups', 'endpoints', 'folders'].forEach(section => {
+                    document.getElementById(section + 'Section').style.display = 'none';
+                    document.getElementById(section + 'CollapseIcon').classList.remove('expanded');
+                });
+
+                // Load available resources and render (force reload to get fresh data)
+                const resources = await loadAvailableResources(true);
                 renderScopeItems(resources);
                 renderSelectedTags();
+
+                // Auto-expand groups section if there are groups
+                if (resources.groups && resources.groups.length > 0) {
+                    document.getElementById('groupsSection').style.display = 'block';
+                    document.getElementById('groupsCollapseIcon').classList.add('expanded');
+                }
 
                 document.getElementById('apiKeyAccessConfig').style.display = 'flex';
             }
@@ -5551,13 +5561,20 @@
             }
 
             function updateScopeCounts() {
+                // Count selected scopes
                 const groupCount = selectedScopes.filter(s => s.startsWith('group:')).length;
                 const endpointCount = selectedScopes.filter(s => s.startsWith('endpoint:')).length;
                 const folderCount = selectedScopes.filter(s => s.startsWith('folder:')).length;
 
-                document.getElementById('groupsCount').textContent = groupCount;
-                document.getElementById('endpointsCount').textContent = endpointCount;
-                document.getElementById('foldersCount').textContent = folderCount;
+                // Count total available
+                const totalGroups = availableResources?.groups?.length || 0;
+                const totalEndpoints = availableResources?.groups?.reduce((sum, g) => sum + (g.endpoints?.length || 0), 0) || 0;
+                const totalFolders = availableResources?.folders?.length || 0;
+
+                // Display as "selected/total" if any selected, otherwise just total
+                document.getElementById('groupsCount').textContent = groupCount > 0 ? `${groupCount}/${totalGroups}` : totalGroups;
+                document.getElementById('endpointsCount').textContent = endpointCount > 0 ? `${endpointCount}/${totalEndpoints}` : totalEndpoints;
+                document.getElementById('foldersCount').textContent = folderCount > 0 ? `${folderCount}/${totalFolders}` : totalFolders;
             }
 
             function filterScopeItems(query) {
