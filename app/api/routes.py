@@ -107,7 +107,9 @@ async def get_image_auth(
     if "api_key_id" in request.session:
         if hasattr(request.app.state, 'api_key_manager'):
             api_key = request.app.state.api_key_manager.get_key(request.session["api_key_id"])
-            if api_key and api_key.enabled:
+            # Only return API key if enabled AND has valid scopes
+            # Empty scopes or legacy ["images:read"] = no access
+            if api_key and api_key.enabled and api_key.scopes and api_key.scopes != ["images:read"]:
                 return api_key
 
     # Fall back to session auth
@@ -149,6 +151,10 @@ def check_scope_access(
         True if access is allowed, False otherwise
     """
     scopes = api_key.scopes
+
+    # Empty scopes = no access
+    if not scopes:
+        return False
 
     # Legacy scope = no access (migration path)
     if scopes == ["images:read"]:
