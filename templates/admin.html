@@ -110,6 +110,7 @@
                 display: grid;
                 grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
                 gap: 16px;
+                align-items: start;
             }
 
             /* Group card */
@@ -2140,7 +2141,7 @@
                                     <span class="scope-section-count" id="groupsCount">0</span>
                                 </div>
                                 <div class="scope-section-body" id="groupsSection" style="display: none;">
-                                    <div id="groupsList" class="scope-items-list"></div>
+                                    <div id="accessGroupsList" class="scope-items-list"></div>
                                 </div>
                             </div>
 
@@ -2151,7 +2152,7 @@
                                     <span class="scope-section-count" id="endpointsCount">0</span>
                                 </div>
                                 <div class="scope-section-body" id="endpointsSection" style="display: none;">
-                                    <div id="endpointsList" class="scope-items-list nested"></div>
+                                    <div id="accessEndpointsList" class="scope-items-list nested"></div>
                                 </div>
                             </div>
 
@@ -5476,7 +5477,7 @@
                         <span style="color: #666; margin-left: auto; font-size: 11px;">${g.folders.join(', ')}</span>
                     </label>
                 `).join('');
-                document.getElementById('groupsList').innerHTML = groupsHtml || '<div style="color:#666;padding:8px;">No groups configured</div>';
+                document.getElementById('accessGroupsList').innerHTML = groupsHtml || '<div style="color:#666;padding:8px;">No groups configured</div>';
 
                 // Render endpoints (grouped by group)
                 let endpointsHtml = '';
@@ -5496,7 +5497,7 @@
                         `;
                     }
                 }
-                document.getElementById('endpointsList').innerHTML = endpointsHtml || '<div style="color:#666;padding:8px;">No endpoints configured</div>';
+                document.getElementById('accessEndpointsList').innerHTML = endpointsHtml || '<div style="color:#666;padding:8px;">No endpoints configured</div>';
 
                 // Render folders
                 const foldersHtml = resources.folders.map(f => `
