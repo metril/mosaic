@@ -22,6 +22,7 @@ from pathlib import Path
 from app.api.routes import router, image_service
 from app.auth.routes import router as auth_router
 from app.auth.oidc import get_oidc_config
+from app.auth.api_keys import APIKeyManager
 from app.services.sync_manager import DisplayManager
 from app.services.immich_provider import ImmichProvider
 from app.services.homeassistant_provider import HomeAssistantProvider, HomeAssistantConfig
@@ -176,6 +177,12 @@ async def lifespan(app: FastAPI):
         loaded_pulls = await app.state.immich_provider.load_config()
         if loaded_pulls > 0:
             logger.info(f"Loaded {loaded_pulls} Immich pull configurations")
+
+        # Initialize API key manager for image endpoint authentication
+        app.state.api_key_manager = APIKeyManager()
+        loaded_keys = await app.state.api_key_manager.load_config()
+        if loaded_keys > 0:
+            logger.info(f"Loaded {loaded_keys} API keys from config")
 
         # Set up file watcher for image directory changes
         # This handles both external file changes AND Immich pull completions

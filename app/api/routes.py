@@ -35,6 +35,7 @@ from app.services.immich_provider import ImmichProvider, ImmichPullConfig
 from app.services.homeassistant_provider import HomeAssistantProvider
 from app.auth.dependencies import get_current_user, get_optional_user, User, get_csrf_token, verify_csrf_token
 from app.auth.oidc import get_oidc_config
+from app.auth.api_keys import APIKeyManager, APIKey
 from app.exceptions import PathSecurityError, NoImagesFoundError, error_response
 from app.utils.path_security import resolve_image_path
 from app.utils.logging import logger
@@ -58,6 +59,67 @@ EINK_SHARPEN = os.environ.get('EINK_SHARPEN', 'true').lower() == 'true'
 router = APIRouter()
 image_service = ImageService()
 templates = Jinja2Templates(directory="templates")
+
+
+from typing import Union
+from fastapi import Header
+
+
+async def get_image_auth(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+) -> Optional[Union[APIKey, User]]:
+    """
+    Check for API key in Authorization header or user session.
+
+    Used for image serving endpoints that require auth when OIDC is enabled.
+
+    Returns:
+        APIKey if valid API key provided
+        User if authenticated via session
+        None if no auth (caller must check OIDC config)
+
+    Raises:
+        HTTPException 401 if invalid API key provided
+    """
+    # Check API key first (Authorization: Bearer sk_xxx)
+    if authorization and authorization.startswith("Bearer "):
+        key = authorization[7:]
+        if hasattr(request.app.state, 'api_key_manager'):
+            api_key = request.app.state.api_key_manager.verify_key(key)
+            if api_key:
+                return api_key
+        # Invalid key provided = reject immediately
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Check for API key in query parameter (for display endpoints)
+    key_param = request.query_params.get("key")
+    if key_param and key_param.startswith("sk_"):
+        if hasattr(request.app.state, 'api_key_manager'):
+            api_key = request.app.state.api_key_manager.verify_key(key_param)
+            if api_key:
+                # Store in session for subsequent requests (e.g., WebSocket)
+                request.session["api_key_id"] = api_key.id
+                return api_key
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Check session for previously validated API key
+    if "api_key_id" in request.session:
+        if hasattr(request.app.state, 'api_key_manager'):
+            api_key = request.app.state.api_key_manager.get_key(request.session["api_key_id"])
+            if api_key and api_key.enabled:
+                return api_key
+
+    # Fall back to session auth
+    config = get_oidc_config()
+    if config.enabled:
+        user_info = request.session.get("user")
+        if user_info:
+            return User(user_info)
+        return None  # No auth
+
+    # OIDC disabled = allow with dev user
+    return User({"sub": "dev", "email": "dev@localhost", "name": "Developer"})
 
 
 def iter_buffer_with_cleanup(buffer: BytesIO, chunk_size: int = 65536):
@@ -336,13 +398,15 @@ async def get_metrics():
 })
 async def browse_images(
     request: Request,
-    format: Optional[Literal['json', 'html']] = Query(None, description="Output format - 'json' or 'html' (default)")
+    format: Optional[Literal['json', 'html']] = Query(None, description="Output format - 'json' or 'html' (default)"),
+    user: Optional[User] = Depends(get_optional_user),
 ):
     """
     Browse all folders, subfolders, and image files in a tree structure.
 
     Returns complete recursive directory tree in a single response with folder statistics.
     Client-side JavaScript handles expand/collapse for folders.
+    Requires authentication when OIDC is enabled.
 
     Query Parameters:
     - format: 'json' for API access, 'html' (default) for interactive web interface
@@ -355,6 +419,11 @@ async def browse_images(
         HTML: Interactive file explorer with collapsible folder tree and statistics
         JSON: Complete directory tree structure with metadata and statistics
     """
+    # Check authentication if OIDC is enabled
+    config = get_oidc_config()
+    if config.enabled and user is None:
+        return RedirectResponse(url="/auth/login?redirect=/browse")
+
     # Build complete directory tree with statistics (always enabled)
     tree_data = await asyncio.get_event_loop().run_in_executor(
         None,
@@ -380,14 +449,20 @@ async def browse_images(
 @router.get("/thumbnail/{image_path:path}", responses={
     200: {"description": "Thumbnail image (JPEG)", "content": {"image/jpeg": {}}},
     400: {"description": "Invalid image path", "content": {"application/json": {"example": {"error": "Invalid image path"}}}},
+    401: {"description": "Authentication required"},
     404: {"description": "Image not found", "content": {"application/json": {"example": {"error": "Image not found"}}}}
 })
-async def get_thumbnail(image_path: str):
+async def get_thumbnail(
+    request: Request,
+    image_path: str,
+    auth: Optional[Union[APIKey, User]] = Depends(get_image_auth),
+):
     """
     Generate and serve a thumbnail for a specific image.
 
     Thumbnails are generated on-the-fly at 200x200px with crop mode.
     This endpoint is used by the browse interface for lazy-loaded thumbnails.
+    Requires API key or session auth when OIDC is enabled.
 
     Args:
         image_path: Relative path to the image file (e.g., "earth/photo.jpg")
@@ -400,6 +475,11 @@ async def get_thumbnail(image_path: str):
     - GET /thumbnail/space/nebula.png
     - GET /thumbnail/landscape/%D0%9C%D0%BE%D0%B6%D0%B6%D0%B5%D0%B2%D0%B5%D0%BB%D0%BE%D0%B2%D0%B0%D1%8F.jpg (Cyrillic)
     """
+    # Check authentication if OIDC is enabled
+    config = get_oidc_config()
+    if config.enabled and auth is None:
+        raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+
     try:
         # Decode URL-encoded characters (handles Cyrillic, Chinese, emoji, etc.)
         image_path = unquote(image_path)
@@ -491,14 +571,18 @@ async def get_thumbnail(image_path: str):
         }
     },
     400: {"description": "Invalid image path"},
+    401: {"description": "Authentication required"},
     404: {"description": "Image not found"}
 })
 async def get_image_metadata(
+    request: Request,
     image_path: str,
-    include_exif: bool = Query(False, description="Include EXIF data (default: false)")
+    include_exif: bool = Query(False, description="Include EXIF data (default: false)"),
+    auth: Optional[Union[APIKey, User]] = Depends(get_image_auth),
 ):
     """
     Get detailed metadata for a specific image, optionally including EXIF data.
+    Requires API key or session auth when OIDC is enabled.
 
     Examples:
     - GET /metadata/landscape/photo.jpg
@@ -508,6 +592,11 @@ async def get_image_metadata(
     - Basic metadata: name, path, size, dimensions, format, modified date
     - EXIF data (if include_exif=true): camera info, settings, GPS, timestamps
     """
+    # Check authentication if OIDC is enabled
+    config = get_oidc_config()
+    if config.enabled and auth is None:
+        raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+
     try:
         # Decode URL-encoded characters (handles Cyrillic, Chinese, emoji, etc.)
         image_path = unquote(image_path)
@@ -547,6 +636,7 @@ async def get_image_metadata(
     200: {"description": "Processed image", "content": {"image/*": {}}},
     304: {"description": "Not Modified (conditional request)"},
     400: {"description": "Invalid image path"},
+    401: {"description": "Authentication required"},
     404: {"description": "Image not found"}
 })
 async def serve_processed_image(
@@ -563,11 +653,13 @@ async def serve_processed_image(
     contrast: Optional[float] = Query(None, description=f"E-Ink contrast (default: {EINK_CONTRAST})", ge=0.0, le=5.0),
     brightness: Optional[float] = Query(None, description=f"E-Ink brightness (default: {EINK_BRIGHTNESS})", ge=0.0, le=5.0),
     sharpen: Optional[bool] = Query(None, description=f"Apply sharpening (default: {EINK_SHARPEN})"),
+    auth: Optional[Union[APIKey, User]] = Depends(get_image_auth),
 ):
     """
     Serve a specific image with optional processing (resize, E-Ink, format conversion).
 
     Unlike /images/ static mount, this processes query parameters for dynamic image manipulation.
+    Requires API key or session auth when OIDC is enabled.
 
     Examples:
     - /api/image/landscape/photo.jpg - Original image
@@ -575,6 +667,11 @@ async def serve_processed_image(
     - /api/image/landscape/photo.jpg?eink=true&saturation=3.0&contrast=1.5
     - /api/image/landscape/photo.jpg?width=800&height=600&mode=crop
     """
+    # Check authentication if OIDC is enabled
+    config = get_oidc_config()
+    if config.enabled and auth is None:
+        raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+
     try:
         # Decode URL-encoded path
         image_path = unquote(image_path)
@@ -693,11 +790,14 @@ async def serve_processed_image(
 @router.get("/api/blur/{image_path:path}", responses={
     200: {"description": "Blur background data URL", "content": {"application/json": {}}},
     400: {"description": "Invalid image path"},
+    401: {"description": "Authentication required"},
     404: {"description": "Image not found"}
 })
 async def get_blur_background(
+    request: Request,
     image_path: str,
-    blur_amount: int = Query(50, ge=0, le=100, description="Blur intensity (0-100)")
+    blur_amount: int = Query(50, ge=0, le=100, description="Blur intensity (0-100)"),
+    auth: Optional[Union[APIKey, User]] = Depends(get_image_auth),
 ):
     """
     Get a blurred version of an image as a base64 data URL.
@@ -705,9 +805,15 @@ async def get_blur_background(
     Used for creating blurred background behind letterboxed images.
     The blur is calculated based on image dimensions for consistent
     appearance across different image sizes.
+    Requires API key or session auth when OIDC is enabled.
 
     Returns JSON with a 'blur_url' field containing the data URL.
     """
+    # Check authentication if OIDC is enabled
+    config = get_oidc_config()
+    if config.enabled and auth is None:
+        raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+
     try:
         # Decode URL-encoded path
         image_path = unquote(image_path)
@@ -1684,6 +1790,8 @@ async def remove_from_history(
     browser_id: str = PathParam(...),
     image_path: str = PathParam(...),
     request: Request = None,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
 ):
     """
     Remove a specific image from a browser's history.
@@ -1843,19 +1951,35 @@ async def display_page(
         None,
         description="Action to perform: 'next' or 'previous'",
         pattern=r"^(next|previous)$"
-    )
+    ),
+    key: Optional[str] = Query(
+        None,
+        description="API key for authentication (required when OIDC is enabled)"
+    ),
+    auth: Optional[Union[APIKey, User]] = Depends(get_image_auth),
 ):
     """
     Serve the display page for a browser to join a display group.
 
     The browser connects via WebSocket to the specified display group
     and displays images synchronized with other browsers in the group.
+    Requires API key or session auth when OIDC is enabled.
 
     Query Parameters:
         group: The group ID to join (must exist, created via admin API)
         endpoint: Optional endpoint ID for persistent history across reconnects
         action: Optional action to perform before rendering ('next' or 'previous')
+        key: API key for authentication (e.g., sk_xxxx...)
     """
+    # Check authentication if OIDC is enabled
+    config = get_oidc_config()
+    if config.enabled and auth is None:
+        # Redirect to login for browser access (user can then access via session)
+        redirect_url = f"/auth/login?redirect=/display?group={group}"
+        if endpoint:
+            redirect_url += f"&endpoint={endpoint}"
+        return RedirectResponse(url=redirect_url)
+
     display_manager = get_display_manager(request)
     display_group = await display_manager.get_group(group)
 
@@ -2530,6 +2654,192 @@ async def create_folder(
 
 
 # =============================================================================
+# API Key Management
+# =============================================================================
+
+def get_api_key_manager(request: Request) -> APIKeyManager:
+    """Get the APIKeyManager from app state."""
+    return request.app.state.api_key_manager
+
+
+class CreateAPIKeyRequest(BaseModel):
+    """Request body for creating an API key."""
+    name: str = Field(..., min_length=1, max_length=100, description="Human-readable name for the key")
+    scopes: Optional[List[str]] = Field(default=None, description="Permission scopes (default: ['images:read'])")
+
+
+class UpdateAPIKeyRequest(BaseModel):
+    """Request body for updating an API key."""
+    name: Optional[str] = Field(None, min_length=1, max_length=100, description="New name")
+    enabled: Optional[bool] = Field(None, description="Enable or disable the key")
+    scopes: Optional[List[str]] = Field(None, description="New permission scopes")
+
+
+@router.get(
+    "/api/keys",
+    responses={
+        200: {"description": "List of API keys (hashes hidden)"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def list_api_keys(
+    request: Request,
+    user: User = Depends(get_current_user),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """
+    List all API keys.
+
+    Returns key metadata but not the actual key values (only prefix shown).
+    """
+    keys = api_key_manager.list_keys()
+    return JSONResponse(content={
+        "keys": [key.to_dict(include_hash=False) for key in keys]
+    })
+
+
+@router.post(
+    "/api/keys",
+    responses={
+        200: {"description": "API key created - full key shown only once"},
+        401: {"description": "Authentication required"},
+        403: {"description": "CSRF token invalid"},
+    }
+)
+async def create_api_key(
+    request: Request,
+    body: CreateAPIKeyRequest,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """
+    Create a new API key.
+
+    IMPORTANT: The full key is only returned once in this response.
+    Store it securely - it cannot be retrieved again.
+    """
+    full_key, api_key = api_key_manager.create_key(
+        name=body.name,
+        scopes=body.scopes,
+    )
+
+    # Save immediately
+    await api_key_manager.save_config()
+
+    return JSONResponse(content={
+        "key": full_key,  # Only time the full key is shown
+        "api_key": api_key.to_dict(include_hash=False),
+        "warning": "Store this key securely. It will not be shown again.",
+    })
+
+
+@router.get(
+    "/api/keys/{key_id}",
+    responses={
+        200: {"description": "API key details"},
+        401: {"description": "Authentication required"},
+        404: {"description": "API key not found"},
+    }
+)
+async def get_api_key(
+    key_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """Get details of a specific API key."""
+    api_key = api_key_manager.get_key(key_id)
+    if not api_key:
+        raise HTTPException(status_code=404, detail=f"API key '{key_id}' not found")
+
+    return JSONResponse(content=api_key.to_dict(include_hash=False))
+
+
+@router.patch(
+    "/api/keys/{key_id}",
+    responses={
+        200: {"description": "API key updated"},
+        401: {"description": "Authentication required"},
+        403: {"description": "CSRF token invalid"},
+        404: {"description": "API key not found"},
+    }
+)
+async def update_api_key(
+    key_id: str,
+    body: UpdateAPIKeyRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """Update an API key's metadata (name, enabled status, scopes)."""
+    api_key = api_key_manager.update_key(
+        key_id=key_id,
+        name=body.name,
+        enabled=body.enabled,
+        scopes=body.scopes,
+    )
+
+    if not api_key:
+        raise HTTPException(status_code=404, detail=f"API key '{key_id}' not found")
+
+    # Save changes
+    await api_key_manager.save_config()
+
+    return JSONResponse(content=api_key.to_dict(include_hash=False))
+
+
+@router.delete(
+    "/api/keys/{key_id}",
+    responses={
+        200: {"description": "API key revoked"},
+        401: {"description": "Authentication required"},
+        403: {"description": "CSRF token invalid"},
+        404: {"description": "API key not found"},
+    }
+)
+async def revoke_api_key(
+    key_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """
+    Revoke (delete) an API key.
+
+    The key will immediately stop working for all requests.
+    """
+    if not api_key_manager.revoke_key(key_id):
+        raise HTTPException(status_code=404, detail=f"API key '{key_id}' not found")
+
+    # Save changes
+    await api_key_manager.save_config()
+
+    return JSONResponse(content={"status": "revoked", "key_id": key_id})
+
+
+@router.post(
+    "/api/keys/save",
+    responses={
+        200: {"description": "API keys saved to file"},
+        401: {"description": "Authentication required"},
+        403: {"description": "CSRF token invalid"},
+    }
+)
+async def save_api_keys(
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """Save API keys configuration to file."""
+    await api_key_manager.save_config()
+    return JSONResponse(content={"status": "saved"})
+
+
+# =============================================================================
 # Catch-all route (MUST be last)
 # =============================================================================
 
@@ -2537,6 +2847,7 @@ async def create_folder(
     200: {"description": "Random image or web interface"},
     304: {"description": "Not Modified (conditional request)"},
     400: {"description": "Invalid folder path"},
+    401: {"description": "Authentication required"},
     404: {"description": "No images found"}
 })
 async def root(
@@ -2557,7 +2868,8 @@ async def root(
     recursive: bool = Query(False, description="Recursively search subfolders (default: false)"),
     folders: Optional[str] = Query(None, description="Comma-separated list of folder paths (alternative to path)"),
     also: Optional[str] = Query(None, description="Comma-separated list of additional folders (use with path)"),
-    refresh: Optional[int] = Query(None, ge=5, le=3600, description="Auto-refresh interval in seconds (5-3600) for cycling through images")
+    refresh: Optional[int] = Query(None, ge=5, le=3600, description="Auto-refresh interval in seconds (5-3600) for cycling through images"),
+    auth: Optional[Union[APIKey, User]] = Depends(get_image_auth),
 ):
     """
     Main endpoint - serves either the web interface or random image API.
@@ -2596,7 +2908,14 @@ async def root(
     - GET /earth?api=random-image&eink=true&format=png - E-Ink from earth folder
     - GET /earth?refresh=30 - Auto-cycle through earth folder every 30 seconds
     - GET /earth?refresh=30&eink=true&width=800 - Auto-cycle with processing
+
+    Requires API key or session auth when OIDC is enabled.
     """
+    # Check authentication if OIDC is enabled
+    config = get_oidc_config()
+    if config.enabled and auth is None:
+        raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+
     # Parse folder paths from URL path and query parameters
     folder_paths_list = []
 
