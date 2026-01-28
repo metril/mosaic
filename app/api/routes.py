@@ -122,6 +122,79 @@ async def get_image_auth(
     return User({"sub": "dev", "email": "dev@localhost", "name": "Developer"})
 
 
+def check_scope_access(
+    api_key: APIKey,
+    request: Request,
+    group_id: Optional[str] = None,
+    endpoint_id: Optional[str] = None,
+    image_path: Optional[str] = None,
+) -> bool:
+    """
+    Check if API key scopes grant access to the requested resource.
+
+    Scope patterns:
+    - "*" - Full access to everything
+    - "group:{group_id}" - All endpoints + folders for a group
+    - "endpoint:{group_id}:{endpoint_id}" - Specific endpoint only
+    - "folder:{folder_name}" - Direct folder access
+
+    Args:
+        api_key: The validated API key
+        request: FastAPI request (for accessing display_manager)
+        group_id: For display endpoints - the group being accessed
+        endpoint_id: For display endpoints - the endpoint being accessed
+        image_path: For image endpoints - the path being accessed
+
+    Returns:
+        True if access is allowed, False otherwise
+    """
+    scopes = api_key.scopes
+
+    # Legacy scope = no access (migration path)
+    if scopes == ["images:read"]:
+        return False
+
+    # Full access
+    if "*" in scopes:
+        return True
+
+    # Check display endpoint access
+    if group_id:
+        # Group-level scope
+        if f"group:{group_id}" in scopes:
+            return True
+
+        # Endpoint-level scope
+        if endpoint_id and f"endpoint:{group_id}:{endpoint_id}" in scopes:
+            return True
+
+    # Check image/folder access
+    if image_path:
+        path_parts = image_path.strip("/").split("/")
+        if not path_parts:
+            return False
+
+        folder = path_parts[0]
+
+        # Direct folder scope
+        if f"folder:{folder}" in scopes:
+            return True
+
+        # Folder via group membership
+        display_manager = getattr(request.app.state, 'display_manager', None)
+        if display_manager:
+            for scope in scopes:
+                if scope.startswith("group:"):
+                    grp_id = scope.split(":", 1)[1]
+                    group = display_manager.groups.get(grp_id)
+                    if group and group.settings.folders:
+                        group_folders = [f.strip() for f in group.settings.folders.split(",")]
+                        if folder in group_folders:
+                            return True
+
+    return False
+
+
 def iter_buffer_with_cleanup(buffer: BytesIO, chunk_size: int = 65536):
     """
     Generator that yields buffer content in chunks and closes it when done.
@@ -480,6 +553,11 @@ async def get_thumbnail(
     if config.enabled and auth is None:
         raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
 
+    # Check API key scope access
+    if isinstance(auth, APIKey):
+        if not check_scope_access(auth, request, image_path=image_path):
+            raise HTTPException(status_code=403, detail="API key not authorized for this folder")
+
     try:
         # Decode URL-encoded characters (handles Cyrillic, Chinese, emoji, etc.)
         image_path = unquote(image_path)
@@ -597,6 +675,11 @@ async def get_image_metadata(
     if config.enabled and auth is None:
         raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
 
+    # Check API key scope access
+    if isinstance(auth, APIKey):
+        if not check_scope_access(auth, request, image_path=image_path):
+            raise HTTPException(status_code=403, detail="API key not authorized for this folder")
+
     try:
         # Decode URL-encoded characters (handles Cyrillic, Chinese, emoji, etc.)
         image_path = unquote(image_path)
@@ -671,6 +754,11 @@ async def serve_processed_image(
     config = get_oidc_config()
     if config.enabled and auth is None:
         raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+
+    # Check API key scope access
+    if isinstance(auth, APIKey):
+        if not check_scope_access(auth, request, image_path=image_path):
+            raise HTTPException(status_code=403, detail="API key not authorized for this folder")
 
     try:
         # Decode URL-encoded path
@@ -813,6 +901,11 @@ async def get_blur_background(
     config = get_oidc_config()
     if config.enabled and auth is None:
         raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+
+    # Check API key scope access
+    if isinstance(auth, APIKey):
+        if not check_scope_access(auth, request, image_path=image_path):
+            raise HTTPException(status_code=403, detail="API key not authorized for this folder")
 
     try:
         # Decode URL-encoded path
@@ -1980,6 +2073,11 @@ async def display_page(
             redirect_url += f"&endpoint={endpoint}"
         return RedirectResponse(url=redirect_url)
 
+    # Check API key scope access
+    if isinstance(auth, APIKey):
+        if not check_scope_access(auth, request, group_id=group, endpoint_id=endpoint):
+            raise HTTPException(status_code=403, detail="API key not authorized for this endpoint")
+
     display_manager = get_display_manager(request)
     display_group = await display_manager.get_group(group)
 
@@ -2820,6 +2918,44 @@ async def revoke_api_key(
     return JSONResponse(content={"status": "revoked", "key_id": key_id})
 
 
+@router.get(
+    "/api/keys/available-resources",
+    responses={
+        200: {"description": "Available groups, endpoints, and folders for scope configuration"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def get_available_resources(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """
+    Get all available groups, endpoints, and folders for API key scope configuration.
+
+    Returns structured data for the UI to render scope selection checkboxes.
+    """
+    display_manager = get_display_manager(request)
+
+    # Get groups with their endpoints and folders
+    groups = []
+    for group in display_manager.groups.values():
+        endpoints = [ep.endpoint_id for ep in group.endpoints.values()]
+        folders = [f.strip() for f in (group.settings.folders or "").split(",") if f.strip()]
+        groups.append({
+            "group_id": group.group_id,
+            "endpoints": endpoints,
+            "folders": folders
+        })
+
+    # Get all available folders from image service
+    all_folders = list(image_service.get_folder_list())
+
+    return JSONResponse(content={
+        "groups": groups,
+        "folders": all_folders
+    })
+
+
 @router.post(
     "/api/keys/save",
     responses={
@@ -2915,6 +3051,22 @@ async def root(
     config = get_oidc_config()
     if config.enabled and auth is None:
         raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+
+    # Check API key scope access for all requested folders
+    if isinstance(auth, APIKey):
+        # Collect all folders being accessed
+        folders_to_check = []
+        if folder_path:
+            folders_to_check.append(folder_path)
+        if folders:
+            folders_to_check.extend([f.strip() for f in folders.split(',') if f.strip()])
+        if also:
+            folders_to_check.extend([f.strip() for f in also.split(',') if f.strip()])
+
+        # Check access for each folder
+        for folder in folders_to_check:
+            if not check_scope_access(auth, request, image_path=folder):
+                raise HTTPException(status_code=403, detail=f"API key not authorized for folder: {folder}")
 
     # Parse folder paths from URL path and query parameters
     folder_paths_list = []
