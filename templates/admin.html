@@ -2713,8 +2713,9 @@
                     `;
 
                     // Countdown display on its own row (visibility:hidden for paused/on-demand to preserve layout)
+                    // Always include data-group-id so startCountdown() can find it when mode changes
                     const countdownHtml = (isPaused || isOnDemand)
-                        ? `<div class="countdown-row" style="visibility: hidden;">&nbsp;</div>`
+                        ? `<div class="countdown-row" data-group-id="${groupIdSafe}" style="visibility: hidden;">Next in: <span class="countdown-value">--</span>s</div>`
                         : `<div class="countdown-row" data-group-id="${groupIdSafe}" data-next-switch="${group.next_switch_at || ''}">Next in: <span class="countdown-value">--</span>s</div>`;
 
                     return `
@@ -3640,6 +3641,11 @@
 
                         if (strip) {
                             updateHistoryStrip(strip, browser, groupIdSafe, browserIdSafe);
+                        } else if (browser.current_image || (browser.image_history && browser.image_history.length > 0)) {
+                            // Browser has images but no strip exists - need full rebuild
+                            const savedStates = saveEndpointOpenStates(card);
+                            updateGroupCard(group, savedStates);
+                            return;
                         }
                     });
                 }
