@@ -2146,12 +2146,12 @@
                             </div>
 
                             <div class="scope-section">
-                                <div class="scope-section-header" onclick="toggleScopeSection('endpoints')">
-                                    <span class="collapse-icon" id="endpointsCollapseIcon">▶</span>
+                                <div class="scope-section-header" onclick="toggleScopeSection('accessEndpoints')">
+                                    <span class="collapse-icon" id="accessEndpointsCollapseIcon">▶</span>
                                     <span>Endpoints</span>
                                     <span class="scope-section-count" id="endpointsCount">0</span>
                                 </div>
-                                <div class="scope-section-body" id="endpointsSection" style="display: none;">
+                                <div class="scope-section-body" id="accessEndpointsSection" style="display: none;">
                                     <div id="accessEndpointsList" class="scope-items-list nested"></div>
                                 </div>
                             </div>
@@ -5446,7 +5446,7 @@
                 selectedScopes = selectedScopes.filter(s => s !== 'images:read' && s !== '*');
 
                 // Reset all sections to collapsed state
-                ['groups', 'endpoints', 'folders'].forEach(section => {
+                ['groups', 'accessEndpoints', 'folders'].forEach(section => {
                     document.getElementById(section + 'Section').style.display = 'none';
                     document.getElementById(section + 'CollapseIcon').classList.remove('expanded');
                 });
