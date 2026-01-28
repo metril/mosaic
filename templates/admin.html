@@ -5479,25 +5479,38 @@
                 `).join('');
                 document.getElementById('accessGroupsList').innerHTML = groupsHtml || '<div style="color:#666;padding:8px;">No groups configured</div>';
 
-                // Render endpoints (grouped by group)
+                // Render endpoints (grouped by group, with inline creation)
                 let endpointsHtml = '';
                 for (const g of resources.groups) {
-                    if (!g.endpoints || g.endpoints.length === 0) continue;
                     endpointsHtml += `<div class="group-header">${escapeHtml(g.group_id)}</div>`;
-                    for (const ep of g.endpoints) {
-                        const scope = 'endpoint:' + g.group_id + ':' + ep;
-                        endpointsHtml += `
-                            <label class="scope-item" data-search="${g.group_id.toLowerCase()} ${ep.toLowerCase()}">
-                                <input type="checkbox"
-                                       value="${scope}"
-                                       ${selectedScopes.includes(scope) ? 'checked' : ''}
-                                       onchange="toggleScope(this)">
-                                <span>${escapeHtml(ep)}</span>
-                            </label>
-                        `;
+
+                    // Show existing endpoints
+                    if (g.endpoints && g.endpoints.length > 0) {
+                        for (const ep of g.endpoints) {
+                            const scope = 'endpoint:' + g.group_id + ':' + ep;
+                            endpointsHtml += `
+                                <label class="scope-item" data-search="${g.group_id.toLowerCase()} ${ep.toLowerCase()}">
+                                    <input type="checkbox"
+                                           value="${scope}"
+                                           ${selectedScopes.includes(scope) ? 'checked' : ''}
+                                           onchange="toggleScope(this)">
+                                    <span>${escapeHtml(ep)}</span>
+                                </label>
+                            `;
+                        }
                     }
+
+                    // Add "new endpoint" input for this group
+                    endpointsHtml += `
+                        <div class="add-endpoint-row" style="display:flex;gap:8px;padding:4px 0 8px 24px;">
+                            <input type="text" id="newEndpoint_${g.group_id}" placeholder="New endpoint name"
+                                   style="flex:1;padding:4px 8px;border:1px solid #444;background:#2a2a2a;color:#fff;border-radius:4px;font-size:12px;">
+                            <button type="button" class="btn btn-ghost" style="padding:4px 8px;font-size:11px;"
+                                    onclick="addNewEndpoint('${g.group_id}')">+ Add</button>
+                        </div>
+                    `;
                 }
-                document.getElementById('accessEndpointsList').innerHTML = endpointsHtml || '<div style="color:#666;padding:8px;">No endpoints configured</div>';
+                document.getElementById('accessEndpointsList').innerHTML = endpointsHtml || '<div style="color:#666;padding:8px;">No groups configured</div>';
 
                 // Render folders
                 const foldersHtml = resources.folders.map(f => `
@@ -5597,6 +5610,53 @@
             function toggleFullAccessScope() {
                 const isFullAccess = document.getElementById('scopeFullAccess').checked;
                 document.getElementById('scopeRestrictedOptions').style.display = isFullAccess ? 'none' : 'block';
+            }
+
+            async function addNewEndpoint(groupId) {
+                const input = document.getElementById('newEndpoint_' + groupId);
+                const endpointId = input.value.trim();
+                if (!endpointId) return;
+
+                // Validate endpoint ID format
+                if (!/^[a-zA-Z0-9_\-]+$/.test(endpointId)) {
+                    showApiKeysMessage('Endpoint ID must be alphanumeric (a-z, 0-9, _, -)', 'error');
+                    return;
+                }
+
+                try {
+                    // Create the persistent endpoint via API
+                    const response = await fetch('/api/display/groups/' + groupId + '/endpoints', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-Token': CSRF_TOKEN
+                        },
+                        body: JSON.stringify({ endpoint_id: endpointId })
+                    });
+
+                    if (!response.ok) {
+                        const err = await response.json();
+                        throw new Error(err.detail || 'Failed to create endpoint');
+                    }
+
+                    // Add scope and refresh
+                    const scope = 'endpoint:' + groupId + ':' + endpointId;
+                    if (!selectedScopes.includes(scope)) {
+                        selectedScopes.push(scope);
+                    }
+
+                    // Reload resources to show new endpoint
+                    availableResources = null;
+                    const resources = await loadAvailableResources(true);
+                    renderScopeItems(resources);
+                    renderSelectedTags();
+                    updateScopeCounts();
+
+                    input.value = '';
+                    showApiKeysMessage('Endpoint created and scope added', 'success');
+                } catch (e) {
+                    showApiKeysMessage('Failed to create endpoint: ' + e.message, 'error');
+                }
             }
 
             async function saveAccessConfig() {

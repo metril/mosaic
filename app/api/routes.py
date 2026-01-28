@@ -175,12 +175,28 @@ def check_scope_access(
 
     # Check display endpoint access
     if group_id:
-        # Group-level scope
-        if f"group:{group_id}" in scopes:
+        # Endpoint-level scope - explicit access to specific endpoint
+        if endpoint_id and f"endpoint:{group_id}:{endpoint_id}" in scopes:
             return True
 
-        # Endpoint-level scope
-        if endpoint_id and f"endpoint:{group_id}:{endpoint_id}" in scopes:
+        # Group-level scope - allows anonymous endpoints only (not persistent)
+        if f"group:{group_id}" in scopes:
+            # If no endpoint specified, allow (will use anonymous)
+            if not endpoint_id:
+                return True
+            # If endpoint is anonymous (starts with anon-), allow
+            if endpoint_id.startswith("anon-"):
+                return True
+            # Check if endpoint is persistent - if so, deny group-level access
+            display_manager = getattr(request.app.state, 'display_manager', None)
+            if display_manager:
+                group = display_manager.groups.get(group_id)
+                if group:
+                    endpoint = group.endpoints.get(endpoint_id)
+                    # If endpoint exists and is persistent, require explicit scope
+                    if endpoint and endpoint.is_persistent:
+                        return False
+            # Endpoint doesn't exist yet or is not persistent - allow
             return True
 
     # Check image/folder access
