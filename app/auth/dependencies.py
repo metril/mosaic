@@ -5,7 +5,7 @@ Provides dependency injection for route protection.
 """
 
 import secrets
-from typing import Optional
+from typing import Optional, Union
 from fastapi import Request, HTTPException, status, Header
 
 from app.auth.oidc import get_oidc_config
@@ -74,6 +74,44 @@ async def get_optional_user(request: Request) -> Optional[User]:
     return User(user_info)
 
 
+async def get_admin_auth(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+) -> Union["APIKey", User]:
+    """
+    Dependency for admin endpoints. Supports API keys and session auth.
+
+    API key scope checking is done per-endpoint via check_admin_scope().
+    Raises HTTPException 401 if neither auth method is valid.
+    """
+    # Check API key (Authorization: Bearer sk_xxx)
+    if authorization and authorization.startswith("Bearer "):
+        key = authorization[7:]
+        if hasattr(request.app.state, 'api_key_manager'):
+            api_key = request.app.state.api_key_manager.verify_key(key)
+            if api_key and api_key.enabled:
+                return api_key  # Scope check done per-endpoint
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Fall back to session auth
+    config = get_oidc_config()
+    if not config.enabled:
+        return User({"sub": "dev", "email": "dev@localhost", "name": "Developer"})
+
+    user_info = request.session.get("user")
+    if not user_info:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return User(user_info)
+
+
 def get_csrf_token(request: Request) -> str:
     """
     Get or generate a CSRF token for the current session.
@@ -88,17 +126,23 @@ def get_csrf_token(request: Request) -> str:
 
 async def verify_csrf_token(
     request: Request,
-    x_csrf_token: Optional[str] = Header(None, alias=CSRF_HEADER_NAME)
+    x_csrf_token: Optional[str] = Header(None, alias=CSRF_HEADER_NAME),
+    authorization: Optional[str] = Header(None),
 ) -> None:
     """
     Verify CSRF token from header matches session token (S5).
 
-    Raises 403 Forbidden if tokens don't match.
+    Skips CSRF check for API key requests (the key itself is auth proof).
+    Raises 403 Forbidden if tokens don't match for session-based requests.
     """
     config = get_oidc_config()
 
     # Skip CSRF check if OIDC not configured (development mode)
     if not config.enabled:
+        return
+
+    # Skip CSRF for API key requests (key is its own auth proof)
+    if authorization and authorization.startswith("Bearer "):
         return
 
     session_token = request.session.get("csrf_token")

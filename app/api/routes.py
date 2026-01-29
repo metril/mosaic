@@ -33,7 +33,7 @@ from app.services.sync_manager import (
 )
 from app.services.immich_provider import ImmichProvider, ImmichPullConfig
 from app.services.homeassistant_provider import HomeAssistantProvider
-from app.auth.dependencies import get_current_user, get_optional_user, User, get_csrf_token, verify_csrf_token
+from app.auth.dependencies import get_current_user, get_optional_user, get_admin_auth, User, get_csrf_token, verify_csrf_token
 from app.auth.oidc import get_oidc_config
 from app.auth.api_keys import APIKeyManager, APIKey
 from app.exceptions import PathSecurityError, NoImagesFoundError, error_response
@@ -229,6 +229,39 @@ def check_scope_access(
                             return True
 
     return False
+
+
+def check_admin_scope(auth, required_scope: str) -> None:
+    """
+    Verify API key has the required admin scope. No-op for session users.
+
+    Supports hierarchy:
+    - "*" grants everything
+    - "admin:*" grants all admin scopes
+    - "admin:display:*" grants all display scopes
+    - "admin:display:monitor" grants specific scope
+    """
+    if not isinstance(auth, APIKey):
+        return  # Session users have full admin access
+
+    scopes = auth.scopes
+    if "*" in scopes or "admin:*" in scopes:
+        return
+
+    # Check category wildcard (e.g., "admin:display:*" covers "admin:display:monitor")
+    parts = required_scope.split(":")
+    if len(parts) == 3:
+        category_wildcard = f"{parts[0]}:{parts[1]}:*"
+        if category_wildcard in scopes:
+            return
+
+    if required_scope in scopes:
+        return
+
+    raise HTTPException(
+        status_code=403,
+        detail=f"API key lacks required scope: {required_scope}"
+    )
 
 
 def iter_buffer_with_cleanup(buffer: BytesIO, chunk_size: int = 65536):
@@ -1207,7 +1240,7 @@ async def display_admin_redirect():
     },
     401: {"description": "Not authenticated"}
 })
-async def list_display_groups(request: Request, user: User = Depends(get_current_user)):
+async def list_display_groups(request: Request, auth: Union[APIKey, User] = Depends(get_admin_auth)):
     """
     List all active display groups with their settings and connected browser count.
 
@@ -1216,6 +1249,7 @@ async def list_display_groups(request: Request, user: User = Depends(get_current
     Returns:
         List of display groups with their configuration and status.
     """
+    check_admin_scope(auth, "admin:display:monitor")
     display_manager = get_display_manager(request)
     groups = await display_manager.list_groups()
     return JSONResponse(content=groups)
@@ -1230,7 +1264,7 @@ async def list_display_groups(request: Request, user: User = Depends(get_current
 async def create_display_group(
     request: Request,
     body: DisplayGroupCreateRequest,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1246,8 +1280,10 @@ async def create_display_group(
     Returns:
         The created display group configuration.
     """
+    check_admin_scope(auth, "admin:display:manage")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} creating display group: {body.group_id}")
+    logger.info(f"User {actor} creating display group: {body.group_id}")
 
     # Build settings from request body
     settings = DisplayGroupSettings(
@@ -1321,7 +1357,7 @@ async def update_display_group(
     request: Request,
     group_id: str,
     body: DisplayGroupUpdateRequest,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1336,8 +1372,10 @@ async def update_display_group(
     Returns:
         The updated display group configuration.
     """
+    check_admin_scope(auth, "admin:display:manage")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} updating display group: {group_id}")
+    logger.info(f"User {actor} updating display group: {group_id}")
 
     # Build updates dict from non-None fields
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -1361,7 +1399,7 @@ async def update_display_group(
 async def delete_display_group(
     request: Request,
     group_id: str,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1375,8 +1413,10 @@ async def delete_display_group(
     Returns:
         Confirmation of deletion.
     """
+    check_admin_scope(auth, "admin:display:manage")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} deleting display group: {group_id}")
+    logger.info(f"User {actor} deleting display group: {group_id}")
     deleted = await display_manager.delete_group(group_id)
 
     if not deleted:
@@ -1392,7 +1432,7 @@ async def delete_display_group(
 })
 async def save_display_config(
     request: Request,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token),
     display_manager: DisplayManager = Depends(get_display_manager)
 ):
@@ -1402,7 +1442,9 @@ async def save_display_config(
     Saves all display groups and their settings to the TOML config file.
     Groups will be automatically restored on application restart.
     """
-    logger.info(f"User {user.email} saving display config")
+    check_admin_scope(auth, "admin:display:manage")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    logger.info(f"User {actor} saving display config")
     saved = display_manager.save_config()
     return JSONResponse(content={"saved": saved, "message": f"Saved {saved} groups to config"})
 
@@ -1418,7 +1460,7 @@ async def save_display_config(
 async def pause_display_group(
     request: Request,
     group_id: str,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1427,8 +1469,10 @@ async def pause_display_group(
     Requires authentication.
     Connected browsers will stay on their current image until resumed.
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} pausing display group: {group_id}")
+    logger.info(f"User {actor} pausing display group: {group_id}")
     success = await display_manager.pause_group(group_id)
 
     if not success:
@@ -1446,7 +1490,7 @@ async def pause_display_group(
 async def play_display_group(
     request: Request,
     group_id: str,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1454,8 +1498,10 @@ async def play_display_group(
 
     Requires authentication.
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} resuming display group: {group_id}")
+    logger.info(f"User {actor} resuming display group: {group_id}")
     success = await display_manager.play_group(group_id)
 
     if not success:
@@ -1473,7 +1519,7 @@ async def play_display_group(
 async def next_display_group(
     request: Request,
     group_id: str,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1482,8 +1528,10 @@ async def next_display_group(
     Requires authentication.
     All browsers advance to their next image.
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} skipping display group: {group_id}")
+    logger.info(f"User {actor} skipping display group: {group_id}")
     success = await display_manager.skip_group(group_id)
 
     if not success:
@@ -1501,7 +1549,7 @@ async def next_display_group(
 async def previous_display_group(
     request: Request,
     group_id: str,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1511,8 +1559,10 @@ async def previous_display_group(
     Each browser goes back to its own previous image from history.
     Can be called multiple times to go further back (up to 100 images).
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} going to previous for display group: {group_id}")
+    logger.info(f"User {actor} going to previous for display group: {group_id}")
     success = await display_manager.previous_group(group_id)
 
     if not success:
@@ -1525,7 +1575,7 @@ async def previous_display_group(
 async def rewind_all_group(
     group_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1535,8 +1585,10 @@ async def rewind_all_group(
     This is a bulk operation - moves instantly to the beginning of history
     without stepping through each image.
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} rewinding all for display group: {group_id}")
+    logger.info(f"User {actor} rewinding all for display group: {group_id}")
     success = await display_manager.rewind_all_group(group_id)
 
     if not success:
@@ -1549,7 +1601,7 @@ async def rewind_all_group(
 async def forward_all_group(
     group_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1559,8 +1611,10 @@ async def forward_all_group(
     This is a bulk operation - moves instantly to the most recent image
     without stepping through each one.
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} forwarding all for display group: {group_id}")
+    logger.info(f"User {actor} forwarding all for display group: {group_id}")
     success = await display_manager.forward_all_group(group_id)
 
     if not success:
@@ -1577,7 +1631,7 @@ async def forward_all_group(
 async def refresh_group_images(
     group_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1587,13 +1641,15 @@ async def refresh_group_images(
     Call this after adding/removing files to the group's image folders
     to update the available images without recreating the group.
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
     count = await display_manager.refresh_group_images(group_id)
 
     if count is None:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
 
-    logger.info(f"User {user.email} refreshed images for group '{group_id}': {count} images")
+    logger.info(f"User {actor} refreshed images for group '{group_id}': {count} images")
     return JSONResponse(content={"group_id": group_id, "image_count": count})
 
 
@@ -1602,7 +1658,7 @@ async def jump_to_image(
     group_id: str,
     browser_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1611,6 +1667,8 @@ async def jump_to_image(
     Requires authentication.
     The image must be in the browser's image_history or forward_history.
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     body = await request.json()
     image_path = body.get("image_path")
 
@@ -1618,7 +1676,7 @@ async def jump_to_image(
         raise HTTPException(status_code=400, detail="image_path required")
 
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} jumping browser {browser_id} in group {group_id} to {image_path}")
+    logger.info(f"User {actor} jumping browser {browser_id} in group {group_id} to {image_path}")
     success = await display_manager.jump_to_image(group_id, browser_id, image_path)
 
     if not success:
@@ -1635,7 +1693,7 @@ async def endpoint_jump_to_image(
     group_id: str,
     endpoint_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1644,6 +1702,8 @@ async def endpoint_jump_to_image(
     Works for disconnected endpoints (no browser required).
     The image must be in the endpoint's image_history or forward_history.
     """
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     body = await request.json()
     image_path = body.get("image_path")
 
@@ -1651,7 +1711,7 @@ async def endpoint_jump_to_image(
         raise HTTPException(status_code=400, detail="image_path required")
 
     display_manager = get_display_manager(request)
-    logger.info(f"User {user.email} jumping endpoint {endpoint_id} in group {group_id} to {image_path}")
+    logger.info(f"User {actor} jumping endpoint {endpoint_id} in group {group_id} to {image_path}")
     success = await display_manager.jump_endpoint_to_image(group_id, endpoint_id, image_path)
 
     if not success:
@@ -1668,7 +1728,7 @@ async def test_webhook(
     group_id: str,
     webhook_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -1676,6 +1736,7 @@ async def test_webhook(
 
     Requires authentication. Returns the webhook response status.
     """
+    check_admin_scope(auth, "admin:display:playback")
     import httpx
     import hashlib
     import hmac
@@ -1765,9 +1826,10 @@ class EndpointUpdateRequest(BaseModel):
 async def list_endpoints(
     group_id: str = PathParam(...),
     request: Request = None,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """List all endpoints for a display group."""
+    check_admin_scope(auth, "admin:endpoints:monitor")
     display_manager = get_display_manager(request)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -1787,9 +1849,10 @@ async def create_endpoint(
     group_id: str = PathParam(...),
     body: EndpointCreateRequest = None,
     request: Request = None,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """Create a new persistent endpoint for a display group."""
+    check_admin_scope(auth, "admin:endpoints:manage")
     display_manager = get_display_manager(request)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -1814,7 +1877,8 @@ async def create_endpoint(
         "group": group.to_dict()
     })
 
-    logger.info(f"User {user.email} created endpoint '{body.endpoint_id}' in group '{group_id}'")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    logger.info(f"User {actor} created endpoint '{body.endpoint_id}' in group '{group_id}'")
 
     return JSONResponse(
         status_code=201,
@@ -1830,9 +1894,10 @@ async def get_endpoint(
     group_id: str = PathParam(...),
     endpoint_id: str = PathParam(...),
     request: Request = None,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """Get details of a specific endpoint."""
+    check_admin_scope(auth, "admin:endpoints:monitor")
     display_manager = get_display_manager(request)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -1854,9 +1919,10 @@ async def update_endpoint(
     endpoint_id: str = PathParam(...),
     body: EndpointUpdateRequest = None,
     request: Request = None,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """Update an endpoint (e.g., rename or promote from anonymous to persistent)."""
+    check_admin_scope(auth, "admin:endpoints:manage")
     display_manager = get_display_manager(request)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -1882,7 +1948,8 @@ async def update_endpoint(
         "group": group.to_dict()
     })
 
-    logger.info(f"User {user.email} updated endpoint '{endpoint_id}' in group '{group_id}'")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    logger.info(f"User {actor} updated endpoint '{endpoint_id}' in group '{group_id}'")
 
     return JSONResponse(content=endpoint.to_dict())
 
@@ -1896,9 +1963,10 @@ async def delete_endpoint(
     group_id: str = PathParam(...),
     endpoint_id: str = PathParam(...),
     request: Request = None,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """Delete an endpoint. Cannot delete if a browser is currently connected."""
+    check_admin_scope(auth, "admin:endpoints:manage")
     # Decode URL-encoded endpoint ID (supports "/" characters)
     endpoint_id = unquote(endpoint_id)
     display_manager = get_display_manager(request)
@@ -1931,7 +1999,8 @@ async def delete_endpoint(
         "group": group.to_dict()
     })
 
-    logger.info(f"User {user.email} deleted endpoint '{endpoint_id}' from group '{group_id}'")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    logger.info(f"User {actor} deleted endpoint '{endpoint_id}' from group '{group_id}'")
 
     return JSONResponse(content={"status": "deleted", "endpoint_id": endpoint_id})
 
@@ -1945,7 +2014,7 @@ async def remove_from_history(
     browser_id: str = PathParam(...),
     image_path: str = PathParam(...),
     request: Request = None,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token),
 ):
     """
@@ -1955,6 +2024,7 @@ async def remove_from_history(
     the image file no longer exists. Removes from both image_history
     and forward_history arrays while preserving order of remaining items.
     """
+    check_admin_scope(auth, "admin:endpoints:manage")
     display_manager = get_display_manager(request)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -1997,7 +2067,7 @@ async def endpoint_next_image(
     group_id: str = PathParam(...),
     endpoint_id: str = PathParam(...),
     request: Request = None,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """
     Request next image for a specific endpoint.
@@ -2005,6 +2075,7 @@ async def endpoint_next_image(
     Useful for on-demand mode (auto_cycle=false) to manually advance images.
     Works even when no browser is connected - updates the endpoint's state.
     """
+    check_admin_scope(auth, "admin:endpoints:manage")
     display_manager = get_display_manager(request)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -2033,7 +2104,8 @@ async def endpoint_next_image(
         "group": group.to_dict()
     })
 
-    logger.info(f"User {user.email} requested next image for endpoint '{endpoint_id}'")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    logger.info(f"User {actor} requested next image for endpoint '{endpoint_id}'")
 
     return JSONResponse(content={
         "status": "ok",
@@ -2047,13 +2119,14 @@ async def endpoint_previous_image(
     group_id: str = PathParam(...),
     endpoint_id: str = PathParam(...),
     request: Request = None,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """
     Request previous image for a specific endpoint.
 
     Goes back in the endpoint's image history.
     """
+    check_admin_scope(auth, "admin:endpoints:manage")
     display_manager = get_display_manager(request)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -2082,7 +2155,8 @@ async def endpoint_previous_image(
         "group": group.to_dict()
     })
 
-    logger.info(f"User {user.email} requested previous image for endpoint '{endpoint_id}'")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    logger.info(f"User {actor} requested previous image for endpoint '{endpoint_id}'")
 
     return JSONResponse(content={
         "status": "ok",
@@ -2455,13 +2529,14 @@ class ImmichPullCreateRequest(BaseModel):
 )
 async def list_immich_pulls(
     request: Request,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """
     List all configured Immich pull operations.
 
     Returns the list of pull configurations (API keys are masked).
     """
+    check_admin_scope(auth, "admin:immich:monitor")
     provider = get_immich_provider(request)
     pulls = provider.list_pulls()
 
@@ -2483,7 +2558,7 @@ async def list_immich_pulls(
 async def create_immich_pull(
     request: Request,
     body: ImmichPullCreateRequest,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -2491,8 +2566,10 @@ async def create_immich_pull(
 
     Requires authentication and CSRF token.
     """
+    check_admin_scope(auth, "admin:immich:manage")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     provider = get_immich_provider(request)
-    logger.info(f"User {user.email} creating/updating Immich pull: {body.name}")
+    logger.info(f"User {actor} creating/updating Immich pull: {body.name}")
 
     # Get existing config to preserve API key if not provided
     api_key = body.api_key
@@ -2533,7 +2610,7 @@ async def create_immich_pull(
 async def delete_immich_pull(
     request: Request,
     pull_name: str,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -2541,8 +2618,10 @@ async def delete_immich_pull(
 
     Requires authentication and CSRF token.
     """
+    check_admin_scope(auth, "admin:immich:manage")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     provider = get_immich_provider(request)
-    logger.info(f"User {user.email} deleting Immich pull: {pull_name}")
+    logger.info(f"User {actor} deleting Immich pull: {pull_name}")
 
     if provider.remove_pull(pull_name):
         return JSONResponse(content={"message": f"Pull '{pull_name}' deleted"})
@@ -2559,7 +2638,7 @@ async def delete_immich_pull(
 )
 async def save_immich_config(
     request: Request,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -2567,8 +2646,10 @@ async def save_immich_config(
 
     Requires authentication and CSRF token.
     """
+    check_admin_scope(auth, "admin:immich:manage")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     provider = get_immich_provider(request)
-    logger.info(f"User {user.email} saving Immich config")
+    logger.info(f"User {actor} saving Immich config")
     saved = provider.save_config()
     return JSONResponse(content={"saved": saved, "message": f"Saved {saved} pull configurations"})
 
@@ -2584,7 +2665,7 @@ async def save_immich_config(
 async def trigger_immich_pull(
     request: Request,
     pull_name: str,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -2593,12 +2674,14 @@ async def trigger_immich_pull(
     Starts the pull in the background and returns immediately.
     Use GET /api/immich/pull/{pull_name}/status to check progress.
     """
+    check_admin_scope(auth, "admin:immich:manage")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     provider = get_immich_provider(request)
 
     if not provider.get_pull(pull_name):
         raise HTTPException(status_code=404, detail=f"Pull '{pull_name}' not found")
 
-    logger.info(f"User {user.email} triggering Immich pull: {pull_name}")
+    logger.info(f"User {actor} triggering Immich pull: {pull_name}")
     result = await provider.start_pull(pull_name)
 
     return JSONResponse(content={
@@ -2619,13 +2702,14 @@ async def trigger_immich_pull(
 async def get_immich_pull_status(
     request: Request,
     pull_name: str,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """
     Get the status of an Immich pull operation.
 
     Returns current progress if running, or final result if completed.
     """
+    check_admin_scope(auth, "admin:immich:monitor")
     provider = get_immich_provider(request)
 
     if not provider.get_pull(pull_name):
@@ -2648,7 +2732,7 @@ async def get_immich_pull_status(
 async def test_immich_connection(
     request: Request,
     body: ImmichTestConnectionRequest,
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """
     Test connection to an Immich server.
@@ -2656,6 +2740,8 @@ async def test_immich_connection(
     Returns server info if successful, error message if not.
     If api_key is not provided, looks up stored key from pull_name.
     """
+    check_admin_scope(auth, "admin:immich:monitor")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     provider = get_immich_provider(request)
 
     # Get API key - use provided key or look up from stored pull
@@ -2668,7 +2754,7 @@ async def test_immich_connection(
     if not api_key:
         return JSONResponse(content={"success": False, "error": "API key required"})
 
-    logger.info(f"User {user.email} testing Immich connection to: {body.server_url}")
+    logger.info(f"User {actor} testing Immich connection to: {body.server_url}")
     result = await provider.test_connection(body.server_url, api_key)
     return JSONResponse(content=result)
 
@@ -2686,7 +2772,7 @@ async def list_immich_albums(
     server_url: str = Query(..., description="Immich server URL"),
     api_key: Optional[str] = Query(None, description="API key"),
     pull_name: Optional[str] = Query(None, description="Pull name to use stored API key"),
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """
     List available albums from an Immich server.
@@ -2694,6 +2780,7 @@ async def list_immich_albums(
     Useful for configuring album-based pulls.
     If api_key is not provided, looks up stored key from pull_name.
     """
+    check_admin_scope(auth, "admin:immich:monitor")
     provider = get_immich_provider(request)
 
     # Get API key - use provided key or look up from stored pull
@@ -2727,7 +2814,7 @@ async def list_immich_people(
     server_url: str = Query(..., description="Immich server URL"),
     api_key: Optional[str] = Query(None, description="API key"),
     pull_name: Optional[str] = Query(None, description="Pull name to use stored API key"),
-    user: User = Depends(get_current_user)
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
 ):
     """
     List recognized people from an Immich server.
@@ -2735,6 +2822,7 @@ async def list_immich_people(
     Useful for configuring person-based pulls.
     If api_key is not provided, looks up stored key from pull_name.
     """
+    check_admin_scope(auth, "admin:immich:monitor")
     provider = get_immich_provider(request)
 
     # Get API key - use provided key or look up from stored pull
@@ -2772,7 +2860,7 @@ class CreateFolderRequest(BaseModel):
 async def create_folder(
     request: Request,
     body: CreateFolderRequest,
-    user: User = Depends(get_current_user),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
@@ -2780,6 +2868,7 @@ async def create_folder(
 
     Used by the folder browser when setting up Immich pull target folders.
     """
+    check_admin_scope(auth, "admin:immich:manage")
     folder_path = body.path.strip()
 
     # Validate folder path
