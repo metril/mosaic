@@ -2248,7 +2248,12 @@
                                             <label class="scope-item" data-search="admin immich manage">
                                                 <input type="checkbox" value="admin:immich:manage" onchange="toggleAdminScope('admin:immich:manage', this)">
                                                 <span>Manage</span>
-                                                <span style="color:#666;margin-left:auto;font-size:11px;">Trigger pulls, configure</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">Create, delete, configure</span>
+                                            </label>
+                                            <label class="scope-item" data-search="admin immich trigger">
+                                                <input type="checkbox" value="admin:immich:trigger" onchange="toggleAdminScope('admin:immich:trigger', this)">
+                                                <span>Trigger</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">Execute pull operations</span>
                                             </label>
                                         </div>
                                     </div>
@@ -5756,7 +5761,7 @@
                 const totalFolders = availableResources?.folders?.length || 0;
 
                 // Display as "selected/total" if any selected, otherwise just total
-                const totalAdmin = 7; // 7 individual admin scopes
+                const totalAdmin = 8; // 8 individual admin scopes
                 document.getElementById('adminCount').textContent = adminCount > 0 ? (selectedScopes.includes('admin:*') ? 'All' : adminCount + '/' + totalAdmin) : 0;
                 document.getElementById('groupsCount').textContent = groupCount > 0 ? `${groupCount}/${totalGroups}` : totalGroups;
                 document.getElementById('endpointsCount').textContent = endpointCount > 0 ? `${endpointCount}/${totalEndpoints}` : totalEndpoints;
@@ -5829,7 +5834,7 @@
                 // Update individual checkboxes
                 const adminScopes = ['admin:display:monitor', 'admin:display:manage', 'admin:display:playback',
                                      'admin:endpoints:monitor', 'admin:endpoints:manage',
-                                     'admin:immich:monitor', 'admin:immich:manage'];
+                                     'admin:immich:monitor', 'admin:immich:manage', 'admin:immich:trigger'];
                 adminScopes.forEach(s => {
                     const cb = document.querySelector(`input[value="${s}"]`);
                     if (cb) cb.checked = hasAll || selectedScopes.includes(s);

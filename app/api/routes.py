@@ -2674,7 +2674,7 @@ async def trigger_immich_pull(
     Starts the pull in the background and returns immediately.
     Use GET /api/immich/pull/{pull_name}/status to check progress.
     """
-    check_admin_scope(auth, "admin:immich:manage")
+    check_admin_scope(auth, "admin:immich:trigger")
     actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     provider = get_immich_provider(request)
 
