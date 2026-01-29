@@ -24,7 +24,7 @@ SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.webp', '.tiff', 
 THUMBNAIL_FORMAT = os.environ.get('THUMBNAIL_FORMAT', 'WEBP').upper()
 THUMBNAIL_QUALITY = int(os.environ.get('THUMBNAIL_QUALITY', '80'))
 THUMBNAIL_SIZE = int(os.environ.get('THUMBNAIL_SIZE', '200'))
-THUMBNAIL_CACHE_DIR = Path(os.environ.get('THUMBNAIL_CACHE_DIR', '/www/cache/thumbnails'))
+THUMBNAIL_CACHE_DIR = Path(os.environ.get('THUMBNAIL_CACHE_DIR', '/www/thumbnails'))
 
 # Map format name to file extension and MIME type
 _FORMAT_INFO = {

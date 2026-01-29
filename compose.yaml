@@ -15,7 +15,7 @@ services:
       - 80:80
     volumes:
       - /mnt/usb-storage-1/screensaver/images:/www/images
-      - /mnt/usb-storage-1/screensaver/cache:/www/cache
+      - /mnt/usb-storage-1/screensaver/thumbnails:/www/thumbnails
       - ./config:/app/config
     env_file:
       - .env
