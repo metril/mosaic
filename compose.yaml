@@ -14,8 +14,8 @@ services:
     ports:
       - 80:80
     volumes:
-      - /mnt/usb-storage-1/images:/www/images
-      - /mnt/usb-storage-1/cache:/www/cache
+      - /mnt/usb-storage-1/screensaver/images:/www/images
+      - /mnt/usb-storage-1/screensaver/cache:/www/cache
       - ./config:/app/config
     env_file:
       - .env
