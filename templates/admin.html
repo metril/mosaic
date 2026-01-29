@@ -1313,6 +1313,26 @@
                 max-height: 250px;
                 overflow-y: auto;
             }
+            /* Custom scrollbars for dark theme */
+            ::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+            ::-webkit-scrollbar-track {
+                background: rgba(0, 0, 0, 0.2);
+                border-radius: 4px;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.15);
+                border-radius: 4px;
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: rgba(255, 255, 255, 0.25);
+            }
+            * {
+                scrollbar-width: thin;
+                scrollbar-color: rgba(255, 255, 255, 0.15) rgba(0, 0, 0, 0.2);
+            }
             .scope-items-list {
                 padding: 8px;
             }
@@ -5583,7 +5603,7 @@
                 selectedScopes = selectedScopes.filter(s => s !== 'images:read' && s !== '*');
 
                 // Reset all sections to collapsed state
-                ['groups', 'accessEndpoints', 'folders'].forEach(section => {
+                ['admin', 'groups', 'accessEndpoints', 'folders'].forEach(section => {
                     document.getElementById(section + 'Section').style.display = 'none';
                     document.getElementById(section + 'CollapseIcon').classList.remove('expanded');
                 });
@@ -5592,12 +5612,6 @@
                 const resources = await loadAvailableResources(true);
                 renderScopeItems(resources);
                 renderSelectedTags();
-
-                // Auto-expand groups section if there are groups
-                if (resources.groups && resources.groups.length > 0) {
-                    document.getElementById('groupsSection').style.display = 'block';
-                    document.getElementById('groupsCollapseIcon').classList.add('expanded');
-                }
 
                 document.getElementById('apiKeyAccessConfig').style.display = 'flex';
             }
