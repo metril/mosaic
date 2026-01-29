@@ -290,7 +290,8 @@ app = FastAPI(
     title="Screensaver API",
     description="Modern screensaver service with image processing capabilities",
     version="2.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=None,  # Disable default /docs (loads from CDN, blocked by CSP)
 )
 
 # Attach rate limiter to app state
@@ -338,6 +339,25 @@ if static_css_path.exists():
 static_js_path = Path(__file__).parent / "static" / "js"
 if static_js_path.exists():
     app.mount("/js", StaticFiles(directory=str(static_js_path)), name="js")
+
+# Mount Swagger UI assets (self-hosted to comply with CSP)
+static_swagger_path = Path(__file__).parent / "static" / "swagger"
+if static_swagger_path.exists():
+    app.mount("/swagger-static", StaticFiles(directory=str(static_swagger_path)), name="swagger")
+
+# Custom /docs endpoint using self-hosted Swagger UI assets
+from fastapi.openapi.docs import get_swagger_ui_html
+
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_docs():
+    return get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{app.title} - Swagger UI",
+        swagger_js_url="/swagger-static/swagger-ui-bundle.js",
+        swagger_css_url="/swagger-static/swagger-ui.css",
+    )
+
 
 # Include auth routes
 app.include_router(auth_router)
