@@ -2200,55 +2200,57 @@
                             <div class="scope-section">
                                 <div class="scope-section-header" onclick="toggleScopeSection('admin')">
                                     <span class="collapse-icon" id="adminCollapseIcon">▶</span>
-                                    <span>Admin API</span>
+                                    <span>Administration</span>
                                     <span class="scope-section-count" id="adminCount">0</span>
                                 </div>
                                 <div class="scope-section-body" id="adminSection" style="display: none;">
-                                    <label class="scope-item all-folders-option" data-search="admin all">
-                                        <input type="checkbox" id="scopeAdminAll"
-                                               value="admin:*"
-                                               onchange="toggleAdminScope('admin:*', this)">
-                                        <span style="font-weight:500;">All Admin Access</span>
-                                    </label>
-                                    <div id="adminScopeDetails">
-                                        <div class="group-header">Display Groups</div>
-                                        <label class="scope-item" data-search="admin display monitor">
-                                            <input type="checkbox" value="admin:display:monitor" onchange="toggleAdminScope('admin:display:monitor', this)">
-                                            <span>Monitor</span>
-                                            <span style="color:#666;margin-left:auto;font-size:11px;">View groups &amp; state</span>
+                                    <div id="adminScopeList" class="scope-items-list nested">
+                                        <label class="scope-item all-folders-option" data-search="admin all">
+                                            <input type="checkbox" id="scopeAdminAll"
+                                                   value="admin:*"
+                                                   onchange="toggleAdminScope('admin:*', this)">
+                                            <span style="font-weight:500;">All Permissions</span>
                                         </label>
-                                        <label class="scope-item" data-search="admin display manage">
-                                            <input type="checkbox" value="admin:display:manage" onchange="toggleAdminScope('admin:display:manage', this)">
-                                            <span>Manage</span>
-                                            <span style="color:#666;margin-left:auto;font-size:11px;">Create, update, delete</span>
-                                        </label>
-                                        <label class="scope-item" data-search="admin display playback">
-                                            <input type="checkbox" value="admin:display:playback" onchange="toggleAdminScope('admin:display:playback', this)">
-                                            <span>Playback</span>
-                                            <span style="color:#666;margin-left:auto;font-size:11px;">Pause, play, next, jump</span>
-                                        </label>
-                                        <div class="group-header">Endpoints</div>
-                                        <label class="scope-item" data-search="admin endpoints monitor">
-                                            <input type="checkbox" value="admin:endpoints:monitor" onchange="toggleAdminScope('admin:endpoints:monitor', this)">
-                                            <span>Monitor</span>
-                                            <span style="color:#666;margin-left:auto;font-size:11px;">View endpoints</span>
-                                        </label>
-                                        <label class="scope-item" data-search="admin endpoints manage">
-                                            <input type="checkbox" value="admin:endpoints:manage" onchange="toggleAdminScope('admin:endpoints:manage', this)">
-                                            <span>Manage</span>
-                                            <span style="color:#666;margin-left:auto;font-size:11px;">Create, update, delete</span>
-                                        </label>
-                                        <div class="group-header">Immich</div>
-                                        <label class="scope-item" data-search="admin immich monitor">
-                                            <input type="checkbox" value="admin:immich:monitor" onchange="toggleAdminScope('admin:immich:monitor', this)">
-                                            <span>Monitor</span>
-                                            <span style="color:#666;margin-left:auto;font-size:11px;">View pulls, albums, status</span>
-                                        </label>
-                                        <label class="scope-item" data-search="admin immich manage">
-                                            <input type="checkbox" value="admin:immich:manage" onchange="toggleAdminScope('admin:immich:manage', this)">
-                                            <span>Manage</span>
-                                            <span style="color:#666;margin-left:auto;font-size:11px;">Trigger pulls, configure</span>
-                                        </label>
+                                        <div id="adminScopeDetails">
+                                            <div class="group-header">Display</div>
+                                            <label class="scope-item" data-search="admin display monitor">
+                                                <input type="checkbox" value="admin:display:monitor" onchange="toggleAdminScope('admin:display:monitor', this)">
+                                                <span>Monitor</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">View groups &amp; state</span>
+                                            </label>
+                                            <label class="scope-item" data-search="admin display manage">
+                                                <input type="checkbox" value="admin:display:manage" onchange="toggleAdminScope('admin:display:manage', this)">
+                                                <span>Manage</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">Create, update, delete</span>
+                                            </label>
+                                            <label class="scope-item" data-search="admin display playback">
+                                                <input type="checkbox" value="admin:display:playback" onchange="toggleAdminScope('admin:display:playback', this)">
+                                                <span>Playback</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">Pause, play, next, jump</span>
+                                            </label>
+                                            <div class="group-header">Endpoints</div>
+                                            <label class="scope-item" data-search="admin endpoints monitor">
+                                                <input type="checkbox" value="admin:endpoints:monitor" onchange="toggleAdminScope('admin:endpoints:monitor', this)">
+                                                <span>Monitor</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">View endpoints</span>
+                                            </label>
+                                            <label class="scope-item" data-search="admin endpoints manage">
+                                                <input type="checkbox" value="admin:endpoints:manage" onchange="toggleAdminScope('admin:endpoints:manage', this)">
+                                                <span>Manage</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">Create, update, delete</span>
+                                            </label>
+                                            <div class="group-header">Immich</div>
+                                            <label class="scope-item" data-search="admin immich monitor">
+                                                <input type="checkbox" value="admin:immich:monitor" onchange="toggleAdminScope('admin:immich:monitor', this)">
+                                                <span>Monitor</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">View pulls, albums, status</span>
+                                            </label>
+                                            <label class="scope-item" data-search="admin immich manage">
+                                                <input type="checkbox" value="admin:immich:manage" onchange="toggleAdminScope('admin:immich:manage', this)">
+                                                <span>Manage</span>
+                                                <span style="color:#666;margin-left:auto;font-size:11px;">Trigger pulls, configure</span>
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -5725,7 +5727,7 @@
                     let label = scope;
                     if (scope.startsWith('admin:')) {
                         type = 'admin';
-                        label = scope === 'admin:*' ? 'All Admin' : scope.replace('admin:', '');
+                        label = scope === 'admin:*' ? 'All Permissions' : scope.replace('admin:', '');
                     } else if (scope.startsWith('group:')) {
                         type = 'group';
                         label = scope.replace('group:', '');
