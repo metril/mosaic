@@ -2178,9 +2178,18 @@
                         <button class="panel-close" onclick="closeAccessConfig()">&times;</button>
                     </div>
                     <div class="access-config-body">
-                        <div class="checkbox-row" style="padding: 12px; background: rgba(233, 69, 96, 0.1); border: 1px solid rgba(233, 69, 96, 0.3); border-radius: 6px; margin-bottom: 16px;">
-                            <input type="checkbox" id="scopeFullAccess" onchange="toggleFullAccessScope()">
-                            <label for="scopeFullAccess" style="font-weight: 500; margin-bottom: 0;">Full Access (unrestricted)</label>
+                        <div id="fullAccessRow" style="padding: 12px; background: rgba(233, 69, 96, 0.1); border: 1px solid rgba(233, 69, 96, 0.3); border-radius: 6px; margin-bottom: 16px;">
+                            <div id="fullAccessDefault" class="checkbox-row">
+                                <input type="checkbox" id="scopeFullAccess" onchange="toggleFullAccessScope()">
+                                <label for="scopeFullAccess" style="font-weight: 500; margin-bottom: 0;">Full Access (unrestricted)</label>
+                            </div>
+                            <div id="fullAccessConfirm" style="display:none; align-items:center; justify-content:space-between;">
+                                <span style="font-size: 13px; color: #e94560; font-weight: 500;">Grant unrestricted access?</span>
+                                <div style="display:flex; gap:8px;">
+                                    <button type="button" class="btn btn-ghost btn-small" onclick="confirmFullAccess(false)">Cancel</button>
+                                    <button type="button" class="btn btn-danger btn-small" onclick="confirmFullAccess(true)">Grant</button>
+                                </div>
+                            </div>
                         </div>
 
                         <div id="scopeRestrictedOptions">
@@ -5566,6 +5575,8 @@
                 // Check if full access
                 const isFullAccess = selectedScopes.includes('*');
                 document.getElementById('scopeFullAccess').checked = isFullAccess;
+                document.getElementById('fullAccessDefault').style.display = 'flex';
+                document.getElementById('fullAccessConfirm').style.display = 'none';
                 document.getElementById('scopeRestrictedOptions').style.display = isFullAccess ? 'none' : 'block';
 
                 // Filter out legacy and full access scopes for display
@@ -5785,13 +5796,34 @@
             }
 
             function toggleFullAccessScope() {
-                const isFullAccess = document.getElementById('scopeFullAccess').checked;
-                document.getElementById('scopeRestrictedOptions').style.display = isFullAccess ? 'none' : 'block';
+                const checkbox = document.getElementById('scopeFullAccess');
 
-                // Update warning visibility
-                const warningBanner = document.getElementById('noScopeWarning');
-                if (warningBanner) {
-                    warningBanner.style.display = (!isFullAccess && selectedScopes.length === 0) ? 'block' : 'none';
+                if (checkbox.checked) {
+                    // Show inline confirmation, revert checkbox until confirmed
+                    checkbox.checked = false;
+                    document.getElementById('fullAccessDefault').style.display = 'none';
+                    document.getElementById('fullAccessConfirm').style.display = 'flex';
+                } else {
+                    // Unchecking — no confirmation needed
+                    document.getElementById('fullAccessConfirm').style.display = 'none';
+                    document.getElementById('fullAccessDefault').style.display = 'flex';
+                    document.getElementById('scopeRestrictedOptions').style.display = 'block';
+                    const warningBanner = document.getElementById('noScopeWarning');
+                    if (warningBanner) {
+                        warningBanner.style.display = (selectedScopes.length === 0) ? 'block' : 'none';
+                    }
+                }
+            }
+
+            function confirmFullAccess(granted) {
+                document.getElementById('fullAccessConfirm').style.display = 'none';
+                document.getElementById('fullAccessDefault').style.display = 'flex';
+
+                if (granted) {
+                    document.getElementById('scopeFullAccess').checked = true;
+                    document.getElementById('scopeRestrictedOptions').style.display = 'none';
+                    const warningBanner = document.getElementById('noScopeWarning');
+                    if (warningBanner) warningBanner.style.display = 'none';
                 }
             }
 
