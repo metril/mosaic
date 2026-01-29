@@ -15,6 +15,7 @@ services:
       - 80:80
     volumes:
       - /mnt/usb-storage-1/images:/www/images:ro
+      - /mnt/usb-storage-1/cache:/www/cache
       - ./config:/app/config
     env_file:
       - .env

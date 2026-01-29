@@ -30,6 +30,9 @@ COPY --chown=appuser:appuser config/ ./config/
 # Create directory for images (will be mounted as volume)
 RUN mkdir -p /www/images && chown appuser:appuser /www/images
 
+# Create directory for thumbnail cache (will be mounted as volume)
+RUN mkdir -p /www/cache/thumbnails && chown appuser:appuser /www/cache /www/cache/thumbnails
+
 # Create directory for config files (will be mounted as volume)
 RUN mkdir -p /app/config && chown appuser:appuser /app/config
 

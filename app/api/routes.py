@@ -41,6 +41,7 @@ from app.utils.path_security import resolve_image_path
 from app.utils.logging import logger
 from app.utils.metrics import metrics
 from app.utils.blur import create_blur_background, should_skip_blur
+from app.services.thumbnail_cache import ThumbnailCache
 
 # Allowed WebSocket origins (comma-separated in env, empty = allow all)
 ALLOWED_WS_ORIGINS = os.environ.get("ALLOWED_WS_ORIGINS", "").split(",")
@@ -616,10 +617,40 @@ async def get_thumbnail(
                 content=error_response("Invalid image path")
             )
 
-        # Load and resize image in thread pool
+        # Get thumbnail cache from app state
+        thumbnail_cache: Optional[ThumbnailCache] = getattr(request.app.state, 'thumbnail_cache', None)
+
+        # Check cache first
+        if thumbnail_cache:
+            cached = thumbnail_cache.get(image_path)
+            if cached:
+                return FileResponse(
+                    cached,
+                    media_type=thumbnail_cache.media_type,
+                    headers={
+                        "Cache-Control": "public, max-age=86400",
+                        "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
+                    }
+                )
+
+        # Cache miss — generate, cache, then serve
+        if thumbnail_cache:
+            cache_path = await asyncio.get_event_loop().run_in_executor(
+                None, thumbnail_cache.generate, image_path
+            )
+            if cache_path:
+                return FileResponse(
+                    cache_path,
+                    media_type=thumbnail_cache.media_type,
+                    headers={
+                        "Cache-Control": "public, max-age=86400",
+                        "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
+                    }
+                )
+
+        # Fallback: generate on-the-fly without caching (cache not available)
         def process_thumbnail():
             image = image_service.load_image(full_path)
-            # Generate thumbnail with configurable size (crop mode for square)
             thumbnail = image_service.resize_image(
                 image,
                 width=THUMBNAIL_SIZE,
@@ -627,11 +658,8 @@ async def get_thumbnail(
                 preserve_aspect=True,
                 mode='crop'
             )
-
-            # Convert to JPEG for thumbnails (smaller file size)
             if thumbnail.mode != 'RGB':
                 thumbnail = thumbnail.convert('RGB')
-
             buffer = BytesIO()
             thumbnail.save(buffer, format='JPEG', quality=85, optimize=True)
             buffer.seek(0)
@@ -639,7 +667,6 @@ async def get_thumbnail(
 
         buffer = await asyncio.get_event_loop().run_in_executor(None, process_thumbnail)
 
-        # Get buffer size (read all content, then reset)
         content = buffer.getvalue()
         content_length = len(content)
         buffer.seek(0)
@@ -649,7 +676,7 @@ async def get_thumbnail(
             media_type="image/jpeg",
             headers={
                 "Content-Length": str(content_length),
-                "Cache-Control": "public, max-age=86400",  # Cache for 24 hours
+                "Cache-Control": "public, max-age=86400",
                 "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
             }
         )

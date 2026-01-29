@@ -27,6 +27,7 @@ from app.services.sync_manager import DisplayManager
 from app.services.immich_provider import ImmichProvider
 from app.services.homeassistant_provider import HomeAssistantProvider, HomeAssistantConfig
 from app.services.file_watcher import ImageFileWatcher
+from app.services.thumbnail_cache import ThumbnailCache, THUMBNAIL_CACHE_DIR
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException, error_response
 from pytimeparse import parse as parse_duration
@@ -184,15 +185,30 @@ async def lifespan(app: FastAPI):
         if loaded_keys > 0:
             logger.info(f"Loaded {loaded_keys} API keys from config")
 
+        # Initialize thumbnail cache for disk-based thumbnail serving
+        app.state.thumbnail_cache = ThumbnailCache(
+            cache_dir=THUMBNAIL_CACHE_DIR,
+            image_dir=image_service.image_dir,
+        )
+        app.state.thumbnail_cache.start_pre_generation()
+        logger.info("Thumbnail cache initialized, pre-generation started")
+
         # Set up file watcher for image directory changes
         # This handles both external file changes AND Immich pull completions
         async def on_folder_changed(folder: str) -> None:
-            """Handle file system changes by refreshing affected display groups."""
+            """Handle file system changes by refreshing affected display groups and thumbnail cache."""
             try:
                 # Convert absolute path to relative for matching
                 folder_path = Path(folder)
                 relative = folder_path.relative_to(image_service.image_dir)
-                refreshed = await app.state.display_manager.refresh_groups_by_folder(str(relative))
+                rel_str = str(relative)
+
+                # Invalidate and regenerate thumbnails for changed folder
+                app.state.thumbnail_cache.invalidate_folder(rel_str)
+                asyncio.create_task(app.state.thumbnail_cache.pre_generate_folder(rel_str))
+
+                # Refresh affected display groups
+                refreshed = await app.state.display_manager.refresh_groups_by_folder(rel_str)
                 if refreshed:
                     logger.info(
                         f"Folder changed '{relative}', "
@@ -253,6 +269,10 @@ async def lifespan(app: FastAPI):
         # Stop file watcher
         if hasattr(app.state, 'file_watcher'):
             app.state.file_watcher.stop()
+
+        # Shut down thumbnail cache process pool
+        if hasattr(app.state, 'thumbnail_cache'):
+            app.state.thumbnail_cache.shutdown()
 
         # Close Immich provider HTTP client
         if hasattr(app.state, 'immich_provider'):
