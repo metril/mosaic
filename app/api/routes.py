@@ -3086,7 +3086,12 @@ async def root(
     # Check authentication if OIDC is enabled
     config = get_oidc_config()
     if config.enabled and auth is None:
-        raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+        if api:
+            # API mode - return 401 for programmatic clients
+            raise HTTPException(status_code=401, detail="Authentication required. Use API key or login.")
+        # Browser mode - redirect to login
+        redirect_path = f"/{folder_path}" if folder_path else "/"
+        return RedirectResponse(url=f"/auth/login?redirect={redirect_path}")
 
     # Check API key scope access for all requested folders
     if isinstance(auth, APIKey):
