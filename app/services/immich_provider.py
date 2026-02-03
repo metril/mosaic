@@ -350,8 +350,7 @@ class ImmichProvider:
         response.raise_for_status()
         data = response.json()
 
-        assets_data = data.get("assets", {})
-        total_available = assets_data.get("total", 0)
+        total_available = data.get("total", 0)
 
         if total_available == 0:
             logger.info("No assets match the search criteria")
@@ -390,8 +389,7 @@ class ImmichProvider:
             response.raise_for_status()
             data = response.json()
 
-            assets_data = data.get("assets", {})
-            items = assets_data.get("items", [])
+            items = data.get("items", [])
 
             if not items:
                 logger.debug(f"Request {request_count}: page {page} returned no items")
