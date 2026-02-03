@@ -287,6 +287,32 @@
             .btn-link:hover {
                 text-decoration: underline;
             }
+            /* Segmented button group */
+            .btn-segmented {
+                display: inline-flex;
+                border-radius: 6px;
+                overflow: hidden;
+                border: 1px solid #0f3460;
+            }
+            .btn-segmented button {
+                padding: 4px 10px;
+                border: none;
+                background: transparent;
+                color: #888;
+                font-size: 12px;
+                cursor: pointer;
+                transition: all 0.2s;
+            }
+            .btn-segmented button:not(:last-child) {
+                border-right: 1px solid #0f3460;
+            }
+            .btn-segmented button.active {
+                background: #0f3460;
+                color: #fff;
+            }
+            .btn-segmented button:hover:not(.active) {
+                background: rgba(255, 255, 255, 0.05);
+            }
 
             /* Empty state */
             .empty-state {
@@ -2103,10 +2129,10 @@
                                 <div style="display: flex; gap: 10px; align-items: flex-start;">
                                     <select id="immichAlbumIds" name="album_ids" multiple size="4" style="flex: 1;">
                                     </select>
-                                    <select id="immichAlbumFilterMode" name="album_filter_mode" style="width: 70px;">
-                                        <option value="all" selected>All</option>
-                                        <option value="any">Any</option>
-                                    </select>
+                                    <div class="btn-segmented" id="albumFilterMode" data-value="all">
+                                        <button type="button" class="active" data-mode="all">All</button>
+                                        <button type="button" data-mode="any">Any</button>
+                                    </div>
                                 </div>
                                 <small>Hold Ctrl/Cmd to select multiple. "All" = must match all, "Any" = match any.</small>
                             </div>
@@ -2115,10 +2141,10 @@
                                 <div style="display: flex; gap: 10px; align-items: flex-start;">
                                     <select id="immichPersonIds" name="person_ids" multiple size="4" style="flex: 1;">
                                     </select>
-                                    <select id="immichPersonFilterMode" name="person_filter_mode" style="width: 70px;">
-                                        <option value="all" selected>All</option>
-                                        <option value="any">Any</option>
-                                    </select>
+                                    <div class="btn-segmented" id="personFilterMode" data-value="all">
+                                        <button type="button" class="active" data-mode="all">All</button>
+                                        <button type="button" data-mode="any">Any</button>
+                                    </div>
                                 </div>
                                 <small>Hold Ctrl/Cmd to select multiple. "All" = must match all, "Any" = match any.</small>
                             </div>
@@ -5045,10 +5071,17 @@
 
                 // Clear album/people dropdowns and reset filter modes
                 document.getElementById('immichAlbumIds').innerHTML = '';
-                document.getElementById('immichAlbumFilterMode').value = 'all';
                 document.getElementById('immichPersonIds').innerHTML = '';
-                document.getElementById('immichPersonFilterMode').value = 'all';
                 document.getElementById('connectionStatus').textContent = '';
+
+                // Reset segmented buttons to "all"
+                ['albumFilterMode', 'personFilterMode'].forEach(id => {
+                    const group = document.getElementById(id);
+                    group.dataset.value = 'all';
+                    group.querySelectorAll('button').forEach(btn => {
+                        btn.classList.toggle('active', btn.dataset.mode === 'all');
+                    });
+                });
 
                 if (mode === 'edit' && pullName) {
                     title.textContent = 'Edit Pull';
@@ -5128,7 +5161,13 @@
                         albumSelect.appendChild(opt);
                     });
                 }
-                document.getElementById('immichAlbumFilterMode').value = pull.album_filter_mode || 'all';
+
+                // Restore album filter mode
+                const albumMode = pull.album_filter_mode || 'all';
+                document.getElementById('albumFilterMode').dataset.value = albumMode;
+                document.querySelectorAll('#albumFilterMode button').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.mode === albumMode);
+                });
 
                 if (pull.person_ids && pull.person_ids.length) {
                     const personSelect = document.getElementById('immichPersonIds');
@@ -5140,7 +5179,13 @@
                         personSelect.appendChild(opt);
                     });
                 }
-                document.getElementById('immichPersonFilterMode').value = pull.person_filter_mode || 'all';
+
+                // Restore person filter mode
+                const personMode = pull.person_filter_mode || 'all';
+                document.getElementById('personFilterMode').dataset.value = personMode;
+                document.querySelectorAll('#personFilterMode button').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.mode === personMode);
+                });
             }
 
             function clearApiKeyField() {
@@ -5185,13 +5230,13 @@
                 const albumIds = Array.from(form.album_ids.selectedOptions).map(o => o.value);
                 if (albumIds.length) {
                     data.album_ids = albumIds;
-                    data.album_filter_mode = form.album_filter_mode.value;
+                    data.album_filter_mode = document.getElementById('albumFilterMode').dataset.value;
                 }
 
                 const personIds = Array.from(form.person_ids.selectedOptions).map(o => o.value);
                 if (personIds.length) {
                     data.person_ids = personIds;
-                    data.person_filter_mode = form.person_filter_mode.value;
+                    data.person_filter_mode = document.getElementById('personFilterMode').dataset.value;
                 }
 
                 if (form.is_favorite.checked) data.is_favorite = true;
@@ -5248,6 +5293,17 @@
                     submitBtn.disabled = false;
                     submitBtn.textContent = editingPullName ? 'Update Pull' : 'Create Pull';
                 }
+            });
+
+            // Segmented button toggle handlers
+            document.querySelectorAll('.btn-segmented').forEach(group => {
+                group.querySelectorAll('button').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        group.dataset.value = btn.dataset.mode;
+                    });
+                });
             });
 
 
