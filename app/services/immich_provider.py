@@ -25,6 +25,7 @@ class PullStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 @dataclass
@@ -118,12 +119,14 @@ class ImmichProvider:
         self.pulls: Dict[str, ImmichPullConfig] = {}
         self._pull_results: Dict[str, PullResult] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
+        self._cancelled_pulls: set = set()
         self._http_client: Optional[httpx.AsyncClient] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client"""
         if self._http_client is None or self._http_client.is_closed:
-            self._http_client = httpx.AsyncClient(timeout=30.0)
+            timeout = float(os.environ.get("IMMICH_HTTP_TIMEOUT", "30.0"))
+            self._http_client = httpx.AsyncClient(timeout=timeout)
         return self._http_client
 
     async def close(self) -> None:
@@ -415,6 +418,15 @@ class ImmichProvider:
 
             # Download each asset
             for asset in assets:
+                # Check for cancellation before each download
+                if pull_name in self._cancelled_pulls:
+                    result.status = PullStatus.CANCELLED
+                    result.completed_at = datetime.now(timezone.utc)
+                    logger.info(f"Pull cancelled: {pull_name} - {result.downloaded}/{result.total} images downloaded before cancellation")
+                    self._cancelled_pulls.discard(pull_name)
+                    self._pull_results[pull_name] = result
+                    return result
+
                 asset_id = asset["id"]
                 original_filename = asset.get("originalFileName", f"{asset_id}.jpg")
 
@@ -427,12 +439,17 @@ class ImmichProvider:
                 # Update status for progress tracking
                 self._pull_results[pull_name] = result
 
-                # Yield to event loop to allow status polling requests
+                # Yield to event loop to allow status polling and cancellation requests
                 await asyncio.sleep(0)
 
             result.status = PullStatus.COMPLETED
             result.completed_at = datetime.now(timezone.utc)
             logger.info(f"Pull completed: {pull_name} - {result.downloaded}/{result.total} images")
+
+        except asyncio.CancelledError:
+            result.status = PullStatus.CANCELLED
+            result.completed_at = datetime.now(timezone.utc)
+            logger.info(f"Pull cancelled (task): {pull_name} - {result.downloaded}/{result.total} images downloaded before cancellation")
 
         except Exception as e:
             result.status = PullStatus.FAILED
@@ -467,3 +484,49 @@ class ImmichProvider:
             status=PullStatus.RUNNING,
             started_at=datetime.now(timezone.utc),
         )
+
+    async def cancel_pull(self, pull_name: str) -> PullResult:
+        """Cancel a running pull operation.
+
+        Sets the cancelled flag so the download loop stops gracefully.
+        Returns the updated result.
+        """
+        if pull_name not in self._running_tasks:
+            result = self._pull_results.get(pull_name)
+            if result:
+                return result
+            return PullResult(pull_name=pull_name, status=PullStatus.IDLE)
+
+        task = self._running_tasks[pull_name]
+        if task.done():
+            result = self._pull_results.get(pull_name)
+            if result:
+                return result
+            return PullResult(pull_name=pull_name, status=PullStatus.IDLE)
+
+        # Signal cancellation via the flag (checked in pull_images loop)
+        self._cancelled_pulls.add(pull_name)
+        logger.info(f"Cancellation requested for pull: {pull_name}")
+
+        # Wait briefly for the loop to pick up the cancellation
+        # If it doesn't stop on its own, force-cancel the task
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
+        except (asyncio.TimeoutError, asyncio.CancelledError):
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        result = self._pull_results.get(pull_name)
+        if result and result.status == PullStatus.RUNNING:
+            result.status = PullStatus.CANCELLED
+            result.completed_at = datetime.now(timezone.utc)
+            self._pull_results[pull_name] = result
+
+        self._cancelled_pulls.discard(pull_name)
+        self._running_tasks.pop(pull_name, None)
+
+        return result or PullResult(pull_name=pull_name, status=PullStatus.CANCELLED)

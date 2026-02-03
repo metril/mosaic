@@ -55,6 +55,9 @@ EINK_SATURATION = float(os.environ.get('EINK_SATURATION', '2.5'))
 EINK_CONTRAST = float(os.environ.get('EINK_CONTRAST', '1.2'))
 EINK_BRIGHTNESS = float(os.environ.get('EINK_BRIGHTNESS', '1.1'))
 EINK_SHARPEN = os.environ.get('EINK_SHARPEN', 'true').lower() == 'true'
+STATIC_CACHE_MAX_AGE = int(os.environ.get('STATIC_CACHE_MAX_AGE', '86400'))
+IMAGE_JPEG_QUALITY = int(os.environ.get('IMAGE_JPEG_QUALITY', '95'))
+MAX_IMMICH_PULL_COUNT = int(os.environ.get('MAX_IMMICH_PULL_COUNT', '1000'))
 
 
 router = APIRouter()
@@ -292,7 +295,7 @@ async def favicon():
     return FileResponse(
         "app/static/favicon.ico",
         media_type="image/x-icon",
-        headers={"Cache-Control": "public, max-age=86400"}
+        headers={"Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}"}
     )
 
 
@@ -661,7 +664,7 @@ async def get_thumbnail(
                     cached,
                     media_type=thumbnail_cache.media_type,
                     headers={
-                        "Cache-Control": "public, max-age=86400",
+                        "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
                         "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
                     }
                 )
@@ -676,7 +679,7 @@ async def get_thumbnail(
                     cache_path,
                     media_type=thumbnail_cache.media_type,
                     headers={
-                        "Cache-Control": "public, max-age=86400",
+                        "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
                         "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
                     }
                 )
@@ -709,7 +712,7 @@ async def get_thumbnail(
             media_type="image/jpeg",
             headers={
                 "Content-Length": str(content_length),
-                "Cache-Control": "public, max-age=86400",
+                "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
                 "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
             }
         )
@@ -903,7 +906,7 @@ async def serve_processed_image(
 
             # Save to buffer
             buffer = BytesIO()
-            img.save(buffer, format=output_format.upper(), quality=95, optimize=True)
+            img.save(buffer, format=output_format.upper(), quality=IMAGE_JPEG_QUALITY, optimize=True)
 
             # Get buffer content for ETag and length (single read)
             content = buffer.getvalue()
@@ -938,7 +941,7 @@ async def serve_processed_image(
         headers = {
             "Content-Length": str(content_length),
             # Disable caching for processed images to allow parameter changes
-            "Cache-Control": "no-cache, no-store, must-revalidate" if eink else "public, max-age=86400",
+            "Cache-Control": "no-cache, no-store, must-revalidate" if eink else f"public, max-age={STATIC_CACHE_MAX_AGE}",
             "Content-Disposition": f'inline; filename="{filename_out}"',
             "Content-Location": content_location,
             "ETag": f'"{etag}"',
@@ -1213,6 +1216,7 @@ async def admin_page(request: Request, user: Optional[User] = Depends(get_option
             "user": user,
             "csrf_token": csrf_token,
             "oidc_enabled": config.enabled,
+            "max_immich_pull_count": MAX_IMMICH_PULL_COUNT,
         }
     )
 
@@ -2510,7 +2514,7 @@ class ImmichPullCreateRequest(BaseModel):
     server_url: str = Field(..., description="Immich server URL")
     api_key: Optional[str] = Field(None, description="API key (omit to keep existing when updating)")
     target_folder: str = Field(..., description="Local folder to store images")
-    count: int = Field(50, ge=1, le=1000, description="Number of images to pull")
+    count: int = Field(50, ge=1, le=MAX_IMMICH_PULL_COUNT, description="Number of images to pull")
     album_id: Optional[str] = Field(None, description="Pull from specific album")
     person_ids: Optional[list[str]] = Field(None, description="Filter by people")
     is_favorite: Optional[bool] = Field(None, description="Only favorites")
@@ -2720,6 +2724,42 @@ async def get_immich_pull_status(
         return JSONResponse(content=result.to_dict())
     else:
         return JSONResponse(content={"status": "idle", "pull_name": pull_name})
+
+
+@router.post(
+    "/api/immich/pull/{pull_name}/cancel",
+    responses={
+        200: {"description": "Pull operation cancelled"},
+        401: {"description": "Authentication required"},
+        404: {"description": "Pull not found"},
+    }
+)
+async def cancel_immich_pull(
+    request: Request,
+    pull_name: str,
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """
+    Cancel a running Immich pull operation.
+
+    Stops the pull gracefully, keeping any images already downloaded.
+    """
+    check_admin_scope(auth, "admin:immich:trigger")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    provider = get_immich_provider(request)
+
+    if not provider.get_pull(pull_name):
+        raise HTTPException(status_code=404, detail=f"Pull '{pull_name}' not found")
+
+    logger.info(f"User {actor} cancelling Immich pull: {pull_name}")
+    result = await provider.cancel_pull(pull_name)
+
+    return JSONResponse(content={
+        "status": "cancelled",
+        "pull_name": pull_name,
+        "result": result.to_dict(),
+    })
 
 
 @router.post(

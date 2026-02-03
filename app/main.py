@@ -95,7 +95,7 @@ images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 
 async def periodic_cleanup(
     display_manager: DisplayManager,
-    interval: int = 30,
+    interval: int = int(os.environ.get("CLEANUP_INTERVAL", "30")),
     endpoint_cleanup_seconds: int = 86400
 ):
     """Periodically clean up stale browser connections with resilience (#27)."""
@@ -103,6 +103,7 @@ async def periodic_cleanup(
     max_failures = 5
     backoff_delay = interval
     iteration_count = 0
+    browser_stale_timeout = int(os.environ.get("BROWSER_STALE_TIMEOUT", "60"))
     # Run endpoint cleanup every hour (120 iterations at 30s interval)
     endpoint_cleanup_interval = 120
 
@@ -110,7 +111,7 @@ async def periodic_cleanup(
         await asyncio.sleep(backoff_delay)
         iteration_count += 1
         try:
-            await display_manager.cleanup_stale_browsers(timeout_seconds=60)
+            await display_manager.cleanup_stale_browsers(timeout_seconds=browser_stale_timeout)
 
             # Clean up anonymous endpoints less frequently (hourly)
             # Set ENDPOINT_CLEANUP=0 to disable cleanup entirely
@@ -311,7 +312,7 @@ app.add_middleware(
     SessionMiddleware,
     secret_key=oidc_config.session_secret,
     session_cookie="screensaver_session",
-    max_age=3600,  # 1 hour session
+    max_age=int(os.environ.get("SESSION_MAX_AGE", "3600")),
     same_site="lax",
     https_only=os.environ.get("HTTPS_ONLY", "false").lower() == "true",
 )

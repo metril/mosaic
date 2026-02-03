@@ -26,9 +26,10 @@ from app.utils.metrics import metrics
 from app.utils.path_security import resolve_image_path
 
 # Constants
-PRELOAD_LEAD_TIME_SECONDS = 5  # Time before switch to send preload command (P9)
+PRELOAD_LEAD_TIME_SECONDS = int(os.environ.get("PRELOAD_LEAD_TIME", "5"))
 MAX_CYCLE_COUNT = 2**31  # Wrap cycle counter to prevent overflow (S14)
-MAX_IMAGE_HISTORY = 100  # Maximum images to keep in browser history for "previous"
+MAX_IMAGE_HISTORY = int(os.environ.get("MAX_IMAGE_HISTORY", "100"))
+WEBSOCKET_SEND_TIMEOUT = float(os.environ.get("WEBSOCKET_SEND_TIMEOUT", "5.0"))
 
 # Connection limits (A10) - configurable via environment variables
 MAX_BROWSERS_PER_GROUP = int(os.environ.get("MAX_BROWSERS_PER_GROUP", "100"))
@@ -615,7 +616,7 @@ class DisplayManager:
         dead_connections = []
         for ws in connections:
             try:
-                await asyncio.wait_for(ws.send_json(message), timeout=5.0)
+                await asyncio.wait_for(ws.send_json(message), timeout=WEBSOCKET_SEND_TIMEOUT)
             except Exception:
                 dead_connections.append(ws)
 
@@ -1317,7 +1318,7 @@ class DisplayManager:
                                         "image_id": next_image,
                                         "switch_at": switch_at
                                     }),
-                                    timeout=5.0
+                                    timeout=WEBSOCKET_SEND_TIMEOUT
                                 )
                             except asyncio.TimeoutError:
                                 logger.warning(f"Preload send timeout for {browser.browser_id}")
@@ -1631,7 +1632,7 @@ class DisplayManager:
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
-                    timeout=5.0
+                    timeout=WEBSOCKET_SEND_TIMEOUT
                 )
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
@@ -1704,7 +1705,7 @@ class DisplayManager:
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
-                    timeout=5.0
+                    timeout=WEBSOCKET_SEND_TIMEOUT
                 )
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
@@ -1807,7 +1808,7 @@ class DisplayManager:
                     "image_id": image_path,
                     "cycle": group.current_cycle
                 }),
-                timeout=5.0
+                timeout=WEBSOCKET_SEND_TIMEOUT
             )
         except Exception as e:
             logger.warning(f"Failed to send jump assign to {browser_id}: {e}")
@@ -1947,7 +1948,7 @@ class DisplayManager:
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
-                    timeout=5.0
+                    timeout=WEBSOCKET_SEND_TIMEOUT
                 )
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
@@ -1989,7 +1990,7 @@ class DisplayManager:
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
-                    timeout=5.0
+                    timeout=WEBSOCKET_SEND_TIMEOUT
                 )
             except Exception as e:
                 logger.warning(f"Failed to send assign to {browser.browser_id}: {e}")
@@ -2067,7 +2068,7 @@ class DisplayManager:
                         "image_id": image_path,
                         "cycle": group.current_cycle
                     }),
-                    timeout=5.0
+                    timeout=WEBSOCKET_SEND_TIMEOUT
                 )
                 logger.info(f"_rewind_browsers: browser {browser.browser_id}: ASSIGN sent successfully")
             except Exception as e:
@@ -2119,7 +2120,7 @@ class DisplayManager:
                     "image_id": new_image,
                     "cycle": group.current_cycle
                 }),
-                timeout=5.0
+                timeout=WEBSOCKET_SEND_TIMEOUT
             )
             logger.info(f"Sent replacement image {new_image} to {browser_id} (failed: {failed_path})")
             return True

@@ -71,7 +71,7 @@ class ThumbnailCache:
         size: int = THUMBNAIL_SIZE,
         fmt: str = THUMBNAIL_FORMAT,
         quality: int = THUMBNAIL_QUALITY,
-        max_workers: int = 2,
+        max_workers: int = int(os.environ.get("THUMBNAIL_MAX_WORKERS", "2")),
     ):
         self.cache_dir = cache_dir
         self.image_dir = image_dir

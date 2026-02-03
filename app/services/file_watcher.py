@@ -6,6 +6,7 @@ Uses watchdog library for cross-platform file system events.
 """
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Awaitable, Callable, Optional, Set
 
@@ -54,7 +55,8 @@ class ImageFolderHandler(FileSystemEventHandler):
 
     async def _debounced_callback(self) -> None:
         """Wait for changes to settle, then fire callbacks."""
-        await asyncio.sleep(2.0)  # Wait 2 seconds for changes to settle
+        debounce = float(os.environ.get("FILE_WATCHER_DEBOUNCE", "2.0"))
+        await asyncio.sleep(debounce)
 
         folders = self._pending_folders.copy()
         self._pending_folders.clear()

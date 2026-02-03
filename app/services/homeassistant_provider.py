@@ -5,6 +5,7 @@ Fetches time and weather data from Home Assistant API.
 Used for clock synchronization and weather display features.
 """
 import asyncio
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
@@ -34,12 +35,13 @@ class HomeAssistantProvider:
         self.config = config
         self._http_client: Optional[httpx.AsyncClient] = None
         self._weather_cache: Dict[str, tuple] = {}  # entity_id -> (data, timestamp)
-        self._cache_ttl = 600  # 10 minutes cache for weather
+        self._cache_ttl = int(os.environ.get("HA_WEATHER_CACHE_TTL", "600"))
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client"""
         if self._http_client is None or self._http_client.is_closed:
-            self._http_client = httpx.AsyncClient(timeout=10.0)
+            timeout = float(os.environ.get("HA_HTTP_TIMEOUT", "10.0"))
+            self._http_client = httpx.AsyncClient(timeout=timeout)
         return self._http_client
 
     def _get_headers(self) -> Dict[str, str]:

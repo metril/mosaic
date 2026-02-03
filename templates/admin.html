@@ -1049,6 +1049,7 @@
             .pull-card.running { border-color: #ffc107; }
             .pull-card.completed { border-color: #4caf50; }
             .pull-card.failed { border-color: #e94560; }
+            .pull-card.cancelled { border-color: #ff9800; }
             .pull-name {
                 font-size: 18px;
                 font-weight: 600;
@@ -1088,6 +1089,7 @@
             .pull-status.running { background: rgba(255, 193, 7, 0.2); color: #ffc107; }
             .pull-status.completed { background: rgba(76, 175, 80, 0.2); color: #4caf50; }
             .pull-status.failed { background: rgba(233, 69, 96, 0.2); color: #e94560; }
+            .pull-status.cancelled { background: rgba(255, 152, 0, 0.2); color: #ff9800; }
             .pull-progress {
                 background: #0f3460;
                 border-radius: 4px;
@@ -2083,7 +2085,7 @@
                             </div>
                             <div class="form-row">
                                 <label for="immichCount">Image Count</label>
-                                <input type="number" id="immichCount" name="count" value="50" min="1" max="1000">
+                                <input type="number" id="immichCount" name="count" value="50" min="1" max="{{ max_immich_pull_count }}">
                             </div>
                             <div class="checkbox-row">
                                 <input type="checkbox" id="immichReplaceExisting" name="replace_existing" checked>
@@ -4790,6 +4792,9 @@
                                 <button class="btn-trigger" onclick="triggerPull('${nameSafe}')" id="pull-trigger-${nameSafe}">
                                     ▶ Pull Now
                                 </button>
+                                <button class="btn btn-danger" onclick="cancelPull('${nameSafe}')" id="pull-cancel-${nameSafe}" style="display: none;">
+                                    ✕ Cancel
+                                </button>
                                 <button class="btn btn-secondary" onclick="openImmichPanel('edit', '${nameSafe}')">Edit</button>
                                 <button class="btn btn-ghost" onclick="deletePull('${nameSafe}')">Delete</button>
                             </div>
@@ -4822,6 +4827,27 @@
                     if (triggerBtn) {
                         triggerBtn.disabled = false;
                         triggerBtn.textContent = '▶ Pull Now';
+                    }
+                }
+            }
+
+            async function cancelPull(pullName) {
+                const cancelBtn = document.getElementById(`pull-cancel-${pullName}`);
+                if (cancelBtn) {
+                    cancelBtn.disabled = true;
+                    cancelBtn.textContent = 'Cancelling...';
+                }
+
+                try {
+                    await fetchImmichJson(`${IMMICH_API_BASE}/pull/${encodeURIComponent(pullName)}/cancel`, {
+                        method: 'POST'
+                    });
+                    showImmichMessage('Pull cancelled: ' + pullName, 'success');
+                } catch (err) {
+                    showImmichMessage('Error cancelling: ' + err.message, 'error');
+                    if (cancelBtn) {
+                        cancelBtn.disabled = false;
+                        cancelBtn.textContent = '✕ Cancel';
                     }
                 }
             }
@@ -4864,6 +4890,7 @@
                 const progressBar = document.getElementById(`pull-progress-bar-${pullName}`);
                 const progressText = document.getElementById(`pull-progress-text-${pullName}`);
                 const triggerBtn = document.getElementById(`pull-trigger-${pullName}`);
+                const cancelBtn = document.getElementById(`pull-cancel-${pullName}`);
 
                 if (!card) return;
 
@@ -4889,14 +4916,25 @@
                     }
                 }
 
-                // Update trigger button
+                // Update trigger button and cancel button
                 if (triggerBtn) {
                     if (status.status === 'running') {
                         triggerBtn.disabled = true;
                         triggerBtn.textContent = 'Running...';
+                        triggerBtn.style.display = 'none';
                     } else {
                         triggerBtn.disabled = false;
                         triggerBtn.textContent = '▶ Pull Now';
+                        triggerBtn.style.display = '';
+                    }
+                }
+                if (cancelBtn) {
+                    if (status.status === 'running') {
+                        cancelBtn.style.display = '';
+                        cancelBtn.disabled = false;
+                        cancelBtn.textContent = '✕ Cancel';
+                    } else {
+                        cancelBtn.style.display = 'none';
                     }
                 }
 
@@ -4905,6 +4943,8 @@
                     showImmichMessage(`Pull "${pullName}" completed: ${status.downloaded}/${status.total} images`, 'success');
                 } else if (status.status === 'failed' && status.errors && status.errors.length) {
                     showImmichMessage(`Pull "${pullName}" failed: ${status.errors[0]}`, 'error');
+                } else if (status.status === 'cancelled' && status.downloaded !== undefined) {
+                    showImmichMessage(`Pull "${pullName}" cancelled: ${status.downloaded}/${status.total} images downloaded`, 'success');
                 }
             }
 
