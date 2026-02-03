@@ -3462,18 +3462,7 @@
                         resetDeleteButton(button);
                     }
                 } else {
-                    // Enter confirm mode
-                    button.dataset.confirming = 'true';
-                    button.dataset.originalText = button.textContent;
-                    button.textContent = 'Confirm?';
-                    button.classList.add('confirming');
-
-                    // Auto-reset after 3 seconds
-                    setTimeout(() => {
-                        if (button.dataset.confirming === 'true') {
-                            resetDeleteButton(button);
-                        }
-                    }, 3000);
+                    enterConfirmMode(button, resetDeleteButton);
                 }
             }
 
@@ -3796,18 +3785,7 @@
                         resetDeleteButton(button);
                     }
                 } else {
-                    // Enter confirm mode
-                    button.dataset.confirming = 'true';
-                    button.dataset.originalText = button.textContent;
-                    button.textContent = 'Confirm?';
-                    button.classList.add('confirming');
-
-                    // Auto-reset after 3 seconds
-                    setTimeout(() => {
-                        if (button.dataset.confirming === 'true') {
-                            resetDeleteButton(button);
-                        }
-                    }, 3000);
+                    enterConfirmMode(button, resetDeleteButton);
                 }
             }
 
@@ -3816,6 +3794,51 @@
                 button.dataset.confirming = 'false';
                 button.textContent = button.dataset.originalText || 'Delete';
                 button.classList.remove('confirming');
+            }
+
+            // Track currently confirming button for click-outside handling
+            let activeConfirmButton = null;
+            let activeConfirmTimeout = null;
+            let activeConfirmClickHandler = null;
+
+            function enterConfirmMode(button, resetFn) {
+                // Reset any existing confirming button first
+                if (activeConfirmButton && activeConfirmButton !== button) {
+                    resetFn(activeConfirmButton);
+                }
+
+                // Clear any existing timeout/listener
+                if (activeConfirmTimeout) clearTimeout(activeConfirmTimeout);
+                if (activeConfirmClickHandler) {
+                    document.removeEventListener('click', activeConfirmClickHandler);
+                }
+
+                // Enter confirm mode
+                button.dataset.confirming = 'true';
+                button.dataset.originalText = button.textContent;
+                button.textContent = 'Confirm?';
+                button.classList.add('confirming');
+                activeConfirmButton = button;
+
+                // Auto-reset after 3 seconds
+                activeConfirmTimeout = setTimeout(() => {
+                    if (button.dataset.confirming === 'true') {
+                        resetFn(button);
+                        activeConfirmButton = null;
+                    }
+                }, 3000);
+
+                // Click-outside handler (one-time)
+                activeConfirmClickHandler = (e) => {
+                    if (e.target !== button && button.dataset.confirming === 'true') {
+                        clearTimeout(activeConfirmTimeout);
+                        resetFn(button);
+                        activeConfirmButton = null;
+                    }
+                    document.removeEventListener('click', activeConfirmClickHandler);
+                    activeConfirmClickHandler = null;
+                };
+                setTimeout(() => document.addEventListener('click', activeConfirmClickHandler), 0);
             }
 
             // Create endpoint from the Edit panel
@@ -4969,18 +4992,7 @@
                         resetDeleteButton(button);
                     }
                 } else {
-                    // Enter confirm mode
-                    button.dataset.confirming = 'true';
-                    button.dataset.originalText = button.textContent;
-                    button.textContent = 'Confirm?';
-                    button.classList.add('confirming');
-
-                    // Auto-reset after 3 seconds
-                    setTimeout(() => {
-                        if (button.dataset.confirming === 'true') {
-                            resetDeleteButton(button);
-                        }
-                    }, 3000);
+                    enterConfirmMode(button, resetDeleteButton);
                 }
             }
 
@@ -5559,16 +5571,7 @@
                         resetRevokeButton(button);
                     }
                 } else {
-                    button.dataset.confirming = 'true';
-                    button.dataset.originalText = button.textContent;
-                    button.textContent = 'Confirm?';
-                    button.classList.add('confirming');
-
-                    setTimeout(() => {
-                        if (button.dataset.confirming === 'true') {
-                            resetRevokeButton(button);
-                        }
-                    }, 3000);
+                    enterConfirmMode(button, resetRevokeButton);
                 }
             }
 
