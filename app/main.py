@@ -159,7 +159,16 @@ async def lifespan(app: FastAPI):
         logger.info(f"Base URL: {base_url}")
 
         # Initialize DisplayManager for synchronized multi-browser display
-        app.state.display_manager = DisplayManager(image_service)
+        # The is_folder_locked callback checks if a folder is being updated by Immich pull
+        # It uses a closure so it can access app.state.immich_provider after it's initialized
+        def is_folder_locked(folder: str) -> bool:
+            provider = getattr(app.state, 'immich_provider', None)
+            return provider.is_folder_updating(folder) if provider else False
+
+        app.state.display_manager = DisplayManager(
+            image_service,
+            is_folder_locked=is_folder_locked
+        )
         logger.info("DisplayManager initialized")
 
         # Migrate old config file name if it exists

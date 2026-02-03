@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Any, Literal
+from typing import Callable, Dict, List, Optional, Set, Any, Literal
 from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -284,9 +284,15 @@ class ImagePool:
     and no repeats until all images have been shown.
     """
 
-    def __init__(self, image_service: ImageService, settings: DisplayGroupSettings):
+    def __init__(
+        self,
+        image_service: ImageService,
+        settings: DisplayGroupSettings,
+        is_folder_locked: Optional[Callable[[str], bool]] = None
+    ):
         self.image_service = image_service
         self.settings = settings
+        self._is_folder_locked = is_folder_locked or (lambda _: False)
         self._all_images: List[Path] = []
         self._all_paths_cache: Optional[List[str]] = None  # Cached string paths (#26)
         self._shown_images: Set[str] = set()  # Images shown this complete cycle
@@ -295,13 +301,32 @@ class ImagePool:
         self.error: Optional[str] = None  # Error message if folders invalid
         self._refresh_images()
 
+    def has_locked_folders(self) -> List[str]:
+        """Return list of configured folders that are currently locked."""
+        if not self.settings.folders:
+            return []
+        folder_paths = [f.strip() for f in self.settings.folders.split(",") if f.strip()]
+        return [f for f in folder_paths if self._is_folder_locked(f)]
+
     def _refresh_images(self) -> None:
         """Reload the list of available images based on settings"""
         self.error = None  # Reset error state
         folder_paths = None
         if self.settings.folders:
             folder_paths = [f.strip() for f in self.settings.folders.split(",") if f.strip()]
-            # Check for missing folders
+
+            # Filter out locked folders (being updated by Immich pull)
+            locked = self.has_locked_folders()
+            if locked:
+                logger.info(f"Skipping locked folders during refresh: {locked}")
+                folder_paths = [f for f in folder_paths if f not in locked]
+
+            # If all folders are locked, keep current images (don't refresh)
+            if not folder_paths:
+                logger.info("All folders locked, keeping current image pool")
+                return
+
+            # Check for missing folders (only check unlocked ones)
             missing = []
             for folder in folder_paths:
                 full_path = self.image_service.image_dir / folder.lstrip("/")
@@ -510,8 +535,14 @@ class DisplayManager:
     Manages all display groups and coordinates browser synchronization.
     """
 
-    def __init__(self, image_service: ImageService, config_path: Optional[Path] = None):
+    def __init__(
+        self,
+        image_service: ImageService,
+        config_path: Optional[Path] = None,
+        is_folder_locked: Optional[Callable[[str], bool]] = None
+    ):
         self.image_service = image_service
+        self._is_folder_locked = is_folder_locked or (lambda _: False)
         self.groups: Dict[str, DisplayGroup] = {}
         self._lock = asyncio.Lock()
         self._base_url: str = ""
@@ -783,7 +814,7 @@ class DisplayManager:
             if settings is None:
                 settings = DisplayGroupSettings()
 
-            image_pool = ImagePool(self.image_service, settings)
+            image_pool = ImagePool(self.image_service, settings, self._is_folder_locked)
             group = DisplayGroup(
                 group_id=group_id,
                 settings=settings,
@@ -1271,6 +1302,16 @@ class DisplayManager:
             while True:
                 try:
                     duration = group.settings.duration
+
+                    # Check if all folders are locked (being updated by Immich pull)
+                    locked_folders = group.image_pool.has_locked_folders()
+                    if locked_folders and group.settings.folders:
+                        all_folders = [f.strip() for f in group.settings.folders.split(",") if f.strip()]
+                        if set(locked_folders) >= set(all_folders):
+                            # All configured folders are locked, skip this cycle
+                            logger.debug(f"Group {group.group_id}: skipping cycle, all folders locked ({locked_folders})")
+                            await asyncio.sleep(1)  # Brief pause before checking again
+                            continue
 
                     # Calculate next cron-aligned switch time
                     next_switch = _next_cron_time(duration)

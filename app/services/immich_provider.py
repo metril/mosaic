@@ -78,8 +78,10 @@ class PullResult:
     """Result of a pull operation"""
     pull_name: str
     status: PullStatus = PullStatus.IDLE
+    phase: str = "idle"  # "idle", "searching", "downloading", "completed", "cancelled", "failed"
     total: int = 0
     downloaded: int = 0
+    search_collected: int = 0  # Assets collected during search phase
     skipped: int = 0
     errors: List[str] = field(default_factory=list)
     started_at: Optional[datetime] = None
@@ -90,8 +92,10 @@ class PullResult:
         return {
             "pull_name": self.pull_name,
             "status": self.status.value,
+            "phase": self.phase,
             "total": self.total,
             "downloaded": self.downloaded,
+            "search_collected": self.search_collected,
             "skipped": self.skipped,
             "errors": self.errors,
             "started_at": self.started_at.isoformat() if self.started_at else None,
@@ -120,7 +124,12 @@ class ImmichProvider:
         self._pull_results: Dict[str, PullResult] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
         self._cancelled_pulls: set = set()
+        self._updating_folders: set = set()  # Folders currently being updated
         self._http_client: Optional[httpx.AsyncClient] = None
+
+    def is_folder_updating(self, folder: str) -> bool:
+        """Check if a folder is currently being updated by a pull."""
+        return folder in self._updating_folders
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client"""
@@ -286,12 +295,19 @@ class ImmichProvider:
             for person in people
         ]
 
-    async def search_assets(self, config: ImmichPullConfig) -> List[Dict[str, Any]]:
+    async def search_assets(
+        self,
+        config: ImmichPullConfig,
+        result: Optional[PullResult] = None
+    ) -> List[Dict[str, Any]]:
         """Search Immich for random assets using multiple API calls.
 
         Uses /api/search/random endpoint which returns random assets each call.
         Makes multiple requests with deduplication to collect the desired count.
-        Uses conservative exhaustion detection (3 consecutive low-yield calls).
+
+        Args:
+            config: Pull configuration
+            result: Optional PullResult to update with search progress
         """
         client = await self._get_client()
         headers = {"x-api-key": config.api_key, "Content-Type": "application/json"}
@@ -355,6 +371,14 @@ class ImmichProvider:
                 f"{new_count} new, total {len(all_assets)}/{config.count}"
             )
 
+            # Update progress for status polling
+            if result:
+                result.search_collected = len(all_assets)
+                self._pull_results[result.pull_name] = result
+
+            # Yield to event loop for status polling
+            await asyncio.sleep(0)
+
         logger.info(f"Collected {len(all_assets)} unique assets from Immich")
 
         return all_assets[:config.count]
@@ -402,7 +426,7 @@ class ImmichProvider:
         """Execute a pull operation - search, download, store locally"""
         config = self.pulls.get(pull_name)
         if not config:
-            result = PullResult(pull_name=pull_name, status=PullStatus.FAILED)
+            result = PullResult(pull_name=pull_name, status=PullStatus.FAILED, phase="failed")
             result.errors.append(f"Pull config not found: {pull_name}")
             return result
 
@@ -410,9 +434,14 @@ class ImmichProvider:
         result = PullResult(
             pull_name=pull_name,
             status=PullStatus.RUNNING,
+            phase="searching",
             started_at=datetime.now(timezone.utc),
         )
         self._pull_results[pull_name] = result
+
+        # Lock the folder to prevent display groups from accessing it during update
+        self._updating_folders.add(config.target_folder)
+        logger.debug(f"Locked folder for pull: {config.target_folder}")
 
         try:
             # Clear target folder if requested
@@ -422,10 +451,12 @@ class ImmichProvider:
                     shutil.rmtree(target_dir)
                     logger.info(f"Cleared target folder: {target_dir}")
 
-            # Search for assets
+            # Search for assets (pass result for progress tracking)
             logger.info(f"Searching Immich for pull: {pull_name}")
-            assets = await self.search_assets(config)
+            assets = await self.search_assets(config, result)
             result.total = len(assets)
+            result.phase = "downloading"
+            self._pull_results[pull_name] = result
             logger.info(f"Found {len(assets)} assets for pull: {pull_name}")
 
             # Download each asset
@@ -433,6 +464,7 @@ class ImmichProvider:
                 # Check for cancellation before each download
                 if pull_name in self._cancelled_pulls:
                     result.status = PullStatus.CANCELLED
+                    result.phase = "cancelled"
                     result.completed_at = datetime.now(timezone.utc)
                     logger.info(f"Pull cancelled: {pull_name} - {result.downloaded}/{result.total} images downloaded before cancellation")
                     self._cancelled_pulls.discard(pull_name)
@@ -455,19 +487,27 @@ class ImmichProvider:
                 await asyncio.sleep(0)
 
             result.status = PullStatus.COMPLETED
+            result.phase = "completed"
             result.completed_at = datetime.now(timezone.utc)
             logger.info(f"Pull completed: {pull_name} - {result.downloaded}/{result.total} images")
 
         except asyncio.CancelledError:
             result.status = PullStatus.CANCELLED
+            result.phase = "cancelled"
             result.completed_at = datetime.now(timezone.utc)
             logger.info(f"Pull cancelled (task): {pull_name} - {result.downloaded}/{result.total} images downloaded before cancellation")
 
         except Exception as e:
             result.status = PullStatus.FAILED
+            result.phase = "failed"
             result.errors.append(str(e))
             result.completed_at = datetime.now(timezone.utc)
             logger.error(f"Pull failed: {pull_name} - {e}")
+
+        finally:
+            # Always unlock the folder when done
+            self._updating_folders.discard(config.target_folder)
+            logger.debug(f"Unlocked folder after pull: {config.target_folder}")
 
         self._pull_results[pull_name] = result
         return result
