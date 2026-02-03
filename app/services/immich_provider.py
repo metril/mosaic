@@ -39,7 +39,7 @@ class ImmichPullConfig:
     count: int = 50                              # Number of images to pull
 
     # Search criteria (all optional)
-    album_id: Optional[str] = None               # Pull from specific album
+    album_ids: Optional[List[str]] = None        # Pull from specific albums
     person_ids: Optional[List[str]] = None       # Filter by people
     is_favorite: Optional[bool] = None           # Only favorites
     taken_after: Optional[str] = None            # ISO date string (YYYY-MM-DD)
@@ -67,7 +67,7 @@ class ImmichPullConfig:
 
         # Filter to valid fields
         valid_keys = {"name", "server_url", "api_key", "target_folder", "count",
-                      "album_id", "person_ids", "is_favorite", "taken_after",
+                      "album_ids", "person_ids", "is_favorite", "taken_after",
                       "taken_before", "media_type", "replace_existing"}
         filtered = {k: v for k, v in data.items() if k in valid_keys}
 
@@ -319,8 +319,8 @@ class ImmichProvider:
         # Build filter body (same for both endpoints)
         filter_body: Dict[str, Any] = {}
 
-        if config.album_id:
-            filter_body["albumIds"] = [config.album_id]
+        if config.album_ids:
+            filter_body["albumIds"] = config.album_ids
         if config.media_type and config.media_type != "ALL":
             filter_body["type"] = config.media_type
         if config.is_favorite is not None:

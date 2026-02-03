@@ -2515,7 +2515,7 @@ class ImmichPullCreateRequest(BaseModel):
     api_key: Optional[str] = Field(None, description="API key (omit to keep existing when updating)")
     target_folder: str = Field(..., description="Local folder to store images")
     count: int = Field(50, ge=1, le=MAX_IMMICH_PULL_COUNT, description="Number of images to pull")
-    album_id: Optional[str] = Field(None, description="Pull from specific album")
+    album_ids: Optional[list[str]] = Field(None, description="Pull from specific albums")
     person_ids: Optional[list[str]] = Field(None, description="Filter by people")
     is_favorite: Optional[bool] = Field(None, description="Only favorites")
     taken_after: Optional[str] = Field(None, description="ISO date (YYYY-MM-DD)")

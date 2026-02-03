@@ -2099,11 +2099,10 @@
                         <summary>Filters</summary>
                         <div class="section-content">
                             <div class="form-row">
-                                <label for="immichAlbumId">Album</label>
-                                <select id="immichAlbumId" name="album_id">
-                                    <option value="">All photos (no album filter)</option>
+                                <label for="immichAlbumIds">Albums</label>
+                                <select id="immichAlbumIds" name="album_ids" multiple size="4">
                                 </select>
-                                <small>Test connection to load albums</small>
+                                <small>Hold Ctrl/Cmd to select multiple. Test connection to load albums.</small>
                             </div>
                             <div class="form-row">
                                 <label for="immichPersonIds">People</label>
@@ -2128,7 +2127,8 @@
                             <div class="form-row">
                                 <label for="immichMediaType">Media Type</label>
                                 <select id="immichMediaType" name="media_type">
-                                    <option value="IMAGE">Images only</option>
+                                    <option value="ALL">Images and Videos</option>
+                                    <option value="IMAGE" selected>Images only</option>
                                     <option value="VIDEO">Videos only</option>
                                 </select>
                             </div>
@@ -4767,8 +4767,8 @@
 
                     // Build filter summary
                     const filters = [];
-                    if (pull.album_id) filters.push('Album filter');
-                    if (pull.person_ids && pull.person_ids.length) filters.push(`${pull.person_ids.length} people`);
+                    if (pull.album_ids && pull.album_ids.length) filters.push(`${pull.album_ids.length} album${pull.album_ids.length > 1 ? 's' : ''}`);
+                    if (pull.person_ids && pull.person_ids.length) filters.push(`${pull.person_ids.length} ${pull.person_ids.length > 1 ? 'people' : 'person'}`);
                     if (pull.is_favorite) filters.push('Favorites only');
                     if (pull.taken_after) filters.push(`After ${pull.taken_after}`);
                     if (pull.taken_before) filters.push(`Before ${pull.taken_before}`);
@@ -5072,13 +5072,15 @@
                 document.getElementById('immichMediaType').value = pull.media_type || 'IMAGE';
 
                 // Album and people need to be loaded via test connection
-                if (pull.album_id) {
-                    const albumSelect = document.getElementById('immichAlbumId');
-                    const opt = document.createElement('option');
-                    opt.value = pull.album_id;
-                    opt.textContent = `Album: ${pull.album_id}`;
-                    opt.selected = true;
-                    albumSelect.appendChild(opt);
+                if (pull.album_ids && pull.album_ids.length) {
+                    const albumSelect = document.getElementById('immichAlbumIds');
+                    pull.album_ids.forEach(albumId => {
+                        const opt = document.createElement('option');
+                        opt.value = albumId;
+                        opt.textContent = `Album: ${albumId}`;
+                        opt.selected = true;
+                        albumSelect.appendChild(opt);
+                    });
                 }
             }
 
@@ -5121,8 +5123,8 @@
                 }
 
                 // Optional filters
-                const albumId = form.album_id.value;
-                if (albumId) data.album_id = albumId;
+                const albumIds = Array.from(form.album_ids.selectedOptions).map(o => o.value);
+                if (albumIds.length) data.album_ids = albumIds;
 
                 const personIds = Array.from(form.person_ids.selectedOptions).map(o => o.value);
                 if (personIds.length) data.person_ids = personIds;
@@ -5266,15 +5268,15 @@
             }
 
             function populateAlbumDropdown(albums) {
-                const select = document.getElementById('immichAlbumId');
-                const currentValue = select.value;
+                const select = document.getElementById('immichAlbumIds');
+                const currentValues = Array.from(select.selectedOptions).map(o => o.value);
 
-                select.innerHTML = '<option value="">All photos (no album filter)</option>';
+                select.innerHTML = '';
                 albums.forEach(album => {
                     const opt = document.createElement('option');
                     opt.value = album.id;
                     opt.textContent = `${album.name} (${album.asset_count} items)`;
-                    if (album.id === currentValue) opt.selected = true;
+                    if (currentValues.includes(album.id)) opt.selected = true;
                     select.appendChild(opt);
                 });
             }
