@@ -4796,7 +4796,7 @@
                                     ✕ Cancel
                                 </button>
                                 <button class="btn btn-secondary" onclick="openImmichPanel('edit', '${nameSafe}')">Edit</button>
-                                <button class="btn btn-ghost" onclick="deletePull('${nameSafe}')">Delete</button>
+                                <button class="btn btn-ghost" onclick="deletePull('${nameSafe}', this)">Delete</button>
                             </div>
                         </div>
                     `;
@@ -4948,18 +4948,39 @@
                 }
             }
 
-            async function deletePull(pullName) {
-                if (!confirm(`Delete pull "${pullName}"?`)) return;
+            // Delete pull with inline confirmation (no browser popup)
+            async function deletePull(pullName, button) {
+                // Check if already in confirm mode
+                if (button.dataset.confirming === 'true') {
+                    // Actually delete
+                    button.disabled = true;
+                    button.textContent = 'Deleting...';
 
-                try {
-                    await fetchImmichJson(`${IMMICH_API_BASE}/pulls/${encodeURIComponent(pullName)}`, {
-                        method: 'DELETE'
-                    });
+                    try {
+                        await fetchImmichJson(`${IMMICH_API_BASE}/pulls/${encodeURIComponent(pullName)}`, {
+                            method: 'DELETE'
+                        });
 
-                    showImmichMessage('Pull deleted: ' + pullName, 'success');
-                    loadImmichPulls();
-                } catch (err) {
-                    showImmichMessage('Error: ' + err.message, 'error');
+                        showImmichMessage('Pull deleted: ' + pullName, 'success');
+                        loadImmichPulls();
+                    } catch (err) {
+                        showImmichMessage('Error: ' + err.message, 'error');
+                        button.disabled = false;
+                        resetDeleteButton(button);
+                    }
+                } else {
+                    // Enter confirm mode
+                    button.dataset.confirming = 'true';
+                    button.dataset.originalText = button.textContent;
+                    button.textContent = 'Confirm?';
+                    button.classList.add('confirming');
+
+                    // Auto-reset after 3 seconds
+                    setTimeout(() => {
+                        if (button.dataset.confirming === 'true') {
+                            resetDeleteButton(button);
+                        }
+                    }, 3000);
                 }
             }
 
