@@ -301,11 +301,10 @@ class ImmichProvider:
         config: ImmichPullConfig,
         result: Optional[PullResult] = None
     ) -> List[Dict[str, Any]]:
-        """Search Immich for assets using random page sampling.
+        """Search Immich for assets with optimal random selection.
 
-        Uses /api/search/metadata with random page selection. Tracks which
-        pages have been fetched to avoid duplicates and ensure we collect
-        the requested count (or all available assets).
+        Uses /api/search/statistics to get total count, pre-selects random
+        indices, then fetches only the pages containing those indices.
 
         Args:
             config: Pull configuration
@@ -314,72 +313,65 @@ class ImmichProvider:
         client = await self._get_client()
         headers = {"x-api-key": config.api_key, "Content-Type": "application/json"}
 
-        url = f"{config.server_url.rstrip('/')}/api/search/metadata"
-        max_page_size = 1000
+        base_url = config.server_url.rstrip('/')
+        page_size = 1000
 
-        base_body: Dict[str, Any] = {}
+        # Build filter body (same for both endpoints)
+        filter_body: Dict[str, Any] = {}
 
-        # Album filter
         if config.album_id:
-            base_body["albumIds"] = [config.album_id]
-
-        # Media type filter
+            filter_body["albumIds"] = [config.album_id]
         if config.media_type and config.media_type != "ALL":
-            base_body["type"] = config.media_type
-
-        # Favorites filter
+            filter_body["type"] = config.media_type
         if config.is_favorite is not None:
-            base_body["isFavorite"] = config.is_favorite
-
-        # Date filters
+            filter_body["isFavorite"] = config.is_favorite
         if config.taken_after:
-            base_body["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
+            filter_body["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
         if config.taken_before:
-            base_body["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
-
-        # Person filter
+            filter_body["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
         if config.person_ids:
-            base_body["personIds"] = config.person_ids
+            filter_body["personIds"] = config.person_ids
 
-        logger.debug(f"Immich search body: {base_body}")
+        logger.debug(f"Immich search filters: {filter_body}")
 
-        # Step 1: Get total count
-        body = {**base_body, "page": 1, "size": 1}
-        response = await client.post(url, headers=headers, json=body)
+        # Step 1: Get total count from /api/search/statistics
+        stats_url = f"{base_url}/api/search/statistics"
+        response = await client.post(stats_url, headers=headers, json=filter_body)
         response.raise_for_status()
-        data = response.json()
+        stats = response.json()
 
-        assets_data = data.get("assets", {})
-        total_available = assets_data.get("total", 0)
+        total_available = stats.get("total", 0)
 
         if total_available == 0:
             logger.info("No assets match the search criteria")
             return []
 
-        # Calculate total pages
-        total_pages = (total_available + max_page_size - 1) // max_page_size
-        logger.info(f"Found {total_available} assets across {total_pages} pages")
+        logger.info(f"Found {total_available} assets matching criteria")
 
-        # Step 2: Random page sampling with tracking
+        # Step 2: Pre-select random indices
+        count_to_fetch = min(config.count, total_available)
+        selected_indices = set(random.sample(range(total_available), count_to_fetch))
+
+        # Group indices by page
+        pages_needed: Dict[int, List[int]] = {}
+        for idx in selected_indices:
+            page = (idx // page_size) + 1
+            position = idx % page_size
+            if page not in pages_needed:
+                pages_needed[page] = []
+            pages_needed[page].append(position)
+
+        logger.info(f"Need {len(pages_needed)} pages to get {count_to_fetch} random assets")
+
+        # Step 3: Fetch only required pages
+        metadata_url = f"{base_url}/api/search/metadata"
         all_assets: List[Dict[str, Any]] = []
         seen_ids: set = set()
-        fetched_pages: set = set()
 
-        while len(all_assets) < config.count:
-            # Find pages we haven't fetched yet
-            available_pages = [p for p in range(1, total_pages + 1) if p not in fetched_pages]
+        for page, positions in pages_needed.items():
+            body = {**filter_body, "page": page, "size": page_size}
 
-            if not available_pages:
-                logger.info(f"All {total_pages} pages fetched, collected {len(all_assets)} unique assets")
-                break
-
-            # Pick random unfetched page
-            page = random.choice(available_pages)
-            fetched_pages.add(page)
-
-            body = {**base_body, "page": page, "size": max_page_size}
-
-            response = await client.post(url, headers=headers, json=body)
+            response = await client.post(metadata_url, headers=headers, json=body)
             response.raise_for_status()
             data = response.json()
 
@@ -387,22 +379,19 @@ class ImmichProvider:
             items = assets_data.get("items", [])
 
             if not items:
-                logger.debug(f"Page {page} returned no items")
+                logger.warning(f"Page {page} returned no items (expected {len(positions)} assets)")
                 continue
 
-            # Add new assets (deduplicate)
-            new_count = 0
-            for asset in items:
-                asset_id = asset["id"]
-                if asset_id not in seen_ids:
-                    seen_ids.add(asset_id)
-                    all_assets.append(asset)
-                    new_count += 1
+            # Extract only the assets at our selected positions
+            for pos in positions:
+                if pos < len(items):
+                    asset = items[pos]
+                    asset_id = asset["id"]
+                    if asset_id not in seen_ids:
+                        seen_ids.add(asset_id)
+                        all_assets.append(asset)
 
-            logger.debug(
-                f"Page {page}/{total_pages}: {len(items)} items, {new_count} new, "
-                f"total {len(all_assets)}/{config.count}"
-            )
+            logger.debug(f"Page {page}: extracted {len(positions)} assets, total {len(all_assets)}/{count_to_fetch}")
 
             # Update progress
             if result:
@@ -411,11 +400,11 @@ class ImmichProvider:
 
             await asyncio.sleep(0)
 
-        # Final shuffle for download order variety
+        # Shuffle the final order
         random.shuffle(all_assets)
 
-        logger.info(f"Collected {len(all_assets)} assets from {len(fetched_pages)} pages")
-        return all_assets[:config.count]
+        logger.info(f"Collected {len(all_assets)} random assets from {len(pages_needed)} pages")
+        return all_assets
 
     async def download_asset(
         self,
