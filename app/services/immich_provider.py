@@ -366,6 +366,11 @@ class ImmichProvider:
                     all_assets.append(asset)
                     new_count += 1
 
+            # Break if no new assets (pool exhausted or all duplicates)
+            if new_count == 0:
+                logger.info(f"No new assets on call {call_num}, stopping search. Collected {len(all_assets)}")
+                break
+
             logger.debug(
                 f"Random call {call_num}: got {len(assets)} assets, "
                 f"{new_count} new, total {len(all_assets)}/{config.count}"
