@@ -2516,7 +2516,9 @@ class ImmichPullCreateRequest(BaseModel):
     target_folder: str = Field(..., description="Local folder to store images")
     count: int = Field(50, ge=1, le=MAX_IMMICH_PULL_COUNT, description="Number of images to pull")
     album_ids: Optional[list[str]] = Field(None, description="Pull from specific albums")
+    album_filter_mode: str = Field("all", description="'all' (AND) or 'any' (OR) for albums")
     person_ids: Optional[list[str]] = Field(None, description="Filter by people")
+    person_filter_mode: str = Field("all", description="'all' (AND) or 'any' (OR) for people")
     is_favorite: Optional[bool] = Field(None, description="Only favorites")
     taken_after: Optional[str] = Field(None, description="ISO date (YYYY-MM-DD)")
     taken_before: Optional[str] = Field(None, description="ISO date (YYYY-MM-DD)")
@@ -2591,7 +2593,9 @@ async def create_immich_pull(
         target_folder=body.target_folder,
         count=body.count,
         album_ids=body.album_ids,
+        album_filter_mode=body.album_filter_mode,
         person_ids=body.person_ids,
+        person_filter_mode=body.person_filter_mode,
         is_favorite=body.is_favorite,
         taken_after=body.taken_after,
         taken_before=body.taken_before,

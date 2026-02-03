@@ -40,7 +40,9 @@ class ImmichPullConfig:
 
     # Search criteria (all optional)
     album_ids: Optional[List[str]] = None        # Pull from specific albums
+    album_filter_mode: str = "all"               # "all" (AND) or "any" (OR)
     person_ids: Optional[List[str]] = None       # Filter by people
+    person_filter_mode: str = "all"              # "all" (AND) or "any" (OR)
     is_favorite: Optional[bool] = None           # Only favorites
     taken_after: Optional[str] = None            # ISO date string (YYYY-MM-DD)
     taken_before: Optional[str] = None           # ISO date string (YYYY-MM-DD)
@@ -67,8 +69,9 @@ class ImmichPullConfig:
 
         # Filter to valid fields
         valid_keys = {"name", "server_url", "api_key", "target_folder", "count",
-                      "album_ids", "person_ids", "is_favorite", "taken_after",
-                      "taken_before", "media_type", "replace_existing"}
+                      "album_ids", "album_filter_mode", "person_ids", "person_filter_mode",
+                      "is_favorite", "taken_after", "taken_before", "media_type",
+                      "replace_existing"}
         filtered = {k: v for k, v in data.items() if k in valid_keys}
 
         return cls(**filtered)
@@ -306,10 +309,33 @@ class ImmichProvider:
         Uses /api/search/statistics to get total count, pre-selects random
         indices, then fetches only the pages containing those indices.
 
+        Supports AND/OR modes for albums and people:
+        - "all" mode: assets must match ALL specified albums/people (API default)
+        - "any" mode: assets can match ANY specified album/person (union of separate searches)
+
         Args:
             config: Pull configuration
             result: Optional PullResult to update with search progress
         """
+        # Check if we need OR mode for albums or people
+        need_album_or = (config.album_filter_mode == "any" and
+                         config.album_ids and len(config.album_ids) > 1)
+        need_person_or = (config.person_filter_mode == "any" and
+                          config.person_ids and len(config.person_ids) > 1)
+
+        if need_album_or or need_person_or:
+            return await self._search_assets_or_mode(config, result,
+                                                      need_album_or, need_person_or)
+
+        # Standard AND mode - use optimized search
+        return await self._search_assets_and_mode(config, result)
+
+    async def _search_assets_and_mode(
+        self,
+        config: ImmichPullConfig,
+        result: Optional[PullResult] = None
+    ) -> List[Dict[str, Any]]:
+        """Standard AND mode search - assets must match all filters."""
         client = await self._get_client()
         headers = {"x-api-key": config.api_key, "Content-Type": "application/json"}
 
@@ -404,6 +430,118 @@ class ImmichProvider:
         random.shuffle(all_assets)
 
         logger.info(f"Collected {len(all_assets)} random assets from {len(pages_needed)} pages")
+        return all_assets
+
+    async def _search_assets_or_mode(
+        self,
+        config: ImmichPullConfig,
+        result: Optional[PullResult],
+        need_album_or: bool,
+        need_person_or: bool
+    ) -> List[Dict[str, Any]]:
+        """OR mode search - union results from separate searches.
+
+        For each album/person in OR mode, performs a separate search
+        and unions the results (deduplicated by asset ID).
+        """
+        client = await self._get_client()
+        headers = {"x-api-key": config.api_key, "Content-Type": "application/json"}
+        base_url = config.server_url.rstrip('/')
+
+        # Build base filter (non-OR filters)
+        base_filter: Dict[str, Any] = {}
+        if config.media_type and config.media_type != "ALL":
+            base_filter["type"] = config.media_type
+        if config.is_favorite is not None:
+            base_filter["isFavorite"] = config.is_favorite
+        if config.taken_after:
+            base_filter["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
+        if config.taken_before:
+            base_filter["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
+
+        # Add AND-mode filters (single value or "all" mode with multiple)
+        if config.album_ids and not need_album_or:
+            base_filter["albumIds"] = config.album_ids
+        if config.person_ids and not need_person_or:
+            base_filter["personIds"] = config.person_ids
+
+        # Determine what we need to iterate over for OR mode
+        album_variants = config.album_ids if need_album_or else [None]
+        person_variants = config.person_ids if need_person_or else [None]
+
+        # Collect all assets from OR searches
+        all_assets: List[Dict[str, Any]] = []
+        seen_ids: set = set()
+
+        # Generate all filter combinations for OR mode
+        filter_variants = []
+        for album_id in album_variants:
+            for person_id in person_variants:
+                variant = base_filter.copy()
+                if album_id:
+                    variant["albumIds"] = [album_id]
+                if person_id:
+                    variant["personIds"] = [person_id]
+                filter_variants.append(variant)
+
+        logger.info(f"OR mode: searching with {len(filter_variants)} filter variants")
+
+        for i, filter_body in enumerate(filter_variants):
+            logger.debug(f"OR search variant {i+1}/{len(filter_variants)}: {filter_body}")
+
+            # Get total count for this variant
+            stats_url = f"{base_url}/api/search/statistics"
+            response = await client.post(stats_url, headers=headers, json=filter_body)
+            response.raise_for_status()
+            stats = response.json()
+            total_for_variant = stats.get("total", 0)
+
+            if total_for_variant == 0:
+                continue
+
+            # Fetch assets for this variant (limit to what we need)
+            remaining_needed = config.count - len(all_assets)
+            if remaining_needed <= 0:
+                break
+
+            metadata_url = f"{base_url}/api/search/metadata"
+            page = 1
+            page_size = 1000
+
+            while len(all_assets) < config.count:
+                body = {**filter_body, "page": page, "size": page_size}
+                response = await client.post(metadata_url, headers=headers, json=body)
+                response.raise_for_status()
+                data = response.json()
+
+                assets_data = data.get("assets", {})
+                items = assets_data.get("items", [])
+
+                if not items:
+                    break
+
+                for asset in items:
+                    asset_id = asset["id"]
+                    if asset_id not in seen_ids:
+                        seen_ids.add(asset_id)
+                        all_assets.append(asset)
+
+                page += 1
+                if page * page_size >= total_for_variant:
+                    break
+
+                await asyncio.sleep(0)
+
+            # Update progress
+            if result:
+                result.search_collected = len(all_assets)
+                self._pull_results[result.pull_name] = result
+
+        # Shuffle and limit to requested count
+        random.shuffle(all_assets)
+        all_assets = all_assets[:config.count]
+
+        logger.info(f"OR mode: collected {len(all_assets)} unique assets")
         return all_assets
 
     async def download_asset(

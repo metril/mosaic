@@ -2100,15 +2100,27 @@
                         <div class="section-content">
                             <div class="form-row">
                                 <label for="immichAlbumIds">Albums</label>
-                                <select id="immichAlbumIds" name="album_ids" multiple size="4">
-                                </select>
-                                <small>Hold Ctrl/Cmd to select multiple. Test connection to load albums.</small>
+                                <div style="display: flex; gap: 10px; align-items: flex-start;">
+                                    <select id="immichAlbumIds" name="album_ids" multiple size="4" style="flex: 1;">
+                                    </select>
+                                    <select id="immichAlbumFilterMode" name="album_filter_mode" style="width: 70px;">
+                                        <option value="all" selected>All</option>
+                                        <option value="any">Any</option>
+                                    </select>
+                                </div>
+                                <small>Hold Ctrl/Cmd to select multiple. "All" = must match all, "Any" = match any.</small>
                             </div>
                             <div class="form-row">
                                 <label for="immichPersonIds">People</label>
-                                <select id="immichPersonIds" name="person_ids" multiple size="4">
-                                </select>
-                                <small>Hold Ctrl/Cmd to select multiple. Test connection to load people.</small>
+                                <div style="display: flex; gap: 10px; align-items: flex-start;">
+                                    <select id="immichPersonIds" name="person_ids" multiple size="4" style="flex: 1;">
+                                    </select>
+                                    <select id="immichPersonFilterMode" name="person_filter_mode" style="width: 70px;">
+                                        <option value="all" selected>All</option>
+                                        <option value="any">Any</option>
+                                    </select>
+                                </div>
+                                <small>Hold Ctrl/Cmd to select multiple. "All" = must match all, "Any" = match any.</small>
                             </div>
                             <div class="checkbox-row">
                                 <input type="checkbox" id="immichIsFavorite" name="is_favorite">
@@ -5031,9 +5043,11 @@
 
                 form.reset();
 
-                // Clear album/people dropdowns
+                // Clear album/people dropdowns and reset filter modes
                 document.getElementById('immichAlbumIds').innerHTML = '';
+                document.getElementById('immichAlbumFilterMode').value = 'all';
                 document.getElementById('immichPersonIds').innerHTML = '';
+                document.getElementById('immichPersonFilterMode').value = 'all';
                 document.getElementById('connectionStatus').textContent = '';
 
                 if (mode === 'edit' && pullName) {
@@ -5114,6 +5128,19 @@
                         albumSelect.appendChild(opt);
                     });
                 }
+                document.getElementById('immichAlbumFilterMode').value = pull.album_filter_mode || 'all';
+
+                if (pull.person_ids && pull.person_ids.length) {
+                    const personSelect = document.getElementById('immichPersonIds');
+                    pull.person_ids.forEach(personId => {
+                        const opt = document.createElement('option');
+                        opt.value = personId;
+                        opt.textContent = `Person: ${personId}`;
+                        opt.selected = true;
+                        personSelect.appendChild(opt);
+                    });
+                }
+                document.getElementById('immichPersonFilterMode').value = pull.person_filter_mode || 'all';
             }
 
             function clearApiKeyField() {
@@ -5156,10 +5183,16 @@
 
                 // Optional filters
                 const albumIds = Array.from(form.album_ids.selectedOptions).map(o => o.value);
-                if (albumIds.length) data.album_ids = albumIds;
+                if (albumIds.length) {
+                    data.album_ids = albumIds;
+                    data.album_filter_mode = form.album_filter_mode.value;
+                }
 
                 const personIds = Array.from(form.person_ids.selectedOptions).map(o => o.value);
-                if (personIds.length) data.person_ids = personIds;
+                if (personIds.length) {
+                    data.person_ids = personIds;
+                    data.person_filter_mode = form.person_filter_mode.value;
+                }
 
                 if (form.is_favorite.checked) data.is_favorite = true;
 
@@ -5259,11 +5292,17 @@
                     });
 
                     if (result.success) {
-                        statusEl.textContent = `✓ Connected (v${result.server_version}, ${result.album_count} albums)`;
+                        statusEl.textContent = '✓ Connected - Loading filters...';
                         statusEl.style.color = '#4caf50';
 
                         // Load albums and people
-                        await loadAlbumsAndPeople(serverUrl, apiKey);
+                        const loaded = await loadAlbumsAndPeople(serverUrl, apiKey);
+                        if (loaded) {
+                            statusEl.textContent = `✓ Connected (v${result.server_version}, ${result.album_count} albums)`;
+                        } else {
+                            statusEl.textContent = '✓ Connected - Filters failed to load';
+                            statusEl.style.color = '#ffa500';
+                        }
                     } else {
                         statusEl.textContent = '✗ ' + (result.error || 'Connection failed');
                         statusEl.style.color = '#e94560';
@@ -5294,8 +5333,10 @@
 
                     populateAlbumDropdown(albumsData.albums || []);
                     populatePeopleMultiselect(peopleData.people || []);
+                    return true;
                 } catch (err) {
                     console.error('Error loading albums/people:', err);
+                    return false;
                 }
             }
 
