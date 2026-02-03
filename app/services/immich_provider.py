@@ -287,65 +287,89 @@ class ImmichProvider:
         ]
 
     async def search_assets(self, config: ImmichPullConfig) -> List[Dict[str, Any]]:
-        """Search Immich for assets matching criteria"""
+        """Search Immich for random assets matching criteria.
+
+        Uses /api/search/random endpoint which returns random assets each call.
+        Makes multiple requests with deduplication to collect the desired count.
+        """
         client = await self._get_client()
-        headers = {"x-api-key": config.api_key}
+        headers = {"x-api-key": config.api_key, "Content-Type": "application/json"}
 
-        # If album_id is specified, start with album assets directly
-        if config.album_id:
-            album_url = f"{config.server_url.rstrip('/')}/api/albums/{config.album_id}"
-            album_response = await client.get(album_url, headers=headers)
-            album_response.raise_for_status()
-            album_data = album_response.json()
-            assets = album_data.get("assets", [])
-
-            # Apply additional filters if specified
-            if config.is_favorite is not None:
-                assets = [a for a in assets if a.get("isFavorite") == config.is_favorite]
-
-            if config.taken_after:
-                taken_after = f"{config.taken_after}T00:00:00.000Z"
-                assets = [a for a in assets if a.get("fileCreatedAt", "") >= taken_after]
-
-            if config.taken_before:
-                taken_before = f"{config.taken_before}T23:59:59.999Z"
-                assets = [a for a in assets if a.get("fileCreatedAt", "") <= taken_before]
-
-            if config.media_type and config.media_type != "ALL":
-                assets = [a for a in assets if a.get("type") == config.media_type]
-
-            return assets[:config.count]
-
-        # No album specified - use metadata search
-        url = f"{config.server_url.rstrip('/')}/api/search/metadata"
-        headers["Content-Type"] = "application/json"
+        url = f"{config.server_url.rstrip('/')}/api/search/random"
 
         body: Dict[str, Any] = {
-            "type": config.media_type,
-            "size": config.count,
-            "page": 1,
+            "size": min(1000, config.count),  # Max 1000 per request
         }
 
+        # Album filter
+        if config.album_id:
+            body["albumIds"] = [config.album_id]
+
+        # Media type filter
+        if config.media_type and config.media_type != "ALL":
+            body["type"] = config.media_type
+
+        # Favorites filter
         if config.is_favorite is not None:
             body["isFavorite"] = config.is_favorite
 
+        # Date filters
         if config.taken_after:
             body["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
-
         if config.taken_before:
             body["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
 
+        # Person filter
         if config.person_ids:
             body["personIds"] = config.person_ids
 
         logger.debug(f"Immich search body: {body}")
 
-        response = await client.post(url, headers=headers, json=body)
-        response.raise_for_status()
-        data = response.json()
+        # Collect assets with deduplication
+        seen_ids: set = set()
+        all_assets: List[Dict[str, Any]] = []
+        max_attempts = (config.count // 500) + 10  # Prevent infinite loop
 
-        assets = data.get("assets", {}).get("items", [])
-        return assets[:config.count]
+        for attempt in range(max_attempts):
+            if len(all_assets) >= config.count:
+                break
+
+            response = await client.post(url, headers=headers, json=body)
+            response.raise_for_status()
+            assets = response.json()
+
+            if not assets:
+                logger.warning(
+                    f"No more assets available from Immich "
+                    f"(got {len(all_assets)}/{config.count})"
+                )
+                break
+
+            # Count new assets before adding
+            new_count = 0
+            for asset in assets:
+                if asset["id"] not in seen_ids:
+                    seen_ids.add(asset["id"])
+                    all_assets.append(asset)
+                    new_count += 1
+                    if len(all_assets) >= config.count:
+                        break
+
+            logger.debug(
+                f"Immich search attempt {attempt + 1}: "
+                f"got {len(assets)} assets, {new_count} new, "
+                f"total {len(all_assets)}/{config.count}"
+            )
+
+            # If we got very few new assets, we're likely exhausting the pool
+            if new_count < 50 and len(assets) >= body["size"]:
+                logger.info(
+                    f"Asset pool nearly exhausted (only {new_count} new assets), "
+                    f"collected {len(all_assets)}"
+                )
+                break
+
+        return all_assets[:config.count]
 
     async def download_asset(
         self,
