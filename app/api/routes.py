@@ -2590,7 +2590,7 @@ async def create_immich_pull(
         api_key=api_key,
         target_folder=body.target_folder,
         count=body.count,
-        album_id=body.album_id,
+        album_ids=body.album_ids,
         person_ids=body.person_ids,
         is_favorite=body.is_favorite,
         taken_after=body.taken_after,
