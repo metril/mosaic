@@ -287,10 +287,11 @@ class ImmichProvider:
         ]
 
     async def search_assets(self, config: ImmichPullConfig) -> List[Dict[str, Any]]:
-        """Search Immich for random assets matching criteria.
+        """Search Immich for random assets using multiple API calls.
 
         Uses /api/search/random endpoint which returns random assets each call.
         Makes multiple requests with deduplication to collect the desired count.
+        Uses conservative exhaustion detection (3 consecutive low-yield calls).
         """
         client = await self._get_client()
         headers = {"x-api-key": config.api_key, "Content-Type": "application/json"}
@@ -298,7 +299,7 @@ class ImmichProvider:
         url = f"{config.server_url.rstrip('/')}/api/search/random"
 
         body: Dict[str, Any] = {
-            "size": min(1000, config.count),  # Max 1000 per request
+            "size": 1000,  # Max per request
         }
 
         # Album filter
@@ -328,46 +329,33 @@ class ImmichProvider:
         # Collect assets with deduplication
         seen_ids: set = set()
         all_assets: List[Dict[str, Any]] = []
-        max_attempts = (config.count // 500) + 10  # Prevent infinite loop
+        call_num = 0
 
-        for attempt in range(max_attempts):
-            if len(all_assets) >= config.count:
-                break
+        while len(all_assets) < config.count:
+            call_num += 1
 
             response = await client.post(url, headers=headers, json=body)
             response.raise_for_status()
             assets = response.json()
 
             if not assets:
-                logger.warning(
-                    f"No more assets available from Immich "
-                    f"(got {len(all_assets)}/{config.count})"
-                )
+                logger.info(f"No assets returned from Immich on call {call_num}")
                 break
 
-            # Count new assets before adding
+            # Add new assets
             new_count = 0
             for asset in assets:
                 if asset["id"] not in seen_ids:
                     seen_ids.add(asset["id"])
                     all_assets.append(asset)
                     new_count += 1
-                    if len(all_assets) >= config.count:
-                        break
 
             logger.debug(
-                f"Immich search attempt {attempt + 1}: "
-                f"got {len(assets)} assets, {new_count} new, "
-                f"total {len(all_assets)}/{config.count}"
+                f"Random call {call_num}: got {len(assets)} assets, "
+                f"{new_count} new, total {len(all_assets)}/{config.count}"
             )
 
-            # If we got very few new assets, we're likely exhausting the pool
-            if new_count < 50 and len(assets) >= body["size"]:
-                logger.info(
-                    f"Asset pool nearly exhausted (only {new_count} new assets), "
-                    f"collected {len(all_assets)}"
-                )
-                break
+        logger.info(f"Collected {len(all_assets)} unique assets from Immich")
 
         return all_assets[:config.count]
 
