@@ -4819,7 +4819,7 @@
                                     ✕ Cancel
                                 </button>
                                 <button class="btn btn-secondary" onclick="openImmichPanel('edit', '${nameSafe}')">Edit</button>
-                                <button class="btn btn-ghost" onclick="deletePull('${nameSafe}', this)">Delete</button>
+                                <button class="btn btn-danger" onclick="deletePull('${nameSafe}', this)">Delete</button>
                             </div>
                         </div>
                     `;
@@ -5032,8 +5032,7 @@
                 form.reset();
 
                 // Clear album/people dropdowns
-                document.getElementById('immichAlbumId').innerHTML =
-                    '<option value="">All photos (no album filter)</option>';
+                document.getElementById('immichAlbumIds').innerHTML = '';
                 document.getElementById('immichPersonIds').innerHTML = '';
                 document.getElementById('connectionStatus').textContent = '';
 
