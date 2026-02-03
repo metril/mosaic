@@ -301,12 +301,11 @@ class ImmichProvider:
         config: ImmichPullConfig,
         result: Optional[PullResult] = None
     ) -> List[Dict[str, Any]]:
-        """Search Immich for assets using randomized sampling.
+        """Search Immich for assets using random page sampling.
 
-        Uses /api/search/metadata with:
-        - Random page selection
-        - Random offset within each page
-        - Random batch size per request
+        Uses /api/search/metadata with random page selection. Tracks which
+        pages have been fetched to avoid duplicates and ensure we collect
+        the requested count (or all available assets).
 
         Args:
             config: Pull configuration
@@ -316,7 +315,7 @@ class ImmichProvider:
         headers = {"x-api-key": config.api_key, "Content-Type": "application/json"}
 
         url = f"{config.server_url.rstrip('/')}/api/search/metadata"
-        max_page_size = 1000  # Immich max
+        max_page_size = 1000
 
         base_body: Dict[str, Any] = {}
 
@@ -344,44 +343,39 @@ class ImmichProvider:
 
         logger.debug(f"Immich search body: {base_body}")
 
-        # Step 1: Get total count with a minimal request
+        # Step 1: Get total count
         body = {**base_body, "page": 1, "size": 1}
         response = await client.post(url, headers=headers, json=body)
         response.raise_for_status()
         data = response.json()
 
-        total_available = data.get("total", 0)
+        assets_data = data.get("assets", {})
+        total_available = assets_data.get("total", 0)
 
         if total_available == 0:
             logger.info("No assets match the search criteria")
             return []
 
-        logger.info(f"Found {total_available} total assets matching criteria")
+        # Calculate total pages
+        total_pages = (total_available + max_page_size - 1) // max_page_size
+        logger.info(f"Found {total_available} assets across {total_pages} pages")
 
-        # Step 2: Random sampling with deduplication
+        # Step 2: Random page sampling with tracking
         all_assets: List[Dict[str, Any]] = []
         seen_ids: set = set()
-        request_count = 0
-
-        # Calculate reasonable batch size range based on target count
-        min_batch = max(50, config.count // 50)    # At least 50, scales with count
-        max_batch = min(500, config.count // 5)    # At most 500, or 1/5 of target
-        if max_batch < min_batch:
-            max_batch = min_batch
+        fetched_pages: set = set()
 
         while len(all_assets) < config.count:
-            request_count += 1
+            # Find pages we haven't fetched yet
+            available_pages = [p for p in range(1, total_pages + 1) if p not in fetched_pages]
 
-            # Random batch size for this request
-            batch_size = random.randint(min_batch, max_batch)
+            if not available_pages:
+                logger.info(f"All {total_pages} pages fetched, collected {len(all_assets)} unique assets")
+                break
 
-            # Random offset (0 to total - 1)
-            max_offset = max(0, total_available - 1)
-            random_offset = random.randint(0, max_offset)
-
-            # Calculate page and position for this offset
-            # We fetch a full page and then take a random slice
-            page = (random_offset // max_page_size) + 1
+            # Pick random unfetched page
+            page = random.choice(available_pages)
+            fetched_pages.add(page)
 
             body = {**base_body, "page": page, "size": max_page_size}
 
@@ -389,24 +383,16 @@ class ImmichProvider:
             response.raise_for_status()
             data = response.json()
 
-            items = data.get("items", [])
+            assets_data = data.get("assets", {})
+            items = assets_data.get("items", [])
 
             if not items:
-                logger.debug(f"Request {request_count}: page {page} returned no items")
+                logger.debug(f"Page {page} returned no items")
                 continue
-
-            # Random starting offset within this page's items
-            if len(items) > batch_size:
-                start_offset = random.randint(0, len(items) - batch_size)
-                selected_items = items[start_offset:start_offset + batch_size]
-            else:
-                # Page has fewer items than batch_size, take all
-                start_offset = 0
-                selected_items = items
 
             # Add new assets (deduplicate)
             new_count = 0
-            for asset in selected_items:
+            for asset in items:
                 asset_id = asset["id"]
                 if asset_id not in seen_ids:
                     seen_ids.add(asset_id)
@@ -414,28 +400,21 @@ class ImmichProvider:
                     new_count += 1
 
             logger.debug(
-                f"Request {request_count}: page {page}, offset {start_offset}, "
-                f"batch {len(selected_items)}, new {new_count}, total {len(all_assets)}/{config.count}"
+                f"Page {page}/{total_pages}: {len(items)} items, {new_count} new, "
+                f"total {len(all_assets)}/{config.count}"
             )
 
-            # Update progress for status polling
+            # Update progress
             if result:
                 result.search_collected = len(all_assets)
                 self._pull_results[result.pull_name] = result
 
-            # Yield to event loop for status polling
             await asyncio.sleep(0)
 
-            # Safety: stop if we've made too many requests (avoid infinite loop)
-            # This happens when total_available < config.count
-            if request_count > config.count // min_batch + 20:
-                logger.info(f"Stopping after {request_count} requests, collected {len(all_assets)} assets")
-                break
-
-        # Final shuffle for variety in download order
+        # Final shuffle for download order variety
         random.shuffle(all_assets)
 
-        logger.info(f"Collected {len(all_assets)} assets via {request_count} random samples")
+        logger.info(f"Collected {len(all_assets)} assets from {len(fetched_pages)} pages")
         return all_assets[:config.count]
 
     async def download_asset(
