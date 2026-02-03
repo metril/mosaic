@@ -6,6 +6,7 @@ Pulls images from an Immich server and stores them locally for the screensaver.
 import asyncio
 import logging
 import os
+import random
 import re
 import shutil
 from dataclasses import dataclass, field, asdict
@@ -300,10 +301,12 @@ class ImmichProvider:
         config: ImmichPullConfig,
         result: Optional[PullResult] = None
     ) -> List[Dict[str, Any]]:
-        """Search Immich for random assets using multiple API calls.
+        """Search Immich for assets using randomized sampling.
 
-        Uses /api/search/random endpoint which returns random assets each call.
-        Makes multiple requests with deduplication to collect the desired count.
+        Uses /api/search/metadata with:
+        - Random page selection
+        - Random offset within each page
+        - Random batch size per request
 
         Args:
             config: Pull configuration
@@ -312,68 +315,109 @@ class ImmichProvider:
         client = await self._get_client()
         headers = {"x-api-key": config.api_key, "Content-Type": "application/json"}
 
-        url = f"{config.server_url.rstrip('/')}/api/search/random"
+        url = f"{config.server_url.rstrip('/')}/api/search/metadata"
+        max_page_size = 1000  # Immich max
 
-        body: Dict[str, Any] = {
-            "size": 1000,  # Max per request
-        }
+        base_body: Dict[str, Any] = {}
 
         # Album filter
         if config.album_id:
-            body["albumIds"] = [config.album_id]
+            base_body["albumIds"] = [config.album_id]
 
         # Media type filter
         if config.media_type and config.media_type != "ALL":
-            body["type"] = config.media_type
+            base_body["type"] = config.media_type
 
         # Favorites filter
         if config.is_favorite is not None:
-            body["isFavorite"] = config.is_favorite
+            base_body["isFavorite"] = config.is_favorite
 
         # Date filters
         if config.taken_after:
-            body["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
+            base_body["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
         if config.taken_before:
-            body["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
+            base_body["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
 
         # Person filter
         if config.person_ids:
-            body["personIds"] = config.person_ids
+            base_body["personIds"] = config.person_ids
 
-        logger.debug(f"Immich search body: {body}")
+        logger.debug(f"Immich search body: {base_body}")
 
-        # Collect assets with deduplication
-        seen_ids: set = set()
+        # Step 1: Get total count with a minimal request
+        body = {**base_body, "page": 1, "size": 1}
+        response = await client.post(url, headers=headers, json=body)
+        response.raise_for_status()
+        data = response.json()
+
+        assets_data = data.get("assets", {})
+        total_available = assets_data.get("total", 0)
+
+        if total_available == 0:
+            logger.info("No assets match the search criteria")
+            return []
+
+        logger.info(f"Found {total_available} total assets matching criteria")
+
+        # Step 2: Random sampling with deduplication
         all_assets: List[Dict[str, Any]] = []
-        call_num = 0
+        seen_ids: set = set()
+        request_count = 0
+
+        # Calculate reasonable batch size range based on target count
+        min_batch = max(50, config.count // 50)    # At least 50, scales with count
+        max_batch = min(500, config.count // 5)    # At most 500, or 1/5 of target
+        if max_batch < min_batch:
+            max_batch = min_batch
 
         while len(all_assets) < config.count:
-            call_num += 1
+            request_count += 1
+
+            # Random batch size for this request
+            batch_size = random.randint(min_batch, max_batch)
+
+            # Random offset (0 to total - 1)
+            max_offset = max(0, total_available - 1)
+            random_offset = random.randint(0, max_offset)
+
+            # Calculate page and position for this offset
+            # We fetch a full page and then take a random slice
+            page = (random_offset // max_page_size) + 1
+
+            body = {**base_body, "page": page, "size": max_page_size}
 
             response = await client.post(url, headers=headers, json=body)
             response.raise_for_status()
-            assets = response.json()
+            data = response.json()
 
-            if not assets:
-                logger.info(f"No assets returned from Immich on call {call_num}")
-                break
+            assets_data = data.get("assets", {})
+            items = assets_data.get("items", [])
 
-            # Add new assets
+            if not items:
+                logger.debug(f"Request {request_count}: page {page} returned no items")
+                continue
+
+            # Random starting offset within this page's items
+            if len(items) > batch_size:
+                start_offset = random.randint(0, len(items) - batch_size)
+                selected_items = items[start_offset:start_offset + batch_size]
+            else:
+                # Page has fewer items than batch_size, take all
+                start_offset = 0
+                selected_items = items
+
+            # Add new assets (deduplicate)
             new_count = 0
-            for asset in assets:
-                if asset["id"] not in seen_ids:
-                    seen_ids.add(asset["id"])
+            for asset in selected_items:
+                asset_id = asset["id"]
+                if asset_id not in seen_ids:
+                    seen_ids.add(asset_id)
                     all_assets.append(asset)
                     new_count += 1
 
-            # Break if no new assets (pool exhausted or all duplicates)
-            if new_count == 0:
-                logger.info(f"No new assets on call {call_num}, stopping search. Collected {len(all_assets)}")
-                break
-
             logger.debug(
-                f"Random call {call_num}: got {len(assets)} assets, "
-                f"{new_count} new, total {len(all_assets)}/{config.count}"
+                f"Request {request_count}: page {page}, offset {start_offset}, "
+                f"batch {len(selected_items)}, new {new_count}, total {len(all_assets)}/{config.count}"
             )
 
             # Update progress for status polling
@@ -384,8 +428,16 @@ class ImmichProvider:
             # Yield to event loop for status polling
             await asyncio.sleep(0)
 
-        logger.info(f"Collected {len(all_assets)} unique assets from Immich")
+            # Safety: stop if we've made too many requests (avoid infinite loop)
+            # This happens when total_available < config.count
+            if request_count > config.count // min_batch + 20:
+                logger.info(f"Stopping after {request_count} requests, collected {len(all_assets)} assets")
+                break
 
+        # Final shuffle for variety in download order
+        random.shuffle(all_assets)
+
+        logger.info(f"Collected {len(all_assets)} assets via {request_count} random samples")
         return all_assets[:config.count]
 
     async def download_asset(
