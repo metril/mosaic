@@ -1034,6 +1034,10 @@
                 function handleWelcome(msg) {
                     // Reset state on new connection (#29)
                     resetState();
+
+                    // Clear error if images are now available
+                    clearNoImagesError();
+
                     browserId = msg.browser_id;
                     updateDebug('BrowserId', browserId);
                     updateDebug('BrowserCount', msg.browser_count);
@@ -1042,6 +1046,10 @@
 
                 function handleAssign(msg) {
                     console.log('Assigned image:', msg.image_id);
+
+                    // Clear error div - images are now available
+                    clearNoImagesError();
+
                     currentCycle = msg.cycle;
                     imageRetryCount = 0; // Reset retry count for new image
                     updateDebug('Cycle', currentCycle);
@@ -1064,6 +1072,10 @@
 
                 function handlePreload(msg) {
                     console.log('Preloading:', msg.image_id, 'switch at', msg.switch_at);
+
+                    // Clear error div - images are now available
+                    clearNoImagesError();
+
                     nextSwitchTime = msg.switch_at;
                     imageRetryCount = 0; // Reset retry count for new image
                     updateDebug('PreloadImage', msg.image_id);
@@ -1182,8 +1194,13 @@
 
                 function handleNoImages(msg) {
                     console.error('No images available:', msg.error);
+
+                    // Remove any existing error div first (prevent duplicates)
+                    clearNoImagesError();
+
                     // Show error message on screen instead of blank screen
                     var errorDiv = document.createElement('div');
+                    errorDiv.id = 'no-images-error';
                     errorDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); ' +
                         'background: rgba(0,0,0,0.8); color: #f44336; padding: 40px; border-radius: 12px; ' +
                         'font-size: 24px; text-align: center; max-width: 80%; z-index: 1000;';
@@ -1192,6 +1209,13 @@
                         '<div style="margin-bottom: 10px;">No Images Available</div>' +
                         '<div style="font-size: 16px; color: #aaa;">' + errorMsg.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</div>';
                     document.body.appendChild(errorDiv);
+                }
+
+                function clearNoImagesError() {
+                    var errorDiv = document.getElementById('no-images-error');
+                    if (errorDiv) {
+                        errorDiv.remove();
+                    }
                 }
 
                 // Image loading with exponential backoff (#12, #22)
