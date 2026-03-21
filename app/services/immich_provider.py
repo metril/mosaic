@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
 
@@ -121,7 +121,12 @@ def _substitute_env_vars(value: str) -> str:
 class ImmichProvider:
     """Service for pulling images from Immich"""
 
-    def __init__(self, image_dir: Path, config_path: Optional[Path] = None):
+    def __init__(
+        self,
+        image_dir: Path,
+        config_path: Optional[Path] = None,
+        on_pull_complete: Optional[Callable[[str], Awaitable[None]]] = None
+    ):
         self.image_dir = image_dir
         self.config_path = config_path or Path("config/immich_pulls.yaml")
         self.pulls: Dict[str, ImmichPullConfig] = {}
@@ -130,6 +135,7 @@ class ImmichProvider:
         self._cancelled_pulls: set = set()
         self._updating_folders: set = set()  # Folders currently being updated
         self._http_client: Optional[httpx.AsyncClient] = None
+        self._on_pull_complete = on_pull_complete
 
     def is_folder_updating(self, folder: str) -> bool:
         """Check if a folder is currently being updated by a pull."""
@@ -669,6 +675,13 @@ class ImmichProvider:
             # Always unlock the folder when done
             self._updating_folders.discard(config.target_folder)
             logger.debug(f"Unlocked folder after pull: {config.target_folder}")
+
+            # Notify display groups to refresh their image pools
+            if self._on_pull_complete:
+                try:
+                    await self._on_pull_complete(config.target_folder)
+                except Exception as e:
+                    logger.error(f"Error in post-pull refresh for {config.target_folder}: {e}")
 
         self._pull_results[pull_name] = result
         return result

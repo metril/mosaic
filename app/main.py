@@ -107,31 +107,59 @@ async def periodic_cleanup(
     # Run endpoint cleanup every hour (120 iterations at 30s interval)
     endpoint_cleanup_interval = 120
 
+    # Health check every ~5 minutes (10 iterations at 30s interval)
+    health_check_interval = 10
+
     while True:
         await asyncio.sleep(backoff_delay)
         iteration_count += 1
+        had_failure = False
+
         try:
-            await display_manager.cleanup_stale_browsers(timeout_seconds=browser_stale_timeout)
+            # Stage 1: Clean up stale browsers
+            try:
+                await display_manager.cleanup_stale_browsers(timeout_seconds=browser_stale_timeout)
+            except Exception as e:
+                had_failure = True
+                logger.error(f"Browser cleanup error: {e}")
 
-            # Clean up anonymous endpoints less frequently (hourly)
+            # Stage 2: Clean up anonymous endpoints (hourly)
             # Set ENDPOINT_CLEANUP=0 to disable cleanup entirely
-            if endpoint_cleanup_seconds > 0 and iteration_count >= endpoint_cleanup_interval:
-                iteration_count = 0
-                cleaned = await display_manager.cleanup_stale_endpoints(
-                    timeout_seconds=endpoint_cleanup_seconds
-                )
-                if cleaned > 0:
-                    logger.info(f"Cleaned up {cleaned} stale anonymous endpoints")
+            if endpoint_cleanup_seconds > 0 and iteration_count % endpoint_cleanup_interval == 0:
+                try:
+                    cleaned = await display_manager.cleanup_stale_endpoints(
+                        timeout_seconds=endpoint_cleanup_seconds
+                    )
+                    if cleaned > 0:
+                        logger.info(f"Cleaned up {cleaned} stale anonymous endpoints")
+                except Exception as e:
+                    had_failure = True
+                    logger.error(f"Endpoint cleanup error: {e}")
 
-            # Reset on success
-            consecutive_failures = 0
-            backoff_delay = interval
+            # Stage 3: Periodic health check for degraded groups
+            if iteration_count % health_check_interval == 0:
+                try:
+                    recovered = await display_manager.health_check_groups()
+                    if recovered > 0:
+                        logger.info(f"Health check recovered {recovered} groups")
+                except Exception as e:
+                    had_failure = True
+                    logger.error(f"Health check error: {e}")
+
+            if had_failure:
+                consecutive_failures += 1
+                if consecutive_failures >= max_failures:
+                    backoff_delay = min(interval * (2 ** (consecutive_failures - max_failures)), 300)
+                    logger.warning(f"Cleanup failing repeatedly, backing off to {backoff_delay}s")
+            else:
+                # Reset on full success
+                consecutive_failures = 0
+                backoff_delay = interval
         except Exception as e:
             consecutive_failures += 1
             logger.error(f"Cleanup error (attempt {consecutive_failures}): {e}")
 
             if consecutive_failures >= max_failures:
-                # Exponential backoff after repeated failures
                 backoff_delay = min(interval * (2 ** (consecutive_failures - max_failures)), 300)
                 logger.warning(f"Cleanup failing repeatedly, backing off to {backoff_delay}s")
 
@@ -184,7 +212,23 @@ async def lifespan(app: FastAPI):
             logger.info(f"Loaded {loaded_groups} display groups from config")
 
         # Initialize Immich provider for pulling images from Immich servers
-        app.state.immich_provider = ImmichProvider(image_service.image_dir)
+        # The on_pull_complete callback refreshes display groups after a pull finishes,
+        # ensuring image pools and endpoint references are updated even if the file
+        # watcher misses events (e.g. when shutil.rmtree removes the watched directory)
+        async def on_pull_complete(folder: str) -> None:
+            display_manager = getattr(app.state, 'display_manager', None)
+            if display_manager:
+                refreshed = await display_manager.refresh_groups_by_folder(folder)
+                if refreshed:
+                    logger.info(
+                        f"Post-pull refresh for '{folder}', "
+                        f"refreshed groups: {list(refreshed.keys())}"
+                    )
+
+        app.state.immich_provider = ImmichProvider(
+            image_service.image_dir,
+            on_pull_complete=on_pull_complete
+        )
         loaded_pulls = await app.state.immich_provider.load_config()
         if loaded_pulls > 0:
             logger.info(f"Loaded {loaded_pulls} Immich pull configurations")

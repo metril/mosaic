@@ -445,6 +445,18 @@ class ImagePool:
     def refresh_images(self) -> int:
         """Refresh the image list from filesystem. Returns count of images found."""
         self._refresh_images()
+        # Purge stale entries referencing images that no longer exist
+        valid_paths = set(self.get_all_image_paths())
+        stale_shown = len(self._shown_images) - len(self._shown_images & valid_paths)
+        self._shown_images &= valid_paths
+        stale_assigned = {bid for bid, path in self._assigned_images.items() if path not in valid_paths}
+        for bid in stale_assigned:
+            del self._assigned_images[bid]
+        if stale_shown or stale_assigned:
+            logger.info(
+                f"Purged stale pool state: {stale_shown} shown, "
+                f"{len(stale_assigned)} assigned"
+            )
         return len(self._all_images)
 
 
@@ -1393,7 +1405,13 @@ class DisplayManager:
                 except Exception as e:
                     # Catch all other exceptions and continue (#3)
                     metrics.record_error()  # A6
-                    logger.error(f"Error in cycle loop for {group.group_id}: {e}", exc_info=True)
+                    logger.error(
+                        f"Error in cycle loop for {group.group_id}: {e} "
+                        f"(browsers={len(group.browsers)}, "
+                        f"images={len(group.image_pool._all_images)}, "
+                        f"pool_error={group.image_pool.error})",
+                        exc_info=True
+                    )
                     await asyncio.sleep(1)  # Brief pause before retry
 
         except asyncio.CancelledError:
@@ -1463,9 +1481,60 @@ class DisplayManager:
 
         if cleaned_count > 0:
             # Save config after cleanup
-            await self.save_config()
+            self.save_config()
 
         return cleaned_count
+
+    async def health_check_groups(self) -> int:
+        """Check all groups for degraded state and attempt recovery.
+
+        Recovers groups with:
+        - Empty/errored image pools that may have become available
+        - Dead cycle tasks that should be running
+
+        Returns number of groups that needed recovery action.
+        """
+        recovered = 0
+        groups_snapshot = list(self.groups.values())
+
+        for group in groups_snapshot:
+            actions = []
+
+            # Check 1: Image pool has error but images might now be available
+            if group.image_pool.error and group.browsers:
+                old_error = group.image_pool.error
+                group.image_pool.refresh_images()
+                if not group.image_pool.error:
+                    actions.append(f"image pool recovered from: {old_error}")
+
+            # Check 2: Cycle task should be running but isn't
+            should_have_task = (
+                group.browsers
+                and not group.paused
+                and group.settings.auto_cycle
+            )
+            task_dead = (
+                group._cycle_task is None
+                or group._cycle_task.done()
+            )
+            if should_have_task and task_dead:
+                async with group._lock:
+                    # Re-check under lock to avoid race
+                    if (group.browsers and not group.paused
+                            and group.settings.auto_cycle
+                            and (group._cycle_task is None or group._cycle_task.done())):
+                        group._cycle_task = asyncio.create_task(
+                            self._run_cycle_loop(group)
+                        )
+                        actions.append("restarted dead cycle task")
+
+            if actions:
+                recovered += 1
+                logger.warning(
+                    f"Health check for group '{group.group_id}': {', '.join(actions)}"
+                )
+
+        return recovered
 
     # --- Playback Control Methods ---
 
