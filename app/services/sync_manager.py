@@ -1075,15 +1075,23 @@ class DisplayManager:
         return browser
 
     async def remove_browser(self, group_id: str, browser_id: str) -> None:
-        """Remove a browser from a display group"""
+        """Remove a browser from a display group and close its WebSocket.
+
+        Closing the WebSocket is critical: without it, the client's connection
+        stays open as a zombie — sending heartbeats that the server silently
+        ignores (browser already removed from group.browsers). The client never
+        knows to reconnect, so the display freezes permanently.
+        """
         group = self.groups.get(group_id)
         if not group:
             return
 
         removed = False
+        websocket_to_close = None
         async with group._lock:
             if browser_id in group.browsers:
                 browser = group.browsers[browser_id]
+                websocket_to_close = browser.websocket
                 # Update endpoint's last_seen time
                 endpoint = group.endpoints.get(browser.endpoint_id)
                 if endpoint:
@@ -1096,12 +1104,26 @@ class DisplayManager:
 
             # Stop cycle task if no browsers left
             if not group.browsers and group._cycle_task:
-                group._cycle_task.cancel()
-                try:
-                    await group._cycle_task
-                except asyncio.CancelledError:
-                    pass
-                group._cycle_task = None
+                if group._cycle_task is asyncio.current_task():
+                    # Self-cancellation: called from within the cycle task
+                    # (e.g. _broadcast_to_group detected send failure).
+                    # Cancel + don't await — CancelledError will propagate up
+                    # through the cycle loop naturally after the lock is released.
+                    group._cycle_task.cancel()
+                    group._cycle_task = None
+                else:
+                    group._cycle_task.cancel()
+                    try:
+                        await group._cycle_task
+                    except asyncio.CancelledError:
+                        pass
+                    group._cycle_task = None
+
+        # Close WebSocket as a fire-and-forget task so it completes even if the
+        # current task is cancelled (e.g. self-cancellation from cycle loop).
+        # This ensures the client always detects the disconnect and reconnects.
+        if websocket_to_close:
+            asyncio.create_task(self._close_websocket(websocket_to_close))
 
         # Notify admin clients (outside lock to avoid deadlock)
         if removed:
@@ -1109,6 +1131,14 @@ class DisplayManager:
                 "type": "GROUP_UPDATED",
                 "group": group.to_dict()
             })
+
+    @staticmethod
+    async def _close_websocket(websocket: WebSocket) -> None:
+        """Close a WebSocket connection, ignoring errors."""
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
     async def handle_browser_message(
         self,
