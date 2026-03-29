@@ -276,6 +276,7 @@ class BrowserState:
     status: BrowserStatus = BrowserStatus.CONNECTING
     connected_at: datetime = field(default_factory=_utc_now)
     last_heartbeat: datetime = field(default_factory=_utc_now)
+    evicted: bool = False  # Set by remove_browser; handler checks this to exit
 
 
 class ImagePool:
@@ -1091,6 +1092,7 @@ class DisplayManager:
         async with group._lock:
             if browser_id in group.browsers:
                 browser = group.browsers[browser_id]
+                browser.evicted = True  # Signal handler to exit its message loop
                 websocket_to_close = browser.websocket
                 # Update endpoint's last_seen time
                 endpoint = group.endpoints.get(browser.endpoint_id)

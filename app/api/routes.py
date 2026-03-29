@@ -2461,14 +2461,29 @@ async def websocket_display(
             })
 
         # Handle incoming messages
+        # Timeout is slightly longer than the client heartbeat interval (30s)
+        # so a timeout means the client is dead or the connection is broken.
+        RECEIVE_TIMEOUT = 45
         while True:
             try:
-                data = await websocket.receive_json()
+                data = await asyncio.wait_for(
+                    websocket.receive_json(),
+                    timeout=RECEIVE_TIMEOUT
+                )
+                # Check if this browser was evicted by stale cleanup or
+                # broadcast send failure (remove_browser called externally)
+                if browser.evicted:
+                    logger.info(f"Browser {browser.browser_id} evicted from {group_id}, closing handler")
+                    break
                 await display_manager.handle_browser_message(
                     group_id,
                     browser.browser_id,
                     data
                 )
+            except asyncio.TimeoutError:
+                # No message in RECEIVE_TIMEOUT seconds — client likely dead
+                logger.warning(f"Browser {browser.browser_id} receive timeout ({RECEIVE_TIMEOUT}s), closing handler")
+                break
             except WebSocketDisconnect:
                 break
             except json.JSONDecodeError as e:
