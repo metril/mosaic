@@ -2505,6 +2505,13 @@ async def websocket_display(
                 logger.info(f"Browser {browser.browser_id} disconnected from {group_id}")
             except Exception as e:
                 logger.error(f"Error during browser cleanup: {e}")
+        # Always close the WebSocket to ensure the client gets onclose.
+        # Critical when remove_browser was already called externally (no-op above)
+        # and the fire-and-forget _close_websocket failed silently.
+        try:
+            await websocket.close()
+        except Exception:
+            pass
 
 
 # =============================================================================

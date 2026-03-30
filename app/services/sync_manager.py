@@ -1381,6 +1381,7 @@ class DisplayManager:
                         browsers_to_update = list(group.browsers.values())
                         settings = group.settings
 
+                    preload_failed = []
                     for browser in browsers_to_update:
                         async with group._lock:
                             # Assign under lock for atomicity (#1)
@@ -1407,8 +1408,16 @@ class DisplayManager:
                                 )
                             except asyncio.TimeoutError:
                                 logger.warning(f"Preload send timeout for {browser.browser_id}")
+                                preload_failed.append(browser.browser_id)
                             except Exception as e:
-                                logger.warning(f"Failed to send preload: {e}")
+                                logger.warning(f"Failed to send preload to {browser.browser_id}: {e}")
+                                preload_failed.append(browser.browser_id)
+
+                    # Remove browsers where preload send failed — connection is likely dead.
+                    # Without this, dead browsers linger until the SWITCH broadcast
+                    # also fails, leaving stale next_image on the endpoint.
+                    for browser_id in preload_failed:
+                        await self.remove_browser(group.group_id, browser_id)
 
                     # Wait until exact switch time
                     now = _utc_now()
