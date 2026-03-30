@@ -1050,17 +1050,14 @@ class DisplayManager:
                     if image_path:
                         endpoint.current_image = image_path
 
-                # Start cycle task if needed (#2, #11), not paused, and auto_cycle enabled
-                # Check both: first browser OR crashed task
+                # Start cycle task if none is running. The cycle loop exits on
+                # its own when browsers disconnect, so we just check done/None.
                 should_start_task = (
                     not group.paused and
                     group.settings.auto_cycle and
-                    (len(group.browsers) == 1 or
-                     (group._cycle_task is not None and group._cycle_task.done()))
+                    (group._cycle_task is None or group._cycle_task.done())
                 )
                 if should_start_task:
-                    if group._cycle_task and group._cycle_task.done():
-                        logger.warning(f"Restarting crashed cycle task for {group_id}")
                     group._cycle_task = asyncio.create_task(
                         self._run_cycle_loop(group)
                     )
@@ -1078,10 +1075,10 @@ class DisplayManager:
     async def remove_browser(self, group_id: str, browser_id: str) -> None:
         """Remove a browser from a display group and close its WebSocket.
 
-        Closing the WebSocket is critical: without it, the client's connection
-        stays open as a zombie — sending heartbeats that the server silently
-        ignores (browser already removed from group.browsers). The client never
-        knows to reconnect, so the display freezes permanently.
+        Does NOT cancel the cycle task — the cycle loop exits on its own when
+        it detects no browsers remain. This avoids self-cancellation bugs when
+        remove_browser is called from within the cycle task (via broadcast
+        failure or preload failure).
         """
         group = self.groups.get(group_id)
         if not group:
@@ -1104,28 +1101,12 @@ class DisplayManager:
                 logger.info(f"Browser {browser_id} left group {group_id}")
                 removed = True
 
-            # Stop cycle task if no browsers left
-            if not group.browsers and group._cycle_task:
-                if group._cycle_task is asyncio.current_task():
-                    # Self-cancellation: called from within the cycle task
-                    # (e.g. _broadcast_to_group detected send failure).
-                    # Cancel + don't await — CancelledError will propagate up
-                    # through the cycle loop naturally after the lock is released.
-                    group._cycle_task.cancel()
-                    group._cycle_task = None
-                else:
-                    group._cycle_task.cancel()
-                    try:
-                        await group._cycle_task
-                    except asyncio.CancelledError:
-                        pass
-                    group._cycle_task = None
-
-        # Close WebSocket as a fire-and-forget task so it completes even if the
-        # current task is cancelled (e.g. self-cancellation from cycle loop).
-        # This ensures the client always detects the disconnect and reconnects.
+        # Close the WebSocket so the client detects the disconnect and reconnects.
         if websocket_to_close:
-            asyncio.create_task(self._close_websocket(websocket_to_close))
+            try:
+                await websocket_to_close.close()
+            except Exception:
+                pass
 
         # Notify admin clients (outside lock to avoid deadlock)
         if removed:
@@ -1133,14 +1114,6 @@ class DisplayManager:
                 "type": "GROUP_UPDATED",
                 "group": group.to_dict()
             })
-
-    @staticmethod
-    async def _close_websocket(websocket: WebSocket) -> None:
-        """Close a WebSocket connection, ignoring errors."""
-        try:
-            await websocket.close()
-        except Exception:
-            pass
 
     async def handle_browser_message(
         self,
@@ -1345,6 +1318,12 @@ class DisplayManager:
         try:
             while True:
                 try:
+                    # Exit when no browsers are connected — the task will be
+                    # restarted by add_browser when the next browser joins.
+                    if not group.browsers:
+                        logger.info(f"No browsers in {group.group_id}, exiting cycle loop")
+                        break
+
                     duration = group.settings.duration
 
                     # Check if all folders are locked (being updated by Immich pull)
@@ -1418,6 +1397,11 @@ class DisplayManager:
                     # also fails, leaving stale next_image on the endpoint.
                     for browser_id in preload_failed:
                         await self.remove_browser(group.group_id, browser_id)
+
+                    # If all browsers gone after preload removal, skip SWITCH
+                    # and loop back to the exit check at the top.
+                    if not group.browsers:
+                        continue
 
                     # Wait until exact switch time
                     now = _utc_now()
