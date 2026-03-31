@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from pathlib import Path
+from urllib.parse import quote
 from typing import Callable, Dict, List, Optional, Set, Any, Literal
 from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field
@@ -1228,7 +1229,7 @@ class DisplayManager:
         if settings.format:
             params.append(f"format={settings.format}")
 
-        url = f"{self._base_url}/api/image/{image_path}"
+        url = f"{self._base_url}/api/image/{quote(image_path, safe='/')}"
         if params:
             url += "?" + "&".join(params)
         return url
