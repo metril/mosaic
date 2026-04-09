@@ -2441,7 +2441,7 @@ async def websocket_display(
                 current_image,
                 group.settings
             )
-            blur_url = display_manager.build_blur_url(
+            blur_url = await display_manager.build_blur_url(
                 current_image,
                 group.settings
             )

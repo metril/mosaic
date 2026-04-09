@@ -1234,19 +1234,23 @@ class DisplayManager:
             url += "?" + "&".join(params)
         return url
 
-    def build_blur_url(self, image_path: str, settings: DisplayGroupSettings) -> Optional[str]:
+    async def build_blur_url(self, image_path: str, settings: DisplayGroupSettings) -> Optional[str]:
         """Generate blur data URL for image if blur is enabled.
 
         Returns a base64 data URL of the blurred image, or None if blur is disabled
-        or generation fails.
+        or generation fails. Runs PIL processing in a thread pool to avoid blocking
+        the event loop (which would starve HTTP image requests during PRELOAD).
         """
         if not settings.background_blur or settings.image_fit == 'cover':
             return None
 
-        try:
+        def _generate():
             full_path = resolve_image_path(image_path, self.image_service.image_dir)
             img = self.image_service.load_image(full_path)
             return create_blur_background(img, settings.background_blur_amount)
+
+        try:
+            return await asyncio.get_event_loop().run_in_executor(None, _generate)
         except Exception as e:
             logger.warning(f"Failed to generate blur for {image_path}: {e}")
             return None
@@ -1374,7 +1378,7 @@ class DisplayManager:
                         if next_image and endpoint:
                             # Build URL once per image (#25 - partially, each browser gets unique image)
                             image_url = self.build_image_url(next_image, settings)
-                            blur_url = self.build_blur_url(next_image, settings)
+                            blur_url = await self.build_blur_url(next_image, settings)
                             try:
                                 await asyncio.wait_for(
                                     browser.websocket.send_json({
@@ -1758,7 +1762,7 @@ class DisplayManager:
         settings = group.settings
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
-            blur_url = self.build_blur_url(image_path, settings)
+            blur_url = await self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
@@ -1831,7 +1835,7 @@ class DisplayManager:
         settings = group.settings
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
-            blur_url = self.build_blur_url(image_path, settings)
+            blur_url = await self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
@@ -1934,7 +1938,7 @@ class DisplayManager:
 
         # Send ASSIGN
         image_url = self.build_image_url(image_path, group.settings)
-        blur_url = self.build_blur_url(image_path, group.settings)
+        blur_url = await self.build_blur_url(image_path, group.settings)
         try:
             await asyncio.wait_for(
                 browser.websocket.send_json({
@@ -2074,7 +2078,7 @@ class DisplayManager:
         # Send ASSIGNs (blur applied immediately on client)
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
-            blur_url = self.build_blur_url(image_path, settings)
+            blur_url = await self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
@@ -2116,7 +2120,7 @@ class DisplayManager:
         # Send ASSIGNs outside the lock
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
-            blur_url = self.build_blur_url(image_path, settings)
+            blur_url = await self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
@@ -2194,7 +2198,7 @@ class DisplayManager:
         # Send ASSIGNs outside the lock to avoid holding it during network I/O
         for browser, image_path in browsers_to_assign:
             image_url = self.build_image_url(image_path, settings)
-            blur_url = self.build_blur_url(image_path, settings)
+            blur_url = await self.build_blur_url(image_path, settings)
             try:
                 await asyncio.wait_for(
                     browser.websocket.send_json({
@@ -2245,7 +2249,7 @@ class DisplayManager:
 
         # Send replacement assignment
         image_url = self.build_image_url(new_image, group.settings)
-        blur_url = self.build_blur_url(new_image, group.settings)
+        blur_url = await self.build_blur_url(new_image, group.settings)
 
         try:
             await asyncio.wait_for(
