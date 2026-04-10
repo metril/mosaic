@@ -12,7 +12,7 @@ from email.utils import formatdate
 from io import BytesIO
 from pathlib import Path
 from typing import Optional, Literal, Dict, Any, List
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 from fastapi import APIRouter, Query, HTTPException, Path as PathParam, WebSocket, WebSocketDisconnect, Depends
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -933,7 +933,9 @@ async def serve_processed_image(
 
         # Build Content-Location URI for this specific image
         # RFC 7231: indicates a URI that can be used as an identifier for this resource
-        content_location = f"/api/image/{image_path}"
+        # Must be a valid URI-reference — percent-encode the path to handle
+        # spaces, Unicode, and other special characters in filenames.
+        content_location = f"/api/image/{quote(image_path, safe='/')}"
 
         # Format Last-Modified as RFC 7231 HTTP-date
         last_modified = formatdate(mtime, usegmt=True)
@@ -3363,7 +3365,7 @@ async def root(
 
         # Build Content-Location URI for re-requesting this specific image
         # RFC 7231: indicates a URI that can be used as an identifier for this resource
-        content_location = f"/api/image/{relative_path}"
+        content_location = f"/api/image/{quote(relative_path, safe='/')}"
 
         # Format Last-Modified as RFC 7231 HTTP-date
         last_modified = formatdate(mtime, usegmt=True)
