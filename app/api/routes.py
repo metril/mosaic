@@ -267,6 +267,11 @@ def check_admin_scope(auth, required_scope: str) -> None:
     )
 
 
+def _ascii_filename(name: str) -> str:
+    """Sanitize filename for Content-Disposition header (must be Latin-1 encodable)."""
+    return name.encode('ascii', 'replace').decode('ascii').replace('?', '_')
+
+
 def iter_buffer_with_cleanup(buffer: BytesIO, chunk_size: int = 65536):
     """
     Generator that yields buffer content in chunks and closes it when done.
@@ -665,7 +670,7 @@ async def get_thumbnail(
                     media_type=thumbnail_cache.media_type,
                     headers={
                         "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
-                        "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
+                        "Content-Disposition": f'inline; filename="{_ascii_filename("thumb_" + Path(image_path).name)}"'
                     }
                 )
 
@@ -680,7 +685,7 @@ async def get_thumbnail(
                     media_type=thumbnail_cache.media_type,
                     headers={
                         "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
-                        "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
+                        "Content-Disposition": f'inline; filename="{_ascii_filename("thumb_" + Path(image_path).name)}"'
                     }
                 )
 
@@ -713,7 +718,7 @@ async def get_thumbnail(
             headers={
                 "Content-Length": str(content_length),
                 "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
-                "Content-Disposition": f'inline; filename="thumb_{Path(image_path).name}"'
+                "Content-Disposition": f'inline; filename="{_ascii_filename("thumb_" + Path(image_path).name)}"'
             }
         )
 
@@ -942,7 +947,7 @@ async def serve_processed_image(
             "Content-Length": str(content_length),
             # Disable caching for processed images to allow parameter changes
             "Cache-Control": "no-cache, no-store, must-revalidate" if eink else f"public, max-age={STATIC_CACHE_MAX_AGE}",
-            "Content-Disposition": f'inline; filename="{filename_out}"',
+            "Content-Disposition": f'inline; filename="{_ascii_filename(filename_out)}"',
             "Content-Location": content_location,
             "ETag": f'"{etag}"',
             "Last-Modified": last_modified,
@@ -3374,7 +3379,7 @@ async def root(
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
-            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Disposition": f'inline; filename="{_ascii_filename(filename)}"',
             "Content-Location": content_location,
             "ETag": f'"{etag}"',
             "Last-Modified": last_modified,
