@@ -1069,9 +1069,16 @@
 
                 // Store pending blur URL for next image switch
                 let pendingBlurUrl = null;
+                // Track preload completion to prevent switching to unloaded images
+                let preloadComplete = false;
+                let switchPending = false;
 
                 function handlePreload(msg) {
                     console.log('Preloading:', msg.image_id, 'switch at', msg.switch_at);
+
+                    // Reset preload tracking for new image
+                    preloadComplete = false;
+                    switchPending = false;
 
                     // Clear error div - images are now available
                     clearNoImagesError();
@@ -1090,7 +1097,13 @@
 
                     // Preload the image
                     loadImage(preloadImage, msg.image_url, function() {
+                        preloadComplete = true;
                         sendPreloadReady();
+                        // If switch was requested while image was still loading, perform it now
+                        if (switchPending) {
+                            switchPending = false;
+                            performSwitch();
+                        }
                     });
                 }
 
@@ -1121,6 +1134,13 @@
 
                 function performSwitch() {
                     timers.switch = null; // Clear reference
+
+                    // Defer switch if preload image hasn't finished loading
+                    if (!preloadComplete) {
+                        console.log('Switch deferred: preload image not ready');
+                        switchPending = true;
+                        return;
+                    }
 
                     // Apply pending blur background before visual switch
                     if (pendingBlurUrl) {
@@ -1154,6 +1174,10 @@
                         // Clear handlers on the now-preload element (was current, now hidden)
                         preloadImage.onload = null;
                         preloadImage.onerror = null;
+
+                        // Reset preload tracking for next cycle
+                        preloadComplete = false;
+                        switchPending = false;
 
                         // Update debug
                         updateDebug('CurrentImage', currentImage.src.split('/').pop().split('?')[0]);
