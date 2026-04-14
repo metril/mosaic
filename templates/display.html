@@ -1104,6 +1104,11 @@
                             switchPending = false;
                             performSwitch();
                         }
+                    }, function() {
+                        // Image failed after retries - don't switch to broken image.
+                        // Server will send ASSIGN with replacement via IMAGE_LOAD_FAILED handler.
+                        console.log('Preload failed, keeping current image visible');
+                        switchPending = false;
                     });
                 }
 
@@ -1243,7 +1248,7 @@
                 }
 
                 // Image loading with exponential backoff (#12, #22)
-                function loadImage(imgElement, url, callback) {
+                function loadImage(imgElement, url, onSuccess, onFailure) {
                     // Clear previous handlers to prevent stacking (#22)
                     imgElement.onload = null;
                     imgElement.onerror = null;
@@ -1251,7 +1256,7 @@
                     imgElement.onload = function() {
                         console.log('Image loaded:', url.split('/').pop());
                         imageRetryCount = 0; // Reset on success
-                        if (callback) callback();
+                        if (onSuccess) onSuccess();
                     };
 
                     imgElement.onerror = function() {
@@ -1275,8 +1280,7 @@
                                     image_path: decodeURIComponent(pathMatch[1])
                                 });
                             }
-                            // Callback anyway to not block sync (server will send replacement)
-                            if (callback) callback();
+                            if (onFailure) onFailure();
                         }
                     };
 
