@@ -901,6 +901,28 @@
                 border-radius: 6px;
                 border-left: 3px solid transparent;
             }
+            .endpoint-overrides {
+                margin-top: 10px;
+                padding-top: 8px;
+                border-top: 1px dashed rgba(255,255,255,0.12);
+            }
+            .endpoint-overrides .ov-title {
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                color: #888;
+                margin-bottom: 6px;
+            }
+            .endpoint-overrides .ov-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+                margin-bottom: 4px;
+            }
+            .endpoint-overrides .ov-row label { font-size: 12px; color: #bbb; }
+            .endpoint-overrides .ov-row select { flex: 0 0 60%; }
+            .endpoint-overrides .btn-save-overrides { margin-top: 6px; }
             .endpoint-details.connected {
                 border-left-color: #4CAF50;
             }
@@ -1722,6 +1744,109 @@
                         </div>
                     </details>
 
+                    <!-- Effects: transitions & Ken Burns (F3) -->
+                    <details class="settings-section">
+                        <summary>Effects</summary>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <label for="transition_effect">Transition</label>
+                                <select id="transition_effect" name="transition_effect">
+                                    <option value="none">None (instant)</option>
+                                    <option value="fade">Fade</option>
+                                    <option value="crossfade">Crossfade</option>
+                                    <option value="slide">Slide</option>
+                                    <option value="dissolve">Dissolve</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label for="transition_duration_ms">Transition duration (ms)</label>
+                                <input type="number" id="transition_duration_ms" name="transition_duration_ms" min="100" max="3000" value="500">
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="ken_burns" name="ken_burns">
+                                <label for="ken_burns">Ken Burns pan/zoom</label>
+                            </div>
+                            <div class="form-row">
+                                <label for="ken_burns_intensity">Ken Burns intensity (%)</label>
+                                <input type="number" id="ken_burns_intensity" name="ken_burns_intensity" min="0" max="50" value="15">
+                            </div>
+                            <div class="form-row">
+                                <label for="ken_burns_duration">Ken Burns duration (s)</label>
+                                <input type="number" id="ken_burns_duration" name="ken_burns_duration" min="5" max="120" value="20">
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Photo caption overlay (F4) -->
+                    <details class="settings-section">
+                        <summary>Caption</summary>
+                        <div class="section-content">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="show_caption" name="show_caption">
+                                <label for="show_caption">Show photo caption</label>
+                            </div>
+                            <div class="form-row">
+                                <label>Caption fields</label>
+                                <div class="checkbox-row"><input type="checkbox" id="caption_field_filename" value="filename"><label for="caption_field_filename">Filename</label></div>
+                                <div class="checkbox-row"><input type="checkbox" id="caption_field_date_taken" value="date_taken"><label for="caption_field_date_taken">Date taken</label></div>
+                                <div class="checkbox-row"><input type="checkbox" id="caption_field_folder" value="folder"><label for="caption_field_folder">Folder</label></div>
+                                <div class="checkbox-row"><input type="checkbox" id="caption_field_location" value="location"><label for="caption_field_location">Location (GPS)</label></div>
+                            </div>
+                            <div class="form-row">
+                                <label for="caption_position">Caption position</label>
+                                <select id="caption_position" name="caption_position">
+                                    <option value="bottom-left">Bottom left</option>
+                                    <option value="bottom-right">Bottom right</option>
+                                    <option value="top-left">Top left</option>
+                                    <option value="top-right">Top right</option>
+                                </select>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Night mode / schedule (F2) -->
+                    <details class="settings-section">
+                        <summary>Night Mode / Schedule</summary>
+                        <div class="section-content">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="night_mode" name="night_mode">
+                                <label for="night_mode">Enable night mode</label>
+                            </div>
+                            <div class="form-row">
+                                <label for="night_mode_source">Schedule source</label>
+                                <select id="night_mode_source" name="night_mode_source">
+                                    <option value="fixed">Fixed times</option>
+                                    <option value="homeassistant">Home Assistant sun</option>
+                                </select>
+                            </div>
+                            <div class="form-row-inline">
+                                <div class="form-row">
+                                    <label for="night_sleep_time">Sleep time</label>
+                                    <input type="time" id="night_sleep_time" name="night_sleep_time" value="23:00">
+                                </div>
+                                <div class="form-row">
+                                    <label for="night_wake_time">Wake time</label>
+                                    <input type="time" id="night_wake_time" name="night_wake_time" value="07:00">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <label for="night_ha_sun_entity">HA sun entity</label>
+                                <input type="text" id="night_ha_sun_entity" name="night_ha_sun_entity" value="sun.sun">
+                            </div>
+                            <div class="form-row">
+                                <label for="night_action">Night action</label>
+                                <select id="night_action" name="night_action">
+                                    <option value="blank">Blank screen</option>
+                                    <option value="dim">Dim screen</option>
+                                </select>
+                            </div>
+                            <div class="form-row">
+                                <label for="night_dim_opacity">Dim opacity (%)</label>
+                                <input type="number" id="night_dim_opacity" name="night_dim_opacity" min="0" max="90" value="20">
+                            </div>
+                        </div>
+                    </details>
+
                     <!-- Burn-In Prevention -->
                     <details class="settings-section">
                         <summary>Burn-In Prevention</summary>
@@ -2169,6 +2294,37 @@
                                     <option value="IMAGE" selected>Images only</option>
                                     <option value="VIDEO">Videos only</option>
                                 </select>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Schedule (F1) -->
+                    <details class="settings-section">
+                        <summary>Schedule</summary>
+                        <div class="section-content">
+                            <div class="form-row">
+                                <label for="immichCron">Cron expression</label>
+                                <input type="text" id="immichCron" name="cron_expression" placeholder="0 3 * * *  (empty = manual only)" oninput="updateCronPreview()">
+                                <small id="immichCronPreview" class="muted">Leave blank to disable automatic pulls.</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="immichCronTz">Timezone</label>
+                                <input type="text" id="immichCronTz" name="cron_timezone" placeholder="e.g. America/New_York (blank = server default)">
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Curation interaction (F6) -->
+                    <details class="settings-section">
+                        <summary>Curation</summary>
+                        <div class="section-content">
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="immichProtectFavorites" name="protect_favorites" checked>
+                                <label for="immichProtectFavorites">Keep favorited images across re-pulls</label>
+                            </div>
+                            <div class="checkbox-row">
+                                <input type="checkbox" id="immichSkipExcluded" name="skip_excluded" checked>
+                                <label for="immichSkipExcluded">Never re-download hidden (excluded) images</label>
                             </div>
                         </div>
                     </details>
@@ -2668,6 +2824,27 @@
                 document.getElementById('weather_show_high_low').checked = true;
                 document.getElementById('weather_show_precipitation').checked = false;
                 toggleForecastOptions();
+                // Effects defaults (F3)
+                document.getElementById('transition_effect').value = 'fade';
+                document.getElementById('transition_duration_ms').value = 500;
+                document.getElementById('ken_burns').checked = false;
+                document.getElementById('ken_burns_intensity').value = 15;
+                document.getElementById('ken_burns_duration').value = 20;
+                // Caption defaults (F4)
+                document.getElementById('show_caption').checked = false;
+                document.getElementById('caption_field_filename').checked = true;
+                document.getElementById('caption_field_date_taken').checked = false;
+                document.getElementById('caption_field_folder').checked = false;
+                document.getElementById('caption_field_location').checked = false;
+                document.getElementById('caption_position').value = 'bottom-right';
+                // Night mode defaults (F2)
+                document.getElementById('night_mode').checked = false;
+                document.getElementById('night_mode_source').value = 'fixed';
+                document.getElementById('night_sleep_time').value = '23:00';
+                document.getElementById('night_wake_time').value = '07:00';
+                document.getElementById('night_ha_sun_entity').value = 'sun.sun';
+                document.getElementById('night_action').value = 'blank';
+                document.getElementById('night_dim_opacity').value = 20;
                 // Burn-in prevention defaults
                 document.getElementById('burn_in_protection').checked = false;
                 document.getElementById('burn_in_interval').value = 5;
@@ -2724,6 +2901,28 @@
                 document.getElementById('weather_show_high_low').checked = settings.weather_show_high_low ?? true;
                 document.getElementById('weather_show_precipitation').checked = settings.weather_show_precipitation || false;
                 toggleForecastOptions();
+                // Effects (F3)
+                document.getElementById('transition_effect').value = settings.transition_effect || 'fade';
+                document.getElementById('transition_duration_ms').value = settings.transition_duration_ms ?? 500;
+                document.getElementById('ken_burns').checked = settings.ken_burns || false;
+                document.getElementById('ken_burns_intensity').value = settings.ken_burns_intensity ?? 15;
+                document.getElementById('ken_burns_duration').value = settings.ken_burns_duration ?? 20;
+                // Caption (F4)
+                const capFields = settings.caption_fields || ['filename'];
+                document.getElementById('show_caption').checked = settings.show_caption || false;
+                document.getElementById('caption_field_filename').checked = capFields.includes('filename');
+                document.getElementById('caption_field_date_taken').checked = capFields.includes('date_taken');
+                document.getElementById('caption_field_folder').checked = capFields.includes('folder');
+                document.getElementById('caption_field_location').checked = capFields.includes('location');
+                document.getElementById('caption_position').value = settings.caption_position || 'bottom-right';
+                // Night mode (F2)
+                document.getElementById('night_mode').checked = settings.night_mode || false;
+                document.getElementById('night_mode_source').value = settings.night_mode_source || 'fixed';
+                document.getElementById('night_sleep_time').value = settings.night_sleep_time || '23:00';
+                document.getElementById('night_wake_time').value = settings.night_wake_time || '07:00';
+                document.getElementById('night_ha_sun_entity').value = settings.night_ha_sun_entity || 'sun.sun';
+                document.getElementById('night_action').value = settings.night_action || 'blank';
+                document.getElementById('night_dim_opacity').value = settings.night_dim_opacity ?? 20;
                 // Burn-in prevention settings
                 document.getElementById('burn_in_protection').checked = settings.burn_in_protection || false;
                 document.getElementById('burn_in_interval').value = settings.burn_in_interval ?? 5;
@@ -2803,6 +3002,28 @@
                 data.burn_in_shift_enabled = form.burn_in_shift_enabled.checked;
                 data.burn_in_shift_amount = parseInt(form.burn_in_shift_amount.value) || 5;
                 data.burn_in_shift_interval = parseInt(form.burn_in_shift_interval.value) || 60;
+
+                // Effects (F3)
+                data.transition_effect = form.transition_effect.value;
+                data.transition_duration_ms = parseInt(form.transition_duration_ms.value) || 500;
+                data.ken_burns = form.ken_burns.checked;
+                data.ken_burns_intensity = parseInt(form.ken_burns_intensity.value) || 15;
+                data.ken_burns_duration = parseInt(form.ken_burns_duration.value) || 20;
+
+                // Caption (F4)
+                data.show_caption = form.show_caption.checked;
+                data.caption_fields = ['filename', 'date_taken', 'folder', 'location']
+                    .filter(f => document.getElementById('caption_field_' + f).checked);
+                data.caption_position = form.caption_position.value;
+
+                // Night mode (F2)
+                data.night_mode = form.night_mode.checked;
+                data.night_mode_source = form.night_mode_source.value;
+                data.night_sleep_time = form.night_sleep_time.value || '23:00';
+                data.night_wake_time = form.night_wake_time.value || '07:00';
+                data.night_ha_sun_entity = form.night_ha_sun_entity.value || 'sun.sun';
+                data.night_action = form.night_action.value;
+                data.night_dim_opacity = parseInt(form.night_dim_opacity.value) || 20;
 
                 // Webhooks
                 data.webhooks = currentWebhooks;
@@ -3274,6 +3495,7 @@
                                         </summary>
                                         <div class="endpoint-content">
                                             ${historyHtml || '<p style="color: #666; font-size: 12px;">No history</p>'}
+                                            ${renderEndpointOverrides(group.group_id, ep)}
                                         </div>
                                     </details>
                                 `;
@@ -3307,6 +3529,7 @@
                             <div class="group-actions">
                                 <a href="${displayUrl}" target="_blank" class="btn btn-link">Open Display</a>
                                 <button class="btn btn-ghost btn-edit" data-group-id="${groupIdSafe}">Edit</button>
+                                <button class="btn btn-ghost btn-clone" data-group-id="${groupIdSafe}">Clone</button>
                                 <button class="btn btn-danger btn-delete" data-group-id="${groupIdSafe}">Delete</button>
                             </div>
                             ${endpointSectionsHtml}
@@ -3330,7 +3553,16 @@
             document.getElementById('groupsList').addEventListener('click', function(e) {
                 const controlBtn = e.target.closest('.btn-control');
                 const editBtn = e.target.closest('.btn-edit');
+                const cloneBtn = e.target.closest('.btn-clone');
                 const deleteBtn = e.target.closest('.btn-delete');
+                const saveOverridesBtn = e.target.closest('.btn-save-overrides');
+
+                if (saveOverridesBtn) {
+                    e.preventDefault();
+                    const container = saveOverridesBtn.closest('.endpoint-overrides');
+                    if (container) saveEndpointOverrides(container);
+                    return;
+                }
                 const thumb = e.target.closest('.thumb');
                 const createEndpointBtn = e.target.closest('.btn-create-endpoint');
                 const copyUrlBtn = e.target.closest('.btn-copy');
@@ -3345,6 +3577,9 @@
                 } else if (editBtn) {
                     const groupId = editBtn.dataset.groupId;
                     openPanel('edit', groupId);
+                } else if (cloneBtn) {
+                    const groupId = cloneBtn.dataset.groupId;
+                    cloneGroup(groupId);
                 } else if (deleteBtn) {
                     const groupId = deleteBtn.dataset.groupId;
                     deleteGroup(groupId, deleteBtn);
@@ -3464,6 +3699,79 @@
                 } finally {
                     btn.textContent = originalText;
                     btn.disabled = false;
+                }
+            }
+
+            // Per-endpoint overrides editor (F7)
+            function renderEndpointOverrides(groupId, ep) {
+                const o = ep.settings_override || {};
+                const sel = (key, label, opts) => {
+                    const cur = o[key] || '';
+                    const options = ['<option value="">Inherit</option>']
+                        .concat(opts.map(([v, t]) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`))
+                        .join('');
+                    return `<div class="ov-row"><label>${label}</label><select data-ov-key="${key}">${options}</select></div>`;
+                };
+                const pos = [['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right'], ['top-left', 'Top left'], ['top-right', 'Top right']];
+                return `
+                    <div class="endpoint-overrides" data-group-id="${escapeHtml(groupId)}" data-endpoint-id="${escapeHtml(ep.endpoint_id)}">
+                        <div class="ov-title">Per-display overrides (blank = inherit group)</div>
+                        ${sel('layout', 'Layout', [['single', 'Single'], ['splitview', 'Split view'], ['splitview-landscape', 'Split stacked']])}
+                        ${sel('image_fit', 'Image fit', [['contain', 'Contain'], ['cover', 'Cover']])}
+                        ${sel('transition_effect', 'Transition', [['none', 'None'], ['fade', 'Fade'], ['crossfade', 'Crossfade'], ['slide', 'Slide'], ['dissolve', 'Dissolve']])}
+                        ${sel('clock_position', 'Clock position', pos)}
+                        ${sel('caption_position', 'Caption position', pos)}
+                        <button class="btn btn-ghost btn-save-overrides" type="button">Save overrides</button>
+                    </div>`;
+            }
+
+            async function saveEndpointOverrides(container) {
+                const groupId = container.dataset.groupId;
+                const endpointId = container.dataset.endpointId;
+                const override = {};
+                container.querySelectorAll('select[data-ov-key]').forEach(s => {
+                    if (s.value) override[s.dataset.ovKey] = s.value;
+                });
+                try {
+                    const res = await fetch(API_BASE + '/' + encodeURIComponent(groupId) + '/endpoints/' + encodeURIComponent(endpointId), {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+                        body: JSON.stringify({ settings_override: override })
+                    });
+                    if (res.ok) {
+                        showMessage('Overrides saved', 'success');
+                    } else {
+                        const err = await res.json();
+                        showMessage(err.detail || 'Failed to save overrides', 'error');
+                    }
+                } catch (e) {
+                    showMessage('Failed to save overrides: ' + e.message, 'error');
+                }
+            }
+
+            // Clone a group's settings into a new group (F5)
+            async function cloneGroup(groupId) {
+                const newId = prompt(`Clone "${groupId}" — enter an id for the new group:`, groupId + '-copy');
+                if (!newId) return;
+                if (!/^[a-zA-Z0-9_\-]+$/.test(newId)) {
+                    showMessage('Invalid id: use letters, numbers, dash, underscore', 'error');
+                    return;
+                }
+                try {
+                    const response = await fetch(API_BASE + '/' + encodeURIComponent(groupId) + '/clone', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+                        body: JSON.stringify({ new_group_id: newId })
+                    });
+                    if (response.ok) {
+                        showMessage(`Cloned to "${newId}"`, 'success');
+                        loadGroups();
+                    } else {
+                        const err = await response.json();
+                        showMessage(err.detail || 'Clone failed', 'error');
+                    }
+                } catch (e) {
+                    showMessage('Clone failed: ' + e.message, 'error');
                 }
             }
 
@@ -4833,6 +5141,18 @@
                     if (pull.taken_before) filters.push(`Before ${pull.taken_before}`);
                     const filterSummary = filters.length ? filters.join(' • ') : 'No filters';
 
+                    // Schedule summary (F1)
+                    let scheduleSummary = 'Manual only';
+                    if (pull.cron_expression) {
+                        const desc = pull.schedule_description || pull.cron_expression;
+                        let nextStr = '';
+                        if (pull.next_runs && pull.next_runs.length) {
+                            const next = new Date(pull.next_runs[0]);
+                            nextStr = ` • next ${next.toLocaleString()}`;
+                        }
+                        scheduleSummary = `⏰ ${desc}${nextStr}`;
+                    }
+
                     return `
                         <div class="pull-card" data-pull="${nameSafe}" id="pull-card-${nameSafe}">
                             <div class="pull-name">${nameSafe}</div>
@@ -4842,6 +5162,7 @@
                             </div>
                             <div class="pull-server">${serverSafe}</div>
                             <div class="pull-filters">${escapeHtml(filterSummary)}</div>
+                            <div class="pull-filters">${escapeHtml(scheduleSummary)}</div>
                             <div class="pull-status idle" id="pull-status-${nameSafe}">Idle</div>
                             <div class="pull-progress" id="pull-progress-${nameSafe}" style="display: none;">
                                 <div class="pull-progress-bar" id="pull-progress-bar-${nameSafe}"></div>
@@ -5165,6 +5486,13 @@
                 document.getElementById('immichTakenBefore').value = pull.taken_before || '';
                 document.getElementById('immichMediaType').value = pull.media_type || 'IMAGE';
 
+                // Schedule + curation (F1/F6)
+                document.getElementById('immichCron').value = pull.cron_expression || '';
+                document.getElementById('immichCronTz').value = pull.cron_timezone || '';
+                document.getElementById('immichProtectFavorites').checked = pull.protect_favorites !== false;
+                document.getElementById('immichSkipExcluded').checked = pull.skip_excluded !== false;
+                updateCronPreview();
+
                 // Album and people need to be loaded via test connection
                 if (pull.album_ids && pull.album_ids.length) {
                     const albumSelect = document.getElementById('immichAlbumIds');
@@ -5262,7 +5590,37 @@
                 const takenBefore = form.taken_before.value;
                 if (takenBefore) data.taken_before = takenBefore;
 
+                // Schedule (F1)
+                data.cron_expression = form.cron_expression.value.trim();
+                data.cron_timezone = form.cron_timezone.value.trim();
+
+                // Curation interaction (F6)
+                data.protect_favorites = form.protect_favorites.checked;
+                data.skip_excluded = form.skip_excluded.checked;
+
                 return data;
+            }
+
+            // Live cron description preview (F1)
+            const CRON_HINTS = {
+                '0 3 * * *': 'every day at 03:00',
+                '0 * * * *': 'every hour',
+                '*/15 * * * *': 'every 15 minutes',
+                '0 0 * * 0': 'every Sunday at midnight',
+            };
+            function updateCronPreview() {
+                const el = document.getElementById('immichCronPreview');
+                const cron = document.getElementById('immichCron').value.trim();
+                if (!cron) {
+                    el.textContent = 'Leave blank to disable automatic pulls.';
+                    return;
+                }
+                const parts = cron.split(/\s+/);
+                if (parts.length !== 5) {
+                    el.textContent = '⚠ A cron expression has 5 fields (min hour day-of-month month day-of-week).';
+                    return;
+                }
+                el.textContent = CRON_HINTS[cron] ? `Runs ${CRON_HINTS[cron]}.` : 'Schedule will be validated on save; preview shown on the pull card.';
             }
 
             document.getElementById('immichForm').addEventListener('submit', async (e) => {

@@ -43,6 +43,7 @@ from app.utils.logging import logger
 from app.utils.metrics import metrics
 from app.utils.blur import create_blur_background, should_skip_blur
 from app.services.thumbnail_cache import ThumbnailCache
+from app.services import cron_utils
 
 # Allowed WebSocket origins (comma-separated in env, empty = allow all)
 ALLOWED_WS_ORIGINS = os.environ.get("ALLOWED_WS_ORIGINS", "").split(",")
@@ -640,6 +641,8 @@ async def browse_images(
             "request": request,
             "total_folders": tree_data["total_folders"],
             "total_files": tree_data["total_files"],
+            # CSRF token for curation POSTs (F6)
+            "csrf_token": get_csrf_token(request),
             # Escape "<" so filenames containing "</script>" can't break
             # out of the inline <script> block (rendered with | safe)
             "tree_json": json.dumps(tree_data).replace("<", "\\u003c")
@@ -1167,6 +1170,24 @@ class DisplayGroupCreateRequest(BaseModel):
     burn_in_shift_enabled: bool = Field(True, description="Enable pixel shifting")
     burn_in_shift_amount: int = Field(5, ge=1, le=20, description="Shift amount (pixels)")
     burn_in_shift_interval: int = Field(60, ge=10, le=300, description="Shift interval (seconds)")
+    # Transition & Ken Burns settings (F3)
+    transition_effect: Literal['none', 'fade', 'crossfade', 'slide', 'dissolve'] = Field('fade', description="Transition effect between images")
+    transition_duration_ms: int = Field(500, ge=100, le=3000, description="Transition duration (ms)")
+    ken_burns: bool = Field(False, description="Enable Ken Burns pan/zoom")
+    ken_burns_intensity: int = Field(15, ge=0, le=50, description="Ken Burns max zoom/pan (%)")
+    ken_burns_duration: int = Field(20, ge=5, le=120, description="Ken Burns duration (seconds)")
+    # Photo caption overlay settings (F4)
+    show_caption: bool = Field(False, description="Show photo caption overlay")
+    caption_fields: List[str] = Field(default_factory=lambda: ['filename'], description="Caption fields (filename|date_taken|folder|location)")
+    caption_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = Field('bottom-right', description="Caption position")
+    # Night mode / schedule settings (F2)
+    night_mode: bool = Field(False, description="Enable night-mode scheduling")
+    night_mode_source: Literal['fixed', 'homeassistant'] = Field('fixed', description="Night schedule source")
+    night_sleep_time: str = Field('23:00', max_length=5, description="Sleep time HH:MM (fixed)")
+    night_wake_time: str = Field('07:00', max_length=5, description="Wake time HH:MM (fixed)")
+    night_ha_sun_entity: str = Field('sun.sun', max_length=100, description="HA sun entity")
+    night_action: Literal['blank', 'dim'] = Field('blank', description="Night action")
+    night_dim_opacity: int = Field(20, ge=0, le=90, description="Night dim opacity (%)")
     # Webhook settings
     webhooks: List[WebhookConfig] = Field(default_factory=list, description="Webhook configurations")
     # Endpoints to create with the group (optional)
@@ -1235,6 +1256,24 @@ class DisplayGroupUpdateRequest(BaseModel):
     burn_in_shift_enabled: Optional[bool] = Field(None, description="Enable pixel shifting")
     burn_in_shift_amount: Optional[int] = Field(None, ge=1, le=20, description="Shift amount (pixels)")
     burn_in_shift_interval: Optional[int] = Field(None, ge=10, le=300, description="Shift interval (seconds)")
+    # Transition & Ken Burns settings (F3)
+    transition_effect: Optional[Literal['none', 'fade', 'crossfade', 'slide', 'dissolve']] = Field(None, description="Transition effect between images")
+    transition_duration_ms: Optional[int] = Field(None, ge=100, le=3000, description="Transition duration (ms)")
+    ken_burns: Optional[bool] = Field(None, description="Enable Ken Burns pan/zoom")
+    ken_burns_intensity: Optional[int] = Field(None, ge=0, le=50, description="Ken Burns max zoom/pan (%)")
+    ken_burns_duration: Optional[int] = Field(None, ge=5, le=120, description="Ken Burns duration (seconds)")
+    # Photo caption overlay settings (F4)
+    show_caption: Optional[bool] = Field(None, description="Show photo caption overlay")
+    caption_fields: Optional[List[str]] = Field(None, description="Caption fields (filename|date_taken|folder|location)")
+    caption_position: Optional[Literal['bottom-left', 'bottom-right', 'top-left', 'top-right']] = Field(None, description="Caption position")
+    # Night mode / schedule settings (F2)
+    night_mode: Optional[bool] = Field(None, description="Enable night-mode scheduling")
+    night_mode_source: Optional[Literal['fixed', 'homeassistant']] = Field(None, description="Night schedule source")
+    night_sleep_time: Optional[str] = Field(None, max_length=5, description="Sleep time HH:MM (fixed)")
+    night_wake_time: Optional[str] = Field(None, max_length=5, description="Wake time HH:MM (fixed)")
+    night_ha_sun_entity: Optional[str] = Field(None, max_length=100, description="HA sun entity")
+    night_action: Optional[Literal['blank', 'dim']] = Field(None, description="Night action")
+    night_dim_opacity: Optional[int] = Field(None, ge=0, le=90, description="Night dim opacity (%)")
     # Webhook settings
     webhooks: Optional[List[WebhookConfig]] = Field(None, description="Webhook configurations")
 
@@ -1384,6 +1423,24 @@ async def create_display_group(
         background_blur=body.background_blur,
         background_blur_amount=body.background_blur_amount,
         image_fit=body.image_fit,
+        # Transition & Ken Burns (F3)
+        transition_effect=body.transition_effect,
+        transition_duration_ms=body.transition_duration_ms,
+        ken_burns=body.ken_burns,
+        ken_burns_intensity=body.ken_burns_intensity,
+        ken_burns_duration=body.ken_burns_duration,
+        # Caption overlay (F4)
+        show_caption=body.show_caption,
+        caption_fields=body.caption_fields,
+        caption_position=body.caption_position,
+        # Night mode (F2)
+        night_mode=body.night_mode,
+        night_mode_source=body.night_mode_source,
+        night_sleep_time=body.night_sleep_time,
+        night_wake_time=body.night_wake_time,
+        night_ha_sun_entity=body.night_ha_sun_entity,
+        night_action=body.night_action,
+        night_dim_opacity=body.night_dim_opacity,
     )
 
     try:
@@ -1486,6 +1543,42 @@ async def delete_display_group(
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
 
     return JSONResponse(content={"deleted": group_id})
+
+
+class GroupCloneRequest(BaseModel):
+    """Request body for cloning a display group (F5)."""
+    new_group_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        pattern=r"^[a-zA-Z0-9_\-]+$",
+        description="Identifier for the new (cloned) group"
+    )
+
+
+@router.post("/api/display/groups/{group_id}/clone", responses={
+    201: {"description": "Group cloned"},
+    400: {"description": "Target id already exists or invalid"},
+    401: {"description": "Not authenticated"},
+    404: {"description": "Source group not found"},
+})
+async def clone_display_group(
+    request: Request,
+    group_id: str,
+    body: GroupCloneRequest,
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """Clone an existing group's settings into a new group (F5)."""
+    check_admin_scope(auth, "admin:display:manage")
+    display_manager = get_display_manager(request)
+    try:
+        group = await display_manager.clone_group(group_id, body.new_group_id)
+    except ValueError as e:
+        msg = str(e)
+        status = 404 if "not found" in msg else 400
+        raise HTTPException(status_code=status, detail=msg)
+    return JSONResponse(status_code=201, content=group.to_dict())
 
 
 @router.post("/api/display/save-config", responses={
@@ -1880,6 +1973,8 @@ class EndpointUpdateRequest(BaseModel):
     """Request body for updating a display endpoint"""
     name: Optional[str] = Field(None, max_length=100, description="Human-readable name")
     is_persistent: Optional[bool] = Field(None, description="Promote anonymous to persistent")
+    # Per-endpoint presentation overrides (F7). Pass {} to clear all overrides.
+    settings_override: Optional[Dict[str, Any]] = Field(None, description="Whitelisted setting overrides")
 
 
 @router.get("/api/display/groups/{group_id}/endpoints", responses={
@@ -2002,10 +2097,28 @@ async def update_endpoint(
         endpoint.name = body.name
     if body.is_persistent is not None:
         endpoint.is_persistent = body.is_persistent
+    override_changed = False
+    if body.settings_override is not None:
+        # Keep only whitelisted keys (F7)
+        endpoint.settings_override = display_manager.filter_endpoint_override(body.settings_override)
+        override_changed = True
 
     # Save config if endpoint is now persistent (includes promotions)
     if endpoint.is_persistent:
         display_manager.save_config()
+
+    # Push merged settings to this endpoint's connected browsers immediately
+    if override_changed:
+        ep_settings = display_manager.build_endpoint_settings(group, endpoint)
+        for browser in list(group.browsers.values()):
+            if browser.endpoint_id == endpoint_id:
+                try:
+                    await browser.websocket.send_json({
+                        "type": "SETTINGS_CHANGED",
+                        "settings": ep_settings.to_dict()
+                    })
+                except Exception as e:
+                    logger.debug(f"Override push failed for {browser.browser_id}: {e}")
 
     # Notify admin clients of the change
     await display_manager._notify_admins({
@@ -2536,14 +2649,19 @@ async def websocket_display(
         # Get the endpoint for this browser
         display_endpoint = group.get_endpoint_for_browser(browser.browser_id)
 
-        # Send welcome message
+        # Merge this endpoint's overrides over the group settings (F7)
+        ep_settings = display_manager.build_endpoint_settings(group, display_endpoint)
+
+        # Send welcome message (include current night-mode state so a browser
+        # connecting mid-night starts dark — F2)
         await websocket.send_json({
             "type": "WELCOME",
             "browser_id": browser.browser_id,
             "endpoint_id": browser.endpoint_id,
             "group_id": group_id,
             "browser_count": len(group.browsers),
-            "settings": group.settings.to_dict()
+            "settings": ep_settings.to_dict(),
+            "night_active": group.night_paused
         })
 
         # Send initial image assignment (from endpoint's current_image)
@@ -2551,17 +2669,18 @@ async def websocket_display(
         if current_image:
             image_url = display_manager.build_image_url(
                 current_image,
-                group.settings
+                ep_settings
             )
             blur_url = await display_manager.build_blur_url(
                 current_image,
-                group.settings
+                ep_settings
             )
             await websocket.send_json({
                 "type": "ASSIGN",
                 "image_url": image_url,
                 "blur_url": blur_url,
                 "image_id": current_image,
+                "caption": display_manager.build_caption(current_image, ep_settings),
                 "cycle": group.current_cycle
             })
         else:
@@ -2658,6 +2777,12 @@ class ImmichPullCreateRequest(BaseModel):
     taken_before: Optional[str] = Field(None, description="ISO date (YYYY-MM-DD)")
     media_type: str = Field("IMAGE", description="IMAGE or VIDEO")
     replace_existing: bool = Field(True, description="Clear folder before pulling")
+    # Scheduling (F1)
+    cron_expression: Optional[str] = Field(None, max_length=120, description="5-field cron expression (empty = unscheduled)")
+    cron_timezone: Optional[str] = Field(None, max_length=64, description="IANA timezone (empty = inherit SCHEDULER_TIMEZONE)")
+    # Curation interaction (F6)
+    protect_favorites: bool = Field(True, description="Keep favorited files across replace_existing pulls")
+    skip_excluded: bool = Field(True, description="Never re-download excluded assets")
 
 
 @router.get(
@@ -2680,10 +2805,20 @@ async def list_immich_pulls(
     provider = get_immich_provider(request)
     pulls = provider.list_pulls()
 
-    # Mask API keys for security
+    # Mask API keys for security; attach schedule preview (F1)
+    from app.services.pull_scheduler import default_timezone
+    default_tz = default_timezone()
     for pull in pulls:
         if pull.get("api_key"):
             pull["api_key"] = "***" + pull["api_key"][-4:] if len(pull["api_key"]) > 4 else "***"
+        cron = pull.get("cron_expression")
+        if cron:
+            tz = cron_utils.resolve_tz(pull.get("cron_timezone"), default_tz)
+            pull["schedule_description"] = cron_utils.describe(cron)
+            try:
+                pull["next_runs"] = [dt.isoformat() for dt in cron_utils.next_runs(cron, tz, 3)]
+            except ValueError:
+                pull["next_runs"] = []
 
     return JSONResponse(content={"pulls": pulls})
 
@@ -2720,6 +2855,21 @@ async def create_immich_pull(
         else:
             raise HTTPException(status_code=400, detail="API key is required for new pulls")
 
+    # Validate cron schedule up-front so a typo fails at save time (F1)
+    cron_expression = (body.cron_expression or "").strip() or None
+    cron_timezone = (body.cron_timezone or "").strip() or None
+    if cron_expression:
+        try:
+            cron_utils.validate(cron_expression)
+            if cron_timezone:
+                cron_utils.validate_tz(cron_timezone)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    # Preserve last_run across edits
+    existing = provider.get_pull(body.name)
+    last_run = existing.last_run if existing else None
+
     config = ImmichPullConfig(
         name=body.name,
         server_url=body.server_url,
@@ -2735,9 +2885,19 @@ async def create_immich_pull(
         taken_before=body.taken_before,
         media_type=body.media_type,
         replace_existing=body.replace_existing,
+        cron_expression=cron_expression,
+        cron_timezone=cron_timezone,
+        last_run=last_run,
+        protect_favorites=body.protect_favorites,
+        skip_excluded=body.skip_excluded,
     )
 
     provider.add_pull(config)
+    provider.save_config()
+    # Re-install/remove the scheduled job for this pull (F1)
+    scheduler = getattr(request.app.state, "pull_scheduler", None)
+    if scheduler:
+        scheduler.reload_pull(body.name)
     return JSONResponse(content={"message": f"Pull '{body.name}' configured"})
 
 
@@ -2766,6 +2926,10 @@ async def delete_immich_pull(
     logger.info(f"User {actor} deleting Immich pull: {pull_name}")
 
     if provider.remove_pull(pull_name):
+        provider.save_config()
+        scheduler = getattr(request.app.state, "pull_scheduler", None)
+        if scheduler:
+            scheduler.reload_pull(pull_name)
         return JSONResponse(content={"message": f"Pull '{pull_name}' deleted"})
     else:
         raise HTTPException(status_code=404, detail=f"Pull '{pull_name}' not found")
@@ -3082,6 +3246,83 @@ async def create_folder(
     except Exception as e:
         logger.error(f"Failed to create folder {folder_path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Curation (favorite / hide-from-slideshow) — F6
+# =============================================================================
+
+class CurationToggleRequest(BaseModel):
+    """Request body for setting a curation flag on an image path."""
+    path: str = Field(..., min_length=1, max_length=1024, description="Image path relative to IMAGE_DIR")
+    value: bool = Field(..., description="New flag value")
+
+
+def _validate_curation_path(path: str) -> str:
+    """Normalize + validate the image path; raises 400 on traversal."""
+    try:
+        full = resolve_image_path(path, image_service.image_dir)
+        return str(full.relative_to(image_service.image_dir))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image path")
+
+
+async def _refresh_all_groups(request: Request) -> None:
+    """Rebuild every group's image pool (used after an exclude toggle)."""
+    display_manager = get_display_manager(request)
+    for group_id in list(display_manager.groups.keys()):
+        try:
+            await display_manager.refresh_group_images(group_id)
+        except Exception as e:
+            logger.debug(f"Curation refresh failed for group {group_id}: {e}")
+
+
+@router.get("/api/curation", responses={200: {"description": "Curation lists"}})
+async def get_curation(request: Request, auth: Union[APIKey, User] = Depends(get_admin_auth)):
+    """List all favorited and excluded image paths."""
+    check_admin_scope(auth, "admin:display:monitor")
+    curation = request.app.state.curation_service
+    return JSONResponse(content=curation.list_all())
+
+
+@router.get("/api/curation/state", responses={200: {"description": "Curation state for a path"}})
+async def get_curation_state(request: Request, path: str, auth: Union[APIKey, User] = Depends(get_admin_auth)):
+    """Return {favorite, excluded} for a single image path."""
+    check_admin_scope(auth, "admin:display:monitor")
+    rel = _validate_curation_path(path)
+    return JSONResponse(content=request.app.state.curation_service.get_state(rel))
+
+
+@router.post("/api/curation/favorite", responses={200: {"description": "Favorite flag updated"}})
+async def set_curation_favorite(
+    request: Request,
+    body: CurationToggleRequest,
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """Mark/unmark an image as a favorite."""
+    check_admin_scope(auth, "admin:display:manage")
+    rel = _validate_curation_path(body.path)
+    curation = request.app.state.curation_service
+    await asyncio.get_running_loop().run_in_executor(None, curation.set_favorite, rel, body.value)
+    return JSONResponse(content={"path": rel, **curation.get_state(rel)})
+
+
+@router.post("/api/curation/exclude", responses={200: {"description": "Exclude flag updated"}})
+async def set_curation_exclude(
+    request: Request,
+    body: CurationToggleRequest,
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """Hide/unhide an image from the slideshow, then rebuild affected pools."""
+    check_admin_scope(auth, "admin:display:manage")
+    rel = _validate_curation_path(body.path)
+    curation = request.app.state.curation_service
+    await asyncio.get_running_loop().run_in_executor(None, curation.set_excluded, rel, body.value)
+    # Excluded images must leave the live pool immediately
+    await _refresh_all_groups(request)
+    return JSONResponse(content={"path": rel, **curation.get_state(rel)})
 
 
 # =============================================================================

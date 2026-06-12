@@ -55,6 +55,15 @@ class ImmichPullConfig:
     # Behavior
     replace_existing: bool = True                # Clear folder before pulling
 
+    # Scheduling (F1) — cron-based auto-pull
+    cron_expression: Optional[str] = None        # 5-field cron; None = unscheduled
+    cron_timezone: Optional[str] = None          # IANA tz; None = inherit SCHEDULER_TIMEZONE
+    last_run: Optional[str] = None               # ISO timestamp of last scheduled run
+
+    # Curation interaction (F6)
+    protect_favorites: bool = True               # Keep favorited files across replace_existing pulls
+    skip_excluded: bool = True                   # Never re-download excluded assets
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return asdict(self)
@@ -75,7 +84,11 @@ class ImmichPullConfig:
         valid_keys = {"name", "server_url", "api_key", "target_folder", "count",
                       "album_ids", "album_filter_mode", "person_ids", "person_filter_mode",
                       "is_favorite", "taken_after", "taken_before", "media_type",
-                      "replace_existing"}
+                      "replace_existing",
+                      # F1 scheduling
+                      "cron_expression", "cron_timezone", "last_run",
+                      # F6 curation interaction
+                      "protect_favorites", "skip_excluded"}
         filtered = {k: v for k, v in data.items() if k in valid_keys}
 
         return cls(**filtered)
@@ -129,10 +142,13 @@ class ImmichProvider:
         self,
         image_dir: Path,
         config_path: Optional[Path] = None,
-        on_pull_complete: Optional[Callable[[str], Awaitable[None]]] = None
+        on_pull_complete: Optional[Callable[[str], Awaitable[None]]] = None,
+        curation=None
     ):
         self.image_dir = image_dir
         self.config_path = config_path or Path("config/immich_pulls.yaml")
+        # Curation service (F6) — drives skip_excluded / protect_favorites
+        self.curation = curation
         self.pulls: Dict[str, ImmichPullConfig] = {}
         self._pull_results: Dict[str, PullResult] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
@@ -616,6 +632,63 @@ class ImmichProvider:
             logger.error(f"Failed to download asset {asset_id}: {e}")
             return None
 
+    async def _search_excluding(self, config, result, excluded_ids: set):
+        """Search for assets, dropping excluded ids and backfilling extra
+        rounds (up to a cap) to reach the requested count (F6 skip_excluded)."""
+        assets = await self.search_assets(config, result)
+        if not excluded_ids:
+            return assets
+
+        seen = set()
+        selected = []
+        for a in assets:
+            if a["id"] in excluded_ids or a["id"] in seen:
+                continue
+            seen.add(a["id"])
+            selected.append(a)
+
+        # Backfill with additional random search rounds if we came up short
+        attempts = 0
+        while len(selected) < config.count and attempts < 3:
+            attempts += 1
+            more = await self.search_assets(config, result)
+            added = 0
+            for a in more:
+                if len(selected) >= config.count:
+                    break
+                if a["id"] in excluded_ids or a["id"] in seen:
+                    continue
+                seen.add(a["id"])
+                selected.append(a)
+                added += 1
+            if added == 0:
+                break  # nothing new available; stop to avoid spinning
+        return selected[:config.count]
+
+    def _carry_over_favorites(self, config, staging_dir: Path) -> int:
+        """Copy favorited files from the live target folder into the staging
+        dir before an atomic swap, so a replace_existing pull never deletes a
+        favorited image (F6 protect_favorites). Returns count preserved."""
+        if not config.protect_favorites or self.curation is None:
+            return 0
+        tf = config.target_folder.strip("/")
+        favorites = self.curation.favorite_paths(prefix=tf)
+        preserved = 0
+        for rel in favorites:
+            src = self.image_dir / rel
+            if not src.exists() or src.is_symlink():
+                continue
+            dest = staging_dir / Path(rel).name
+            if dest.exists():
+                continue  # a freshly-downloaded file already claims this name; keep it
+            try:
+                staging_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                preserved += 1
+            except Exception as e:
+                logger.warning(f"Failed to preserve favorite {rel}: {e}")
+        return preserved
+
     async def pull_images(self, pull_name: str) -> PullResult:
         """Execute a pull operation - search, download, store locally"""
         config = self.pulls.get(pull_name)
@@ -652,15 +725,22 @@ class ImmichProvider:
                 # Clean up a staging dir left over from a previously crashed pull
                 shutil.rmtree(staging_dir, ignore_errors=True)
 
-            # Search for assets (pass result for progress tracking)
+            # Excluded asset ids to skip (F6) — never re-download hidden images
+            excluded_ids = set()
+            if config.skip_excluded and self.curation is not None:
+                excluded_ids = self.curation.excluded_asset_ids()
+
+            # Search for assets (pass result for progress tracking), filtering
+            # out excluded ids and backfilling extra rounds to reach the count.
             logger.info(f"Searching Immich for pull: {pull_name}")
-            assets = await self.search_assets(config, result)
+            assets = await self._search_excluding(config, result, excluded_ids)
             result.total = len(assets)
             result.phase = "downloading"
             self._pull_results[pull_name] = result
             logger.info(f"Found {len(assets)} assets for pull: {pull_name}")
 
             cancelled = False
+            downloaded_items = []  # (asset_id, basename) for curation asset-map
 
             # Download each asset
             for asset in assets:
@@ -681,6 +761,7 @@ class ImmichProvider:
                 path = await self.download_asset(config, asset_id, original_filename, target_dir=download_dir)
                 if path:
                     result.downloaded += 1
+                    downloaded_items.append((asset_id, path.name))
                 else:
                     if len(result.errors) < MAX_PULL_ERRORS:
                         result.errors.append(f"Failed to download: {asset_id}")
@@ -699,10 +780,20 @@ class ImmichProvider:
 
             # Atomically swap staging dir into place for replace_existing pulls
             if config.replace_existing:
+                # Preserve favorited files so a re-pull never deletes them (F6)
+                preserved = self._carry_over_favorites(config, staging_dir)
                 if final_dir.exists():
                     shutil.rmtree(final_dir)
                 staging_dir.replace(final_dir)
-                logger.info(f"Swapped staged downloads into: {final_dir}")
+                logger.info(f"Swapped staged downloads into: {final_dir} (preserved {preserved} favorites)")
+
+            # Record path -> asset_id map for curation (F6), using post-swap paths
+            if self.curation is not None and downloaded_items:
+                tf = config.target_folder.strip("/")
+                self.curation.record_pull_assets(
+                    pull_name,
+                    [(f"{tf}/{name}" if tf else name, aid) for (aid, name) in downloaded_items],
+                )
 
             result.status = PullStatus.COMPLETED
             result.phase = "completed"

@@ -167,6 +167,50 @@ class HomeAssistantProvider:
             logger.error(f"Failed to get HA weather: {e}")
             return {"error": str(e)}
 
+    async def get_sun(self, entity_id: str = "sun.sun") -> Dict[str, Any]:
+        """
+        Get the HA sun entity state for night-mode scheduling (F2).
+
+        Returns {state: 'above_horizon'|'below_horizon', next_dawn, next_dusk}
+        or an 'error' field on failure. Cached like weather.
+        """
+        if not self.config or not self.config.enabled:
+            return {"error": "Home Assistant not configured"}
+        if not entity_id:
+            entity_id = "sun.sun"
+
+        now_ts = datetime.now(timezone.utc).timestamp()
+        cache_key = f"__sun__{entity_id}"
+        if cache_key in self._weather_cache:
+            data, cached_ts = self._weather_cache[cache_key]
+            if (now_ts - cached_ts) < self._cache_ttl:
+                return data
+
+        client = await self._get_client()
+        headers = self._get_headers()
+        base_url = self.config.url.rstrip('/')
+        try:
+            response = await client.get(f"{base_url}/api/states/{entity_id}", headers=headers)
+            response.raise_for_status()
+            state = response.json()
+            attrs = state.get("attributes", {})
+            sun_data = {
+                "state": state.get("state"),  # above_horizon | below_horizon
+                "next_dawn": attrs.get("next_dawn"),
+                "next_dusk": attrs.get("next_dusk"),
+                "next_rising": attrs.get("next_rising"),
+                "next_setting": attrs.get("next_setting"),
+            }
+            self._weather_cache[cache_key] = (sun_data, now_ts)
+            return sun_data
+        except httpx.HTTPStatusError as e:
+            return {"error": f"API error: {e.response.status_code}"}
+        except httpx.TimeoutException:
+            return {"error": "Connection timeout"}
+        except Exception as e:
+            logger.error(f"Failed to get HA sun: {e}")
+            return {"error": str(e)}
+
     async def get_forecast(
         self,
         entity_id: str,

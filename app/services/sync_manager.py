@@ -135,6 +135,27 @@ class DisplayGroupSettings(BaseModel):
     background_blur_amount: int = Field(default=50, ge=0, le=100)
     image_fit: Literal['contain', 'cover'] = 'contain'
 
+    # Transition & Ken Burns settings (F3)
+    transition_effect: Literal['none', 'fade', 'crossfade', 'slide', 'dissolve'] = 'fade'
+    transition_duration_ms: int = Field(default=500, ge=100, le=3000)
+    ken_burns: bool = False
+    ken_burns_intensity: int = Field(default=15, ge=0, le=50)  # max % zoom/pan
+    ken_burns_duration: int = Field(default=20, ge=5, le=120)  # seconds
+
+    # Photo caption overlay settings (F4)
+    show_caption: bool = False
+    caption_fields: List[str] = Field(default_factory=lambda: ['filename'])  # filename|date_taken|folder|location
+    caption_position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = 'bottom-right'
+
+    # Night mode / schedule settings (F2)
+    night_mode: bool = False
+    night_mode_source: Literal['fixed', 'homeassistant'] = 'fixed'
+    night_sleep_time: str = '23:00'  # HH:MM local
+    night_wake_time: str = '07:00'   # HH:MM local
+    night_ha_sun_entity: str = 'sun.sun'
+    night_action: Literal['blank', 'dim'] = 'blank'
+    night_dim_opacity: int = Field(default=20, ge=0, le=90)
+
     # Burn-in prevention settings
     burn_in_protection: bool = False
     burn_in_interval: int = Field(default=5, ge=1, le=60)  # minutes between dimming cycles
@@ -221,6 +242,8 @@ class DisplayEndpoint:
     forward_history: List[str] = field(default_factory=list)  # Future images for "next" replay
     created_at: datetime = field(default_factory=_utc_now)
     last_seen: Optional[datetime] = None  # Last time a browser was connected
+    # Per-endpoint setting overrides (F7) — whitelisted presentation keys only
+    settings_override: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses and config persistence."""
@@ -235,6 +258,7 @@ class DisplayEndpoint:
             "forward_history": self.forward_history[-10:] if self.forward_history else [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+            "settings_override": dict(self.settings_override or {}),
         }
 
     def to_config_dict(self) -> Dict[str, Any]:
@@ -244,11 +268,14 @@ class DisplayEndpoint:
         - It's runtime state, not configuration
         - Disk files may change between restarts, making history stale
         - History should start fresh on server restart
+
+        settings_override IS persisted — it is configuration, not runtime state.
         """
         if not self.is_persistent:
             return {}
         return {
             "name": self.name,
+            "settings_override": dict(self.settings_override or {}),
         }
 
     @classmethod
@@ -265,6 +292,7 @@ class DisplayEndpoint:
             image_history=[],
             forward_history=[],
             created_at=_utc_now(),
+            settings_override=data.get("settings_override") or {},
         )
 
 
@@ -290,11 +318,14 @@ class ImagePool:
         self,
         image_service: ImageService,
         settings: DisplayGroupSettings,
-        is_folder_locked: Optional[Callable[[str], bool]] = None
+        is_folder_locked: Optional[Callable[[str], bool]] = None,
+        is_excluded: Optional[Callable[[str], bool]] = None
     ):
         self.image_service = image_service
         self.settings = settings
         self._is_folder_locked = is_folder_locked or (lambda _: False)
+        # Curation: returns True if a relative image path is hidden (F6)
+        self._is_excluded = is_excluded or (lambda _: False)
         self._all_images: List[Path] = []
         self._all_paths_cache: Optional[List[str]] = None  # Cached string paths (#26)
         self._shown_images: Set[str] = set()  # Images shown this complete cycle
@@ -342,6 +373,15 @@ class ImagePool:
             folder_paths=folder_paths,
             recursive=self.settings.recursive
         )
+
+        # Drop curation-excluded (hidden) images from the pool (F6)
+        excluded = self._is_excluded
+        if excluded is not None:
+            base = self.image_service.image_dir
+            self._all_images = [
+                p for p in self._all_images
+                if not excluded(str(p.relative_to(base)))
+            ]
 
         # Track empty pool (no images found, even if folders exist)
         if not self._all_images and not self.error:
@@ -475,6 +515,7 @@ class DisplayGroup:
     current_cycle: int = 0
     next_switch_time: Optional[datetime] = None
     paused: bool = False  # Pause/play state for admin controls
+    night_paused: bool = False  # Night-mode state (F2); distinct from user pause
     _cycle_task: Optional[asyncio.Task] = field(default=None, repr=False)
     _webhook_interval_tasks: Dict[str, asyncio.Task] = field(default_factory=dict, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
@@ -537,6 +578,7 @@ class DisplayGroup:
             "browser_count": len(self.browsers),
             "current_cycle": self.current_cycle,
             "paused": self.paused,
+            "night_paused": self.night_paused,
             "created_at": self.created_at.isoformat() + "Z",
             "next_switch_at": self.next_switch_time.isoformat() if self.next_switch_time else None,
             "settings": self.settings.to_dict(),
@@ -554,10 +596,13 @@ class DisplayManager:
         self,
         image_service: ImageService,
         config_path: Optional[Path] = None,
-        is_folder_locked: Optional[Callable[[str], bool]] = None
+        is_folder_locked: Optional[Callable[[str], bool]] = None,
+        is_excluded: Optional[Callable[[str], bool]] = None
     ):
         self.image_service = image_service
         self._is_folder_locked = is_folder_locked or (lambda _: False)
+        # Curation: returns True if a relative image path is hidden (F6)
+        self._is_excluded = is_excluded or (lambda _: False)
         self.groups: Dict[str, DisplayGroup] = {}
         self._lock = asyncio.Lock()
         self._base_url: str = ""
@@ -829,7 +874,7 @@ class DisplayManager:
             if settings is None:
                 settings = DisplayGroupSettings()
 
-            image_pool = ImagePool(self.image_service, settings, self._is_folder_locked)
+            image_pool = ImagePool(self.image_service, settings, self._is_folder_locked, self._is_excluded)
             group = DisplayGroup(
                 group_id=group_id,
                 settings=settings,
@@ -848,6 +893,27 @@ class DisplayManager:
         # Start webhook interval tasks if any
         self._start_webhook_interval_tasks(group)
 
+        return group
+
+    async def clone_group(self, source_id: str, new_id: str) -> DisplayGroup:
+        """Clone a group's settings into a new group (F5).
+
+        Copies settings only — NOT endpoints, browsers, history, or cycle
+        state. Webhook ids are regenerated so the clone doesn't share webhook
+        identities with the source.
+        """
+        source = self.groups.get(source_id)
+        if source is None:
+            raise ValueError(f"Group '{source_id}' not found")
+
+        # Deep-copy settings via dict round-trip
+        cloned = DisplayGroupSettings.from_dict(source.settings.to_dict())
+        # Regenerate webhook ids so the clone owns distinct webhook identities
+        for wh in cloned.webhooks:
+            wh.id = str(uuid.uuid4())[:8]
+
+        group = await self.create_group(new_id, cloned)
+        self.save_config()
         return group
 
     async def get_group(self, group_id: str) -> Optional[DisplayGroup]:
@@ -932,12 +998,22 @@ class DisplayManager:
                     pass
                 group._cycle_task = None
 
-        # Phase 2: Broadcast OUTSIDE the lock (prevents deadlock)
-        message = {
-            "type": "SETTINGS_CHANGED",
-            "settings": group.settings.to_dict()
-        }
-        await self._broadcast_to_group(group, message)
+        # Phase 2: Send per-browser OUTSIDE the lock (prevents deadlock).
+        # Each endpoint may override presentation settings (F7), so build the
+        # message per browser instead of one shared broadcast.
+        for browser in list(group.browsers.values()):
+            endpoint = group.endpoints.get(browser.endpoint_id)
+            ep_settings = self.build_endpoint_settings(group, endpoint)
+            try:
+                await asyncio.wait_for(
+                    browser.websocket.send_json({
+                        "type": "SETTINGS_CHANGED",
+                        "settings": ep_settings.to_dict()
+                    }),
+                    timeout=WEBSOCKET_SEND_TIMEOUT
+                )
+            except Exception as e:
+                logger.debug(f"SETTINGS_CHANGED send failed for {browser.browser_id}: {e}")
 
         # Phase 3: Restart cycle under lock (only if auto_cycle enabled)
         async with group._lock:
@@ -1212,6 +1288,110 @@ class DisplayManager:
                 "group": group.to_dict()
             })
 
+    # Keys an endpoint may override (F7) — client-side presentation only, so
+    # the override applies purely in the settings message without touching the
+    # group-wide server-side image processing (width/eink/blur).
+    ENDPOINT_OVERRIDE_KEYS = {
+        "layout", "image_fit", "clock_position", "overlay_theme",
+        "transition_effect", "transition_duration_ms",
+        "ken_burns", "ken_burns_intensity", "ken_burns_duration",
+        "show_caption", "caption_fields", "caption_position",
+        "weather_position",
+    }
+
+    def build_endpoint_settings(self, group: "DisplayGroup", endpoint: Optional["DisplayEndpoint"]) -> DisplayGroupSettings:
+        """Return group settings with the endpoint's whitelisted overrides merged (F7)."""
+        base = group.settings.to_dict()
+        override = (endpoint.settings_override if endpoint else None) or {}
+        applied = {k: v for k, v in override.items() if k in self.ENDPOINT_OVERRIDE_KEYS and v is not None}
+        if applied:
+            base.update(applied)
+            return DisplayGroupSettings.from_dict(base)
+        return group.settings
+
+    def filter_endpoint_override(self, override: Dict[str, Any]) -> Dict[str, Any]:
+        """Keep only whitelisted, non-None override keys."""
+        return {k: v for k, v in (override or {}).items()
+                if k in self.ENDPOINT_OVERRIDE_KEYS and v is not None}
+
+    def build_caption(self, image_path: str, settings: DisplayGroupSettings) -> Optional[Dict[str, Any]]:
+        """Build a caption dict for an image based on settings (F4).
+
+        filename/folder are derived from the path; date_taken/location come from
+        EXIF (read once per path and cached). Returns None when captions are off
+        or no requested field has a value.
+        """
+        if not getattr(settings, "show_caption", False):
+            return None
+        fields = settings.caption_fields or []
+        out: Dict[str, Any] = {}
+        if "filename" in fields:
+            out["filename"] = Path(image_path).name
+        if "folder" in fields:
+            parent = str(Path(image_path).parent)
+            out["folder"] = "" if parent == "." else parent
+        if "date_taken" in fields or "location" in fields:
+            meta = self._caption_exif(image_path)
+            if "date_taken" in fields and meta.get("date_taken"):
+                out["date_taken"] = meta["date_taken"]
+            if "location" in fields and meta.get("location"):
+                out["location"] = meta["location"]
+        return out or None
+
+    def _caption_exif(self, image_path: str) -> Dict[str, Any]:
+        """Read date_taken + location from EXIF (cached per relative path)."""
+        if not hasattr(self, "_caption_cache"):
+            self._caption_cache: Dict[str, Dict[str, Any]] = {}
+        if image_path in self._caption_cache:
+            return self._caption_cache[image_path]
+        meta: Dict[str, Any] = {}
+        try:
+            from PIL import Image as _PILImage
+            full = self.image_service.image_dir / image_path
+            with _PILImage.open(full) as img:
+                exif = img.getexif()
+                # DateTimeOriginal (0x9003) lives in the Exif IFD; fall back to DateTime
+                dt = None
+                try:
+                    exif_ifd = exif.get_ifd(0x8769)
+                    dt = exif_ifd.get(0x9003)
+                except Exception:
+                    pass
+                dt = dt or exif.get(0x0132)  # DateTime
+                if dt and isinstance(dt, str):
+                    # "YYYY:MM:DD HH:MM:SS" -> "YYYY-MM-DD"
+                    meta["date_taken"] = dt.split(" ")[0].replace(":", "-")
+                gps = exif.get_ifd(0x8825) if hasattr(exif, "get_ifd") else None
+                if gps:
+                    loc = self._format_gps(gps)
+                    if loc:
+                        meta["location"] = loc
+        except Exception as e:
+            logger.debug(f"Caption EXIF read failed for {image_path}: {e}")
+        self._caption_cache[image_path] = meta
+        return meta
+
+    @staticmethod
+    def _format_gps(gps: Dict[Any, Any]) -> Optional[str]:
+        """Convert EXIF GPS IFD to a 'lat, lon' decimal string."""
+        try:
+            def _to_deg(vals, ref):
+                d = float(vals[0]); m = float(vals[1]); s = float(vals[2])
+                dec = d + m / 60.0 + s / 3600.0
+                if ref in ("S", "W"):
+                    dec = -dec
+                return dec
+            lat = _to_deg(gps[2], gps[1])
+            lon = _to_deg(gps[4], gps[3])
+            return f"{lat:.4f}, {lon:.4f}"
+        except Exception:
+            return None
+
+    def clear_caption_cache(self) -> None:
+        """Invalidate the EXIF caption cache (call on folder change)."""
+        if hasattr(self, "_caption_cache"):
+            self._caption_cache.clear()
+
     def build_image_url(self, image_path: str, settings: DisplayGroupSettings) -> str:
         """Build a full image URL with processing parameters"""
         params = []
@@ -1340,6 +1520,12 @@ class DisplayManager:
                         logger.info(f"No browsers in {group.group_id}, exiting cycle loop")
                         break
 
+                    # Night mode (F2): idle without cycling while asleep. The
+                    # task stays alive so it resumes automatically at wake.
+                    if group.night_paused:
+                        await asyncio.sleep(5)
+                        continue
+
                     duration = group.settings.duration
 
                     # Check if all folders are locked (being updated by Immich pull)
@@ -1397,6 +1583,7 @@ class DisplayManager:
                                         "image_url": image_url,
                                         "blur_url": blur_url,
                                         "image_id": next_image,
+                                        "caption": self.build_caption(next_image, group.settings),
                                         "switch_at": switch_at
                                     }),
                                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -1582,6 +1769,75 @@ class DisplayManager:
                 )
 
         return recovered
+
+    @staticmethod
+    def is_night_window(sleep_time: str, wake_time: str, now_minutes: int) -> bool:
+        """True if now (minutes since local midnight) is within the sleep window.
+
+        Handles wrap-around windows (e.g. 23:00 -> 07:00).
+        """
+        def _parse(hhmm: str) -> Optional[int]:
+            try:
+                h, m = hhmm.split(":")
+                return int(h) * 60 + int(m)
+            except Exception:
+                return None
+        sleep = _parse(sleep_time)
+        wake = _parse(wake_time)
+        if sleep is None or wake is None or sleep == wake:
+            return False
+        if sleep < wake:
+            return sleep <= now_minutes < wake
+        # Wrap-around (overnight)
+        return now_minutes >= sleep or now_minutes < wake
+
+    async def _is_night(self, group: DisplayGroup, ha_provider=None) -> bool:
+        """Determine whether a group should currently be asleep (F2)."""
+        s = group.settings
+        if not s.night_mode:
+            return False
+        if s.night_mode_source == "homeassistant" and ha_provider is not None:
+            sun = await ha_provider.get_sun(s.night_ha_sun_entity or "sun.sun")
+            if sun and not sun.get("error"):
+                return sun.get("state") == "below_horizon"
+            # On HA error, fall back to fixed-time window
+        now = datetime.now()  # server local time
+        return self.is_night_window(s.night_sleep_time, s.night_wake_time, now.hour * 60 + now.minute)
+
+    async def enforce_schedules(self, ha_provider=None) -> int:
+        """Apply night-mode transitions across all groups (F2).
+
+        Sets/clears group.night_paused and broadcasts NIGHT_MODE so connected
+        browsers blank or dim. Returns the number of groups that changed state.
+        """
+        changed = 0
+        for group in list(self.groups.values()):
+            if not group.settings.night_mode:
+                if group.night_paused:
+                    group.night_paused = False  # mode turned off — clear stale state
+                continue
+            try:
+                night = await self._is_night(group, ha_provider)
+            except Exception as e:
+                logger.debug(f"Night check failed for {group.group_id}: {e}")
+                continue
+            if night == group.night_paused:
+                continue
+            group.night_paused = night
+            changed += 1
+            logger.info(f"Group {group.group_id} night mode: {'asleep' if night else 'awake'}")
+            await self._broadcast_to_group(group, {
+                "type": "NIGHT_MODE",
+                "active": night,
+                "action": group.settings.night_action,
+                "opacity": group.settings.night_dim_opacity,
+            })
+            # Restart a cycle task on wake if one should be running but isn't
+            if not night and group.browsers and not group.paused and group.settings.auto_cycle:
+                if group._cycle_task is None or group._cycle_task.done():
+                    group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
+            await self._notify_admins({"type": "GROUP_UPDATED", "group": group.to_dict()})
+        return changed
 
     # --- Playback Control Methods ---
 
@@ -1787,6 +2043,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
+                        "caption": self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -1860,6 +2117,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
+                        "caption": self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -1963,6 +2221,7 @@ class DisplayManager:
                     "image_url": image_url,
                     "blur_url": blur_url,
                     "image_id": image_path,
+                    "caption": self.build_caption(image_path, group.settings),
                     "cycle": group.current_cycle
                 }),
                 timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2103,6 +2362,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
+                        "caption": self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2145,6 +2405,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
+                        "caption": self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2223,6 +2484,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
+                        "caption": self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2275,6 +2537,7 @@ class DisplayManager:
                     "image_url": image_url,
                     "blur_url": blur_url,
                     "image_id": new_image,
+                    "caption": self.build_caption(new_image, group.settings),
                     "cycle": group.current_cycle
                 }),
                 timeout=WEBSOCKET_SEND_TIMEOUT

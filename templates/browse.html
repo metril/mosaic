@@ -416,6 +416,16 @@
             margin-right: 15px;
         }
 
+        .curate-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background-color: #444;
+        }
+        .curate-btn svg { display: block; }
+        #favorite-toggle.active { background-color: #e0245e; }  /* heart red */
+        #hide-toggle.active { background-color: #6b7280; }      /* hidden gray */
+
         .btn {
             background-color: #0066cc;
             color: white;
@@ -921,6 +931,14 @@
             <img id="lightbox-image" src="" alt="">
             <div class="lightbox-controls">
                 <span class="lightbox-info" id="lightbox-info"></span>
+                <button class="btn curate-btn" id="favorite-toggle" onclick="toggleCuration('favorite')" title="Favorite">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path id="favorite-icon-path" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 21s-7.5-4.6-10-9.3C.6 8.9 2 5.5 5.2 5.5c1.9 0 3.2 1.1 3.8 2.2C9.6 6.6 10.9 5.5 12.8 5.5 16 5.5 17.4 8.9 16 11.7 13.5 16.4 12 21 12 21z"/></svg>
+                    <span id="favorite-toggle-text">Favorite</span>
+                </button>
+                <button class="btn curate-btn" id="hide-toggle" onclick="toggleCuration('exclude')" title="Hide from slideshow">
+                    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.6-7 10-7c2 0 3.7.7 5.1 1.6M22 12s-3.6 7-10 7c-2 0-3.7-.7-5.1-1.6"/><path d="M9.5 9.5a3.5 3.5 0 0 0 5 5"/><line x1="3" y1="3" x2="21" y2="21"/></g></svg>
+                    <span id="hide-toggle-text">Hide from slideshow</span>
+                </button>
                 <button class="btn" id="eink-toggle" onclick="toggleEinkPreview()">
                     <span id="eink-toggle-text">E-Ink Preview</span>
                 </button>
@@ -990,6 +1008,8 @@
     <script>
         // Tree data from server
         const treeData = {{ tree_json | safe }};
+        const CSRF_TOKEN = '{{ csrf_token }}';
+        let currentCurationPath = '';
         let currentImageUrl = '';
         let currentImageName = '';
 
@@ -1290,6 +1310,10 @@
             lightboxInfo.textContent = `${image.name} - ${image.dimensions} - ${image.fileSize}`;
             lightboxLink.href = image.url;
 
+            // Load curation (favorite/hidden) state for this image (F6)
+            currentCurationPath = decodeURIComponent((image.url || '').replace(/^.*\/images\//, ''));
+            loadCurationState(currentCurationPath);
+
             // Update counter
             if (currentImageList.length > 1) {
                 imageCounter.textContent = `${currentImageIndex + 1} of ${currentImageList.length}`;
@@ -1563,6 +1587,53 @@
             setTimeout(() => {
                 toast.classList.remove('show');
             }, 3000);
+        }
+
+        // --- Curation (favorite / hide-from-slideshow) — F6 ---
+        function applyCurationButtons(state) {
+            const favBtn = document.getElementById('favorite-toggle');
+            const favText = document.getElementById('favorite-toggle-text');
+            const favPath = document.getElementById('favorite-icon-path');
+            const hideBtn = document.getElementById('hide-toggle');
+            const hideText = document.getElementById('hide-toggle-text');
+            const fav = !!(state && state.favorite);
+            const hidden = !!(state && state.excluded);
+            favBtn.classList.toggle('active', fav);
+            favPath.setAttribute('fill', fav ? 'currentColor' : 'none');
+            favText.textContent = fav ? 'Favorited' : 'Favorite';
+            hideBtn.classList.toggle('active', hidden);
+            hideText.textContent = hidden ? 'Hidden' : 'Hide from slideshow';
+        }
+
+        async function loadCurationState(path) {
+            applyCurationButtons(null);
+            if (!path) return;
+            try {
+                const res = await fetch('/api/curation/state?path=' + encodeURIComponent(path));
+                if (res.ok) applyCurationButtons(await res.json());
+            } catch (e) { /* non-fatal */ }
+        }
+
+        async function toggleCuration(kind) {
+            if (!currentCurationPath) return;
+            const isFav = kind === 'favorite';
+            const cur = document.getElementById(isFav ? 'favorite-toggle' : 'hide-toggle').classList.contains('active');
+            const endpoint = isFav ? '/api/curation/favorite' : '/api/curation/exclude';
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+                    body: JSON.stringify({ path: currentCurationPath, value: !cur })
+                });
+                if (!res.ok) throw new Error('request failed');
+                const state = await res.json();
+                applyCurationButtons(state);
+                showToast(isFav
+                    ? (state.favorite ? 'Added to favorites' : 'Removed from favorites')
+                    : (state.excluded ? 'Hidden from slideshow' : 'Un-hidden'), 'success');
+            } catch (e) {
+                showToast('Failed to update', 'error');
+            }
         }
 
         // Copy image link to clipboard

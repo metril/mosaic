@@ -71,6 +71,47 @@
             .fade-transition {
                 transition: opacity 0.3s ease-in-out;
             }
+            /* Configurable transition (F3) — duration set inline via JS */
+            .img-transition {
+                transition: opacity var(--transition-ms, 500ms) ease-in-out,
+                            transform var(--transition-ms, 500ms) ease-in-out;
+            }
+            /* Slide entrance for the incoming image */
+            @keyframes slide-in {
+                from { transform: translateX(8%); opacity: 0; }
+                to   { transform: translateX(0);  opacity: 1; }
+            }
+            @keyframes dissolve-in {
+                from { opacity: 0; filter: blur(8px); }
+                to   { opacity: 1; filter: blur(0); }
+            }
+            /* Photo caption overlay (F4) */
+            .caption-overlay .caption-text {
+                color: #fff;
+                font-size: 1.4vw;
+                text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 45vw;
+            }
+            /* Night mode overlay (F2) — blanks or dims the whole display */
+            #nightOverlay {
+                position: fixed;
+                inset: 0;
+                background: #000;
+                opacity: 0;
+                display: none;
+                z-index: 2000;
+                transition: opacity 0.8s ease-in-out;
+                pointer-events: none;
+            }
+            /* Ken Burns slow pan/zoom (F3). Direction/scale set via CSS vars. */
+            @keyframes kenburns {
+                from { transform: scale(1) translate(0, 0); }
+                to   { transform: scale(var(--kb-scale, 1.15))
+                                  translate(var(--kb-x, 0%), var(--kb-y, 0%)); }
+            }
             /* Connection status indicator */
             .status-indicator {
                 position: fixed;
@@ -277,6 +318,11 @@
                 <div class="weather-condition" id="weatherCondition"></div>
                 <div class="weather-forecast" id="weatherForecast"></div>
             </div>
+
+            <!-- Photo caption overlay (F4) -->
+            <div class="overlay caption-overlay clock--theme-{{ settings.overlay_theme|default('fade') }} position-{{ settings.caption_position|default('bottom-right') }} hidden" id="captionOverlay">
+                <div class="caption-text" id="captionText"></div>
+            </div>
         </div>
 
         <div class="debug-overlay" id="debugOverlay">
@@ -331,8 +377,16 @@
                 burn_in_opacity: {{ settings.burn_in_opacity|default(70) }},
                 burn_in_shift_enabled: {{ settings.burn_in_shift_enabled|default(true)|tojson }},
                 burn_in_shift_amount: {{ settings.burn_in_shift_amount|default(5) }},
-                burn_in_shift_interval: {{ settings.burn_in_shift_interval|default(60) }}
+                burn_in_shift_interval: {{ settings.burn_in_shift_interval|default(60) }},
+                // Transition & Ken Burns (F3)
+                transition_effect: "{{ settings.transition_effect|default('fade') }}",
+                transition_duration_ms: {{ settings.transition_duration_ms|default(500) }},
+                ken_burns: {{ settings.ken_burns|default(false)|tojson }},
+                ken_burns_intensity: {{ settings.ken_burns_intensity|default(15) }},
+                ken_burns_duration: {{ settings.ken_burns_duration|default(20) }}
             };
+            // Mutable current settings (updated on SETTINGS_CHANGED / WELCOME)
+            let currentSettings = Object.assign({}, SETTINGS);
 
             // =================================================================
             // Clock Class - Real-time time display with offset-based server sync
@@ -802,12 +856,51 @@
             const blurManager = new BackgroundBlur(SETTINGS);
             const layoutManager = new LayoutManager(SETTINGS);
 
+            // Caption overlay manager (F4)
+            const CAPTION_ORDER = ['filename', 'date_taken', 'folder', 'location'];
+            const captionManager = {
+                settings: SETTINGS,
+                overlay: null,
+                textEl: null,
+                _init: function() {
+                    this.overlay = document.getElementById('captionOverlay');
+                    this.textEl = document.getElementById('captionText');
+                },
+                updateSettings: function(s) {
+                    this.settings = Object.assign({}, this.settings, s);
+                    if (!this.overlay) this._init();
+                    // Update position class
+                    if (this.overlay) {
+                        this.overlay.classList.remove('position-bottom-left', 'position-bottom-right', 'position-top-left', 'position-top-right');
+                        this.overlay.classList.add('position-' + (this.settings.caption_position || 'bottom-right'));
+                    }
+                },
+                render: function(caption) {
+                    if (!this.overlay) this._init();
+                    if (!this.overlay) return;
+                    if (!this.settings.show_caption || !caption) {
+                        this.overlay.classList.add('hidden');
+                        return;
+                    }
+                    const parts = CAPTION_ORDER
+                        .filter(k => caption[k])
+                        .map(k => caption[k]);
+                    if (!parts.length) {
+                        this.overlay.classList.add('hidden');
+                        return;
+                    }
+                    this.textEl.textContent = parts.join(' · ');
+                    this.overlay.classList.remove('hidden');
+                }
+            };
+
             // Start features on page load
             document.addEventListener('DOMContentLoaded', function() {
                 layoutManager.initialize();
                 clockManager.start();
                 weatherManager.start();
                 burnInManager.init(SETTINGS);
+                captionManager.updateSettings(SETTINGS);
             });
 
             // Prevent scrolling on kiosk browsers (Fully Kiosk, Android WebView)
@@ -1028,6 +1121,9 @@
                         case 'SETTINGS_CHANGED':
                             handleSettingsChanged(msg);
                             break;
+                        case 'NIGHT_MODE':
+                            handleNightMode(msg);
+                            break;
                         case 'DISCONNECT':
                             handleDisconnect(msg);
                             break;
@@ -1044,10 +1140,64 @@
                     // Clear error if images are now available
                     clearNoImagesError();
 
+                    // Sync current settings from the server (F3/F2/F4)
+                    if (msg.settings) {
+                        currentSettings = Object.assign({}, currentSettings, msg.settings);
+                    }
+
                     browserId = msg.browser_id;
                     updateDebug('BrowserId', browserId);
                     updateDebug('BrowserCount', msg.browser_count);
                     console.log('Joined as browser', browserId);
+
+                    // Apply per-endpoint presentation settings from WELCOME (F7)
+                    applyImageFit();
+                    captionManager.updateSettings(currentSettings);
+
+                    // Apply night-mode state if the group is currently asleep (F2)
+                    handleNightMode({
+                        active: !!msg.night_active,
+                        action: currentSettings.night_action,
+                        opacity: currentSettings.night_dim_opacity
+                    });
+                }
+
+                // Apply image-fit class from settings (supports per-endpoint override, F7)
+                function applyImageFit() {
+                    const fit = (currentSettings.image_fit === 'cover') ? 'fit-cover' : 'fit-contain';
+                    document.querySelectorAll('.screensaver-image').forEach(function(img) {
+                        img.classList.remove('fit-contain', 'fit-cover');
+                        img.classList.add(fit);
+                    });
+                }
+
+                // Night mode: blank or dim the whole display (F2)
+                function handleNightMode(msg) {
+                    let overlay = document.getElementById('nightOverlay');
+                    if (!overlay) {
+                        overlay = document.createElement('div');
+                        overlay.id = 'nightOverlay';
+                        document.body.appendChild(overlay);
+                    }
+                    if (msg.active) {
+                        const action = msg.action || 'blank';
+                        const opacity = (action === 'dim')
+                            ? Math.min(0.9, Math.max(0, (parseInt(msg.opacity) || 20) / 100))
+                            : 1;
+                        // For dim we darken (1 - dimOpacity gives visible amount);
+                        // treat the configured value as how dark the screen gets.
+                        overlay.style.background = '#000';
+                        overlay.style.opacity = (action === 'dim') ? (opacity) : 1;
+                        overlay.style.display = 'block';
+                        overlay.classList.add('active');
+                    } else {
+                        overlay.classList.remove('active');
+                        overlay.style.opacity = 0;
+                        // Hide after the fade so it doesn't capture events
+                        setTimeout(function() {
+                            if (!overlay.classList.contains('active')) overlay.style.display = 'none';
+                        }, 800);
+                    }
                 }
 
                 function handleAssign(msg) {
@@ -1068,12 +1218,19 @@
                         if (blurUrl) {
                             blurManager.update(blurUrl);
                         }
+                        // Start Ken Burns on the first/assigned image (F3)
+                        applyKenBurns(currentImage);
+                        // Show caption for the assigned image (F4)
+                        currentCaption = msg.caption || null;
+                        captionManager.render(currentCaption);
                         sendReady();
                     });
                 }
 
                 // Store pending blur URL for next image switch
                 let pendingBlurUrl = null;
+                let pendingCaption = null;
+                let currentCaption = null;
                 // Track preload completion to prevent switching to unloaded images
                 let preloadComplete = false;
                 let switchPending = false;
@@ -1098,6 +1255,8 @@
 
                     // Store blur for switch (already a data URL from server, no fetch needed)
                     pendingBlurUrl = (blurManager.enabled && msg.blur_url) ? msg.blur_url : null;
+                    // Store caption for the upcoming switch (F4)
+                    pendingCaption = msg.caption || null;
 
                     // Preload the image
                     loadImage(preloadImage, msg.image_url, function() {
@@ -1141,6 +1300,46 @@
                     }
                 }
 
+                // --- Transition & Ken Burns helpers (F3) ---
+                function transitionDuration() {
+                    const eff = currentSettings.transition_effect || 'fade';
+                    if (eff === 'none') return 0;
+                    return Math.max(0, parseInt(currentSettings.transition_duration_ms) || 500);
+                }
+
+                function applyKenBurns(imgEl) {
+                    // Clear any prior animation first
+                    imgEl.style.animation = '';
+                    imgEl.style.removeProperty('--kb-scale');
+                    imgEl.style.removeProperty('--kb-x');
+                    imgEl.style.removeProperty('--kb-y');
+                    if (!currentSettings.ken_burns) {
+                        imgEl.style.transform = '';
+                        return;
+                    }
+                    const intensity = Math.max(0, parseInt(currentSettings.ken_burns_intensity) || 15);
+                    const scale = 1 + intensity / 100;
+                    // Random pan direction, excluding (0,0)
+                    let dx = 0, dy = 0;
+                    while (dx === 0 && dy === 0) {
+                        dx = Math.floor(Math.random() * 3) - 1;  // -1,0,1
+                        dy = Math.floor(Math.random() * 3) - 1;
+                    }
+                    const pan = Math.min(6, intensity / 3);  // % translate
+                    imgEl.style.setProperty('--kb-scale', scale.toFixed(3));
+                    imgEl.style.setProperty('--kb-x', (dx * pan).toFixed(2) + '%');
+                    imgEl.style.setProperty('--kb-y', (dy * pan).toFixed(2) + '%');
+                    const dur = Math.max(5, parseInt(currentSettings.ken_burns_duration) || 20);
+                    // Force reflow so the animation restarts for the new image
+                    void imgEl.offsetWidth;
+                    imgEl.style.animation = `kenburns ${dur}s ease-out forwards`;
+                }
+
+                function clearKenBurns(imgEl) {
+                    imgEl.style.animation = '';
+                    imgEl.style.transform = '';
+                }
+
                 function performSwitch() {
                     timers.switch = null; // Clear reference
 
@@ -1157,11 +1356,26 @@
                         pendingBlurUrl = null;
                     }
 
-                    // Swap images with smooth transition
-                    currentImage.classList.add('fade-transition');
-                    preloadImage.classList.add('fade-transition');
+                    // Swap caption in sync with the image (F4)
+                    currentCaption = pendingCaption;
+                    captionManager.render(currentCaption);
 
-                    // Swap visibility
+                    const durMs = transitionDuration();
+                    const effect = currentSettings.transition_effect || 'fade';
+
+                    // Set per-switch transition duration via CSS var
+                    currentImage.style.setProperty('--transition-ms', durMs + 'ms');
+                    preloadImage.style.setProperty('--transition-ms', durMs + 'ms');
+                    currentImage.classList.add('img-transition');
+                    preloadImage.classList.add('img-transition');
+
+                    // Entrance animation for slide/dissolve effects
+                    if ((effect === 'slide' || effect === 'dissolve') && durMs > 0) {
+                        const anim = effect === 'slide' ? 'slide-in' : 'dissolve-in';
+                        preloadImage.style.animation = `${anim} ${durMs}ms ease-in-out forwards`;
+                    }
+
+                    // Swap visibility (opacity crossfade)
                     currentImage.classList.remove('visible');
                     currentImage.classList.add('hidden');
                     preloadImage.classList.remove('hidden');
@@ -1172,14 +1386,19 @@
                         timers.switchAnimation = null;
 
                         // Remove transition classes
-                        currentImage.classList.remove('fade-transition');
-                        preloadImage.classList.remove('fade-transition');
+                        currentImage.classList.remove('img-transition', 'fade-transition');
+                        preloadImage.classList.remove('img-transition', 'fade-transition');
+                        // Clear the one-shot entrance animation, then start Ken Burns
+                        preloadImage.style.animation = '';
+                        applyKenBurns(preloadImage);
 
                         // Swap element references - preload becomes current, current becomes preload
                         const temp = currentImage;
                         currentImage = preloadImage;
                         preloadImage = temp;
 
+                        // Stop Ken Burns on the now-hidden (preload) element
+                        clearKenBurns(preloadImage);
                         // Clear handlers on the now-preload element (was current, now hidden)
                         preloadImage.onload = null;
                         preloadImage.onerror = null;
@@ -1195,7 +1414,7 @@
 
                         // Notify server
                         sendSwitchComplete();
-                    }, 350);
+                    }, Math.max(50, durMs));
                 }
 
                 function handleSettingsChanged(msg) {
@@ -1203,11 +1422,17 @@
 
                     // Update overlay managers with new settings
                     if (msg.settings) {
+                        currentSettings = Object.assign({}, currentSettings, msg.settings);
                         clockManager.updateSettings(msg.settings);
                         weatherManager.updateSettings(msg.settings);
                         blurManager.updateSettings(msg.settings);
                         layoutManager.updateSettings(msg.settings);
                         burnInManager.init(msg.settings);
+                        captionManager.updateSettings(msg.settings);
+                        captionManager.render(currentCaption);
+                        applyImageFit();
+                        // Re-apply or clear Ken Burns on the visible image immediately
+                        applyKenBurns(currentImage);
                     }
                 }
 

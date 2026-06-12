@@ -96,7 +96,8 @@ images_path = Path(os.environ.get('IMAGE_DIR', '/www/images'))
 async def periodic_cleanup(
     display_manager: DisplayManager,
     interval: int = int(os.environ.get("CLEANUP_INTERVAL", "30")),
-    endpoint_cleanup_seconds: int = 86400
+    endpoint_cleanup_seconds: int = 86400,
+    ha_provider_getter=None
 ):
     """Periodically clean up stale browser connections with resilience (#27)."""
     consecutive_failures = 0
@@ -146,6 +147,14 @@ async def periodic_cleanup(
                     had_failure = True
                     logger.error(f"Health check error: {e}")
 
+            # Stage 4: Night-mode scheduling enforcement (F2) — every iteration
+            try:
+                ha_provider = ha_provider_getter() if ha_provider_getter else None
+                await display_manager.enforce_schedules(ha_provider)
+            except Exception as e:
+                had_failure = True
+                logger.error(f"Night-mode enforcement error: {e}")
+
             if had_failure:
                 consecutive_failures += 1
                 if consecutive_failures >= max_failures:
@@ -186,6 +195,11 @@ async def lifespan(app: FastAPI):
         base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
         logger.info(f"Base URL: {base_url}")
 
+        # Initialize curation store (favorites / hidden images) — SQLite (F6)
+        from app.services.curation_service import CurationService
+        app.state.curation_service = CurationService(Path("config/curation.db"))
+        logger.info("Curation service initialized")
+
         # Initialize DisplayManager for synchronized multi-browser display
         # The is_folder_locked callback checks if a folder is being updated by Immich pull
         # It uses a closure so it can access app.state.immich_provider after it's initialized
@@ -193,9 +207,13 @@ async def lifespan(app: FastAPI):
             provider = getattr(app.state, 'immich_provider', None)
             return provider.is_folder_updating(folder) if provider else False
 
+        def is_excluded(rel_path: str) -> bool:
+            return app.state.curation_service.is_excluded(rel_path)
+
         app.state.display_manager = DisplayManager(
             image_service,
-            is_folder_locked=is_folder_locked
+            is_folder_locked=is_folder_locked,
+            is_excluded=is_excluded
         )
         logger.info("DisplayManager initialized")
 
@@ -227,11 +245,18 @@ async def lifespan(app: FastAPI):
 
         app.state.immich_provider = ImmichProvider(
             image_service.image_dir,
-            on_pull_complete=on_pull_complete
+            on_pull_complete=on_pull_complete,
+            curation=app.state.curation_service
         )
         loaded_pulls = await app.state.immich_provider.load_config()
         if loaded_pulls > 0:
             logger.info(f"Loaded {loaded_pulls} Immich pull configurations")
+
+        # Start the cron scheduler for automatic Immich pulls (F1)
+        from app.services.pull_scheduler import PullScheduler
+        app.state.pull_scheduler = PullScheduler(app.state.immich_provider)
+        app.state.pull_scheduler.start()
+        logger.info("Immich pull scheduler started")
 
         # Initialize API key manager for image endpoint authentication
         app.state.api_key_manager = APIKeyManager()
@@ -260,6 +285,9 @@ async def lifespan(app: FastAPI):
                 # Invalidate and regenerate thumbnails for changed folder
                 app.state.thumbnail_cache.invalidate_folder(rel_str)
                 asyncio.create_task(app.state.thumbnail_cache.pre_generate_folder(rel_str))
+
+                # Invalidate EXIF caption cache (F4) — files may have changed
+                app.state.display_manager.clear_caption_cache()
 
                 # Refresh affected display groups
                 refreshed = await app.state.display_manager.refresh_groups_by_folder(rel_str)
@@ -297,7 +325,11 @@ async def lifespan(app: FastAPI):
         cleanup_duration_str = os.environ.get('ENDPOINT_CLEANUP', '24h')
         endpoint_cleanup_seconds = parse_duration(cleanup_duration_str) or 0
         cleanup_task = asyncio.create_task(
-            periodic_cleanup(app.state.display_manager, endpoint_cleanup_seconds=endpoint_cleanup_seconds)
+            periodic_cleanup(
+                app.state.display_manager,
+                endpoint_cleanup_seconds=endpoint_cleanup_seconds,
+                ha_provider_getter=lambda: getattr(app.state, 'ha_provider', None)
+            )
         )
         if endpoint_cleanup_seconds > 0:
             logger.info(f"Cleanup task started (endpoint cleanup: {cleanup_duration_str})")
@@ -331,6 +363,10 @@ async def lifespan(app: FastAPI):
         # Shut down the shared image-processing thread pool
         from app.api.routes import image_executor
         image_executor.shutdown(wait=False, cancel_futures=True)
+
+        # Stop the Immich pull scheduler
+        if hasattr(app.state, 'pull_scheduler'):
+            app.state.pull_scheduler.shutdown()
 
         # Close Immich provider HTTP client
         if hasattr(app.state, 'immich_provider'):
