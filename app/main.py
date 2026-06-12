@@ -439,6 +439,14 @@ static_swagger_path = Path(__file__).parent / "static" / "swagger"
 if static_swagger_path.exists():
     app.mount("/swagger-static", StaticFiles(directory=str(static_swagger_path)), name="swagger")
 
+# Mount built SPA assets (Vite output). Present only after the frontend has been
+# built (Docker build copies web/dist here). Filenames are content-hashed, so the
+# SPA index.html references /assets/<name>-<hash>.js. Mounting before the API
+# router keeps these static files ahead of the "/{folder_path}" catch-all.
+spa_assets_path = Path(__file__).parent / "static" / "spa" / "assets"
+if spa_assets_path.exists():
+    app.mount("/assets", StaticFiles(directory=str(spa_assets_path)), name="spa_assets")
+
 # Custom /docs endpoint using self-hosted Swagger UI assets
 from fastapi.openapi.docs import get_swagger_ui_html
 

@@ -1,0 +1,65 @@
+/* Phase 0 baseline. The unified design-token system lands in Phase 1. */
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: #1a1a2e;
+  color: #eee;
+}
+
+.placeholder {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.placeholder h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.placeholder-route {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #e94560;
+  font-weight: 600;
+}
+
+.placeholder code {
+  color: #888;
+}
+
+.placeholder-nav {
+  display: flex;
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.placeholder-nav a {
+  color: #eee;
+  text-decoration: none;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+}
+
+.placeholder-nav a:hover {
+  border-color: #e94560;
+}

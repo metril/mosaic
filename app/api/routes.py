@@ -66,6 +66,53 @@ router = APIRouter()
 image_service = ImageService()
 templates = Jinja2Templates(directory="templates")
 
+# -----------------------------------------------------------------------------
+# SPA (React) shell serving
+#
+# The frontend in web/ builds to app/static/spa/. When that build is present,
+# routes listed in SPA_ROUTES return the SPA shell (index.html) so React Router
+# takes over client-side; every other page keeps its existing Jinja template.
+# This lets the SPA migration roll out one page at a time without breaking the
+# pages that haven't been migrated yet, and without touching the legacy
+# random-image / E-Ink endpoints.
+#
+# SPA_ROUTES grows per phase (Phase 1 adds "/" and "/browse", Phase 2 "/admin",
+# Phase 3 "/display"). It can be overridden at deploy time via the SPA_ROUTES
+# env var (comma-separated) for testing/rollback.
+# -----------------------------------------------------------------------------
+_SPA_INDEX = Path(__file__).parent.parent / "static" / "spa" / "index.html"
+_DEFAULT_SPA_ROUTES = ""  # Phase 0: nothing migrated yet
+SPA_ROUTES = {
+    r.strip()
+    for r in os.environ.get("SPA_ROUTES", _DEFAULT_SPA_ROUTES).split(",")
+    if r.strip()
+}
+
+
+def spa_shell(route: str) -> Optional[FileResponse]:
+    """Return the built SPA shell for `route` if the SPA is built and that route
+    has been migrated, otherwise None (caller falls through to its Jinja page).
+
+    The shell itself is never cached (so deploys are picked up immediately); the
+    hashed /assets/* bundles it references are safe to cache long-term.
+    """
+    if route in SPA_ROUTES and _SPA_INDEX.exists():
+        return FileResponse(_SPA_INDEX, headers={"Cache-Control": "no-cache"})
+    return None
+
+
+@router.get("/api/csrf", include_in_schema=False)
+async def get_csrf(request: Request):
+    """Return the session CSRF token for the SPA.
+
+    The Jinja pages inject this token directly into the template; the SPA has no
+    such injection point, so it fetches the same session-bound token here and
+    sends it back as the X-CSRF-Token header on mutating requests. Reuses the
+    existing session-based token logic (get_csrf_token). Same-origin policy +
+    the session cookie prevent a cross-origin page from reading this response.
+    """
+    return JSONResponse(content={"csrf_token": get_csrf_token(request)})
+
 # Bounded thread pool for CPU-bound image work (thumbnails, resizing, blur,
 # metadata). Using the default executor would let thread count grow unbounded
 # under load; cap it to keep memory/thread usage predictable.
@@ -619,6 +666,12 @@ async def browse_images(
         HTML: Interactive file explorer with collapsible folder tree and statistics
         JSON: Complete directory tree structure with metadata and statistics
     """
+    # Serve the SPA shell once /browse is migrated (the React app fetches the
+    # tree via ?format=json and handles auth client-side). The JSON API variant
+    # and all not-yet-migrated cases fall through to the existing logic.
+    if format != 'json' and (resp := spa_shell("/browse")):
+        return resp
+
     # Check authentication if OIDC is enabled
     config = get_oidc_config()
     if config.enabled and user is None:
@@ -1298,6 +1351,10 @@ async def admin_page(request: Request, user: Optional[User] = Depends(get_option
 
     Requires authentication if OIDC is configured.
     """
+    # Serve the SPA shell once /admin is migrated (React handles auth via /auth/me)
+    if resp := spa_shell("/admin"):
+        return resp
+
     config = get_oidc_config()
 
     # If OIDC enabled but user not authenticated, redirect to login
@@ -2381,6 +2438,13 @@ async def display_page(
         action: Optional action to perform before rendering ('next' or 'previous')
         key: API key for authentication (e.g., sk_xxxx...)
     """
+    # Serve the SPA shell once /display is migrated. The React kiosk reads the
+    # group/endpoint query params client-side and drives everything over the
+    # WebSocket, so the server-side group lookup / action handling below is
+    # bypassed. (group remains a required query param at the signature level.)
+    if resp := spa_shell("/display"):
+        return resp
+
     # Check authentication if OIDC is enabled
     config = get_oidc_config()
     if config.enabled and auth is None:
@@ -3622,6 +3686,13 @@ async def root(
 
     Requires API key or session auth when OIDC is enabled.
     """
+    # Serve the SPA shell for the home page once "/" is migrated. Strictly the
+    # bare root in plain browser-navigation mode — never for the random-image
+    # API, the refresh auto-cycle, or any sub-folder path, all of which must keep
+    # their existing behavior (E-Ink devices depend on them).
+    if folder_path == "" and api is None and refresh is None and (resp := spa_shell("/")):
+        return resp
+
     # Check authentication if OIDC is enabled
     config = get_oidc_config()
     if config.enabled and auth is None:

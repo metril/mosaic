@@ -1,4 +1,24 @@
-# Use Python 3.11 slim image as base
+# syntax=docker/dockerfile:1
+
+# -----------------------------------------------------------------------------
+# Stage 1: Build the React (Vite) SPA in web/ -> dist/
+# -----------------------------------------------------------------------------
+FROM node:20-slim AS spa-builder
+WORKDIR /build
+
+# Install deps first for better layer caching
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+# Build the SPA. vite.config.ts has outDir '../app/static/spa'; from WORKDIR
+# /build that resolves to /app/static/spa in this stage.
+COPY web/ ./
+RUN npm run build
+# Output: /app/static/spa/{index.html, assets/*}
+
+# -----------------------------------------------------------------------------
+# Stage 2: Python runtime
+# -----------------------------------------------------------------------------
 FROM python:3.11-slim
 
 # Set working directory
@@ -26,6 +46,9 @@ RUN useradd -m -u 1000 appuser
 COPY --chown=appuser:appuser app/ ./app/
 COPY --chown=appuser:appuser templates/ ./templates/
 COPY --chown=appuser:appuser config/ ./config/
+
+# Copy the built SPA into the static directory served by FastAPI
+COPY --from=spa-builder --chown=appuser:appuser /app/static/spa/ ./app/static/spa/
 
 # Create directory for images (will be mounted as volume)
 RUN mkdir -p /www/images && chown appuser:appuser /www/images

@@ -41,6 +41,12 @@ pytest.ini
 .coverage
 htmlcov/
 
+# Frontend: deps and build artifacts are produced inside the build stage
+web/node_modules/
+web/dist/
+# SPA build output: comes from the build stage, never from the host context
+app/static/spa/
+
 # Misc
 .DS_Store
 *.log
