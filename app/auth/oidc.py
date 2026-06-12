@@ -49,11 +49,12 @@ class OIDCConfig:
             )
 
         if enabled and not session_secret:
-            logger.warning(
-                "SESSION_SECRET not set. Using insecure default. "
-                "Generate with: openssl rand -hex 32"
+            # A known/static secret means anyone can forge session cookies and
+            # impersonate any user — refuse to start rather than run insecurely.
+            raise RuntimeError(
+                "SESSION_SECRET must be set when OIDC is enabled. "
+                "Generate one with: openssl rand -hex 32"
             )
-            session_secret = "insecure-default-change-me"
 
         return cls(
             issuer=issuer,

@@ -132,6 +132,9 @@ class ImageService:
             if recursive:
                 # Recursive search using rglob
                 for file_path in search_dir.rglob('*'):
+                    # Skip hidden dirs/files (e.g. Immich pull staging ".<name>.tmp")
+                    if any(part.startswith('.') for part in file_path.relative_to(search_dir).parts):
+                        continue
                     if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_FORMATS:
                         # Additional security: verify file is not a symlink
                         if not file_path.is_symlink():
@@ -139,6 +142,8 @@ class ImageService:
             else:
                 # Non-recursive search using iterdir
                 for file_path in search_dir.iterdir():
+                    if file_path.name.startswith('.'):
+                        continue
                     if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_FORMATS:
                         # Additional security: verify file is not a symlink
                         if not file_path.is_symlink():

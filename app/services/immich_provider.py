@@ -19,6 +19,10 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Cap stored per-asset error messages so a fully-failed large pull doesn't
+# accumulate thousands of strings in memory and in the status response.
+MAX_PULL_ERRORS = 50
+
 
 class PullStatus(str, Enum):
     """Status of a pull operation"""
@@ -511,10 +515,21 @@ class ImmichProvider:
                 break
 
             metadata_url = f"{base_url}/api/search/metadata"
-            page = 1
             page_size = 1000
 
-            while len(all_assets) < config.count:
+            # Randomly sample indices within this variant instead of always
+            # taking the first pages — otherwise large albums only ever
+            # contribute their earliest (server-ordered) assets.
+            sample_size = min(remaining_needed, total_for_variant)
+            selected_indices = random.sample(range(total_for_variant), sample_size)
+
+            pages_needed: Dict[int, List[int]] = {}
+            for idx in selected_indices:
+                pages_needed.setdefault((idx // page_size) + 1, []).append(idx % page_size)
+
+            for page, positions in pages_needed.items():
+                if len(all_assets) >= config.count:
+                    break
                 body = {**filter_body, "page": page, "size": page_size}
                 response = await client.post(metadata_url, headers=headers, json=body)
                 response.raise_for_status()
@@ -524,17 +539,15 @@ class ImmichProvider:
                 items = assets_data.get("items", [])
 
                 if not items:
-                    break
+                    continue
 
-                for asset in items:
-                    asset_id = asset["id"]
-                    if asset_id not in seen_ids:
-                        seen_ids.add(asset_id)
-                        all_assets.append(asset)
-
-                page += 1
-                if page * page_size >= total_for_variant:
-                    break
+                for pos in positions:
+                    if pos < len(items):
+                        asset = items[pos]
+                        asset_id = asset["id"]
+                        if asset_id not in seen_ids:
+                            seen_ids.add(asset_id)
+                            all_assets.append(asset)
 
                 await asyncio.sleep(0)
 
@@ -554,33 +567,47 @@ class ImmichProvider:
         self,
         config: ImmichPullConfig,
         asset_id: str,
-        original_filename: str
+        original_filename: str,
+        target_dir: Optional[Path] = None
     ) -> Optional[Path]:
-        """Download a single asset from Immich"""
+        """Download a single asset from Immich.
+
+        ``target_dir`` overrides the default destination (used to stage
+        downloads in a temp dir for atomic replacement).
+        """
         client = await self._get_client()
         url = f"{config.server_url.rstrip('/')}/api/assets/{asset_id}/original"
         headers = {"x-api-key": config.api_key}
 
-        try:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
+        # Strip any directory components from the server-provided filename to
+        # prevent path traversal (e.g. "../../etc/cron.d/evil") into a write
+        # outside target_dir. Fall back to the asset id if it's empty/dotfile.
+        safe_filename = Path(original_filename).name
+        if not safe_filename or safe_filename.startswith("."):
+            safe_filename = f"{asset_id}.jpg"
 
-            # Determine target path
+        if target_dir is None:
             target_dir = self.image_dir / config.target_folder
+
+        try:
             target_dir.mkdir(parents=True, exist_ok=True)
 
             # Use original filename, ensuring uniqueness
-            target_path = target_dir / original_filename
+            target_path = target_dir / safe_filename
             counter = 1
             while target_path.exists():
-                stem = Path(original_filename).stem
-                suffix = Path(original_filename).suffix
+                stem = Path(safe_filename).stem
+                suffix = Path(safe_filename).suffix
                 target_path = target_dir / f"{stem}_{counter}{suffix}"
                 counter += 1
 
-            # Write file
+            # Stream the response to disk so large images don't buffer fully
+            # in memory (a 200-image pull would otherwise spike heap badly).
             with open(target_path, "wb") as f:
-                f.write(response.content)
+                async with client.stream("GET", url, headers=headers) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes(chunk_size=65536):
+                        f.write(chunk)
 
             logger.debug(f"Downloaded: {target_path}")
             return target_path
@@ -610,13 +637,20 @@ class ImmichProvider:
         self._updating_folders.add(config.target_folder)
         logger.debug(f"Locked folder for pull: {config.target_folder}")
 
+        final_dir = self.image_dir / config.target_folder
+        # Staging dir is hidden ("." prefix) so it is ignored by image scans
+        # until the atomic swap below. Sibling of final_dir => same filesystem.
+        staging_dir = final_dir.with_name(f".{final_dir.name}.pulltmp")
+
         try:
-            # Clear target folder if requested
-            if config.replace_existing:
-                target_dir = self.image_dir / config.target_folder
-                if target_dir.exists():
-                    shutil.rmtree(target_dir)
-                    logger.info(f"Cleared target folder: {target_dir}")
+            # When replacing, download into a staging dir and swap atomically so
+            # a mid-pull failure never leaves the user with an emptied folder.
+            # When appending, write straight into the final dir.
+            download_dir = staging_dir if config.replace_existing else final_dir
+
+            if config.replace_existing and staging_dir.exists():
+                # Clean up a staging dir left over from a previously crashed pull
+                shutil.rmtree(staging_dir, ignore_errors=True)
 
             # Search for assets (pass result for progress tracking)
             logger.info(f"Searching Immich for pull: {pull_name}")
@@ -625,6 +659,8 @@ class ImmichProvider:
             result.phase = "downloading"
             self._pull_results[pull_name] = result
             logger.info(f"Found {len(assets)} assets for pull: {pull_name}")
+
+            cancelled = False
 
             # Download each asset
             for asset in assets:
@@ -636,22 +672,37 @@ class ImmichProvider:
                     logger.info(f"Pull cancelled: {pull_name} - {result.downloaded}/{result.total} images downloaded before cancellation")
                     self._cancelled_pulls.discard(pull_name)
                     self._pull_results[pull_name] = result
-                    return result
+                    cancelled = True
+                    break
 
                 asset_id = asset["id"]
                 original_filename = asset.get("originalFileName", f"{asset_id}.jpg")
 
-                path = await self.download_asset(config, asset_id, original_filename)
+                path = await self.download_asset(config, asset_id, original_filename, target_dir=download_dir)
                 if path:
                     result.downloaded += 1
                 else:
-                    result.errors.append(f"Failed to download: {asset_id}")
+                    if len(result.errors) < MAX_PULL_ERRORS:
+                        result.errors.append(f"Failed to download: {asset_id}")
 
                 # Update status for progress tracking
                 self._pull_results[pull_name] = result
 
                 # Yield to event loop to allow status polling and cancellation requests
                 await asyncio.sleep(0)
+
+            if cancelled:
+                # Discard the half-built staging dir; leave the live folder intact
+                if config.replace_existing:
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+                return result
+
+            # Atomically swap staging dir into place for replace_existing pulls
+            if config.replace_existing:
+                if final_dir.exists():
+                    shutil.rmtree(final_dir)
+                staging_dir.replace(final_dir)
+                logger.info(f"Swapped staged downloads into: {final_dir}")
 
             result.status = PullStatus.COMPLETED
             result.phase = "completed"
@@ -662,13 +713,17 @@ class ImmichProvider:
             result.status = PullStatus.CANCELLED
             result.phase = "cancelled"
             result.completed_at = datetime.now(timezone.utc)
+            shutil.rmtree(staging_dir, ignore_errors=True)
             logger.info(f"Pull cancelled (task): {pull_name} - {result.downloaded}/{result.total} images downloaded before cancellation")
 
         except Exception as e:
             result.status = PullStatus.FAILED
             result.phase = "failed"
-            result.errors.append(str(e))
+            if len(result.errors) < MAX_PULL_ERRORS:
+                result.errors.append(str(e))
             result.completed_at = datetime.now(timezone.utc)
+            # Leave the existing folder untouched; only drop the staging dir
+            shutil.rmtree(staging_dir, ignore_errors=True)
             logger.error(f"Pull failed: {pull_name} - {e}")
 
         finally:

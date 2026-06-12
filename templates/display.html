@@ -679,16 +679,24 @@
                 },
 
                 dimCycle: function() {
-                    var overlays = document.querySelectorAll('.overlay');
                     var self = this;
+                    // Cancel any pending restore from a previous cycle so a new
+                    // dim can't be left permanently dimmed by an overlapping
+                    // restore that already fired / is about to fire.
+                    if (this.dimRestoreTimer) {
+                        clearTimeout(this.dimRestoreTimer);
+                        this.dimRestoreTimer = null;
+                    }
                     // Dim overlays
-                    overlays.forEach(function(el) {
+                    document.querySelectorAll('.overlay').forEach(function(el) {
                         el.style.transition = 'opacity 1s ease';
                         el.style.opacity = self.dimOpacity / 100;
                     });
-                    // Restore after duration
-                    setTimeout(function() {
-                        overlays.forEach(function(el) {
+                    // Restore after duration — re-query so overlays added or
+                    // removed during the dim window are handled correctly.
+                    this.dimRestoreTimer = setTimeout(function() {
+                        self.dimRestoreTimer = null;
+                        document.querySelectorAll('.overlay').forEach(function(el) {
                             el.style.opacity = '1';
                         });
                     }, this.dimDuration * 1000);
@@ -838,7 +846,6 @@
                 let reconnectAttempts = 0;
                 let debugVisible = false;
                 let nextSwitchTime = null;
-                let imageRetryCount = 0; // Track retries per image (#12)
 
                 // DOM elements
                 const statusIndicator = document.getElementById('statusIndicator');
@@ -905,7 +912,6 @@
                     browserId = null;
                     currentCycle = 0;
                     nextSwitchTime = null;
-                    imageRetryCount = 0;
                     updateDebug('BrowserId', '-');
                     updateDebug('Cycle', '0');
                     updateDebug('NextSwitch', '-');
@@ -1051,7 +1057,6 @@
                     clearNoImagesError();
 
                     currentCycle = msg.cycle;
-                    imageRetryCount = 0; // Reset retry count for new image
                     updateDebug('Cycle', currentCycle);
                     updateDebug('CurrentImage', msg.image_id);
 
@@ -1084,7 +1089,6 @@
                     clearNoImagesError();
 
                     nextSwitchTime = msg.switch_at;
-                    imageRetryCount = 0; // Reset retry count for new image
                     updateDebug('PreloadImage', msg.image_id);
 
                     // Calculate time until switch
@@ -1253,19 +1257,23 @@
                     imgElement.onload = null;
                     imgElement.onerror = null;
 
+                    // Retry count is local to THIS load so a concurrent load of
+                    // another image (e.g. current + preload in flight) can't
+                    // corrupt this image's retry budget (#12).
+                    let retryCount = 0;
+
                     imgElement.onload = function() {
                         console.log('Image loaded:', url.split('/').pop());
-                        imageRetryCount = 0; // Reset on success
                         if (onSuccess) onSuccess();
                     };
 
                     imgElement.onerror = function() {
-                        imageRetryCount++;
-                        console.error('Failed to load image:', url, '(attempt', imageRetryCount + ')');
+                        retryCount++;
+                        console.error('Failed to load image:', url, '(attempt', retryCount + ')');
 
-                        if (imageRetryCount < IMAGE_RETRY_MAX) {
+                        if (retryCount < IMAGE_RETRY_MAX) {
                             // Exponential backoff: 1s, 2s, 4s (#12)
-                            const delay = 1000 * Math.pow(2, imageRetryCount - 1);
+                            const delay = 1000 * Math.pow(2, retryCount - 1);
                             console.log('Retrying in', delay, 'ms');
                             setTimeout(function() {
                                 imgElement.src = url + (url.includes('?') ? '&' : '?') + 'retry=' + Date.now();

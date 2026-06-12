@@ -998,9 +998,38 @@
         let currentImageIndex = 0;  // Current position in the list
 
         // E-Ink preview state
-        let einkPreviewCache = new Map();  // Cache for E-Ink processed images
+        let einkPreviewCache = new Map();  // Cache for E-Ink processed images (imagePath -> blob object URL)
+        const EINK_CACHE_MAX = 20;
+
+        // Cache an E-Ink preview object URL, revoking the oldest entry when the
+        // cache is full so blob URLs don't accumulate in memory for the page's
+        // lifetime. Map preserves insertion order, so the first key is oldest.
+        function cacheEinkPreview(imagePath, objectUrl) {
+            if (einkPreviewCache.has(imagePath)) {
+                const prev = einkPreviewCache.get(imagePath);
+                if (prev !== objectUrl && prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+                einkPreviewCache.delete(imagePath);
+            } else if (einkPreviewCache.size >= EINK_CACHE_MAX) {
+                const oldestKey = einkPreviewCache.keys().next().value;
+                const oldestUrl = einkPreviewCache.get(oldestKey);
+                if (oldestUrl && oldestUrl.startsWith('blob:')) URL.revokeObjectURL(oldestUrl);
+                einkPreviewCache.delete(oldestKey);
+            }
+            einkPreviewCache.set(imagePath, objectUrl);
+        }
         let isEinkMode = false;  // Current display mode
         let originalImageUrl = '';  // Original image URL for toggling back
+
+        // Escape HTML special chars (incl. quotes) for safe use in
+        // innerHTML template literals and attribute values
+        function escapeHtml(text) {
+            return String(text == null ? '' : text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
 
         // Render the tree
         function renderTree() {
@@ -1029,7 +1058,7 @@
             if (stats.formats && Object.keys(stats.formats).length > 0) {
                 html += '<div class="stats-row"><span class="stats-label">Formats:</span>';
                 Object.entries(stats.formats).sort((a, b) => b[1] - a[1]).forEach(([format, count]) => {
-                    html += `<span class="stats-badge">${format} (${count})</span>`;
+                    html += `<span class="stats-badge">${escapeHtml(format)} (${count})</span>`;
                 });
                 html += '</div>';
             }
@@ -1039,7 +1068,7 @@
                 html += '<div class="stats-row"><span class="stats-label">Orientations:</span>';
                 Object.entries(stats.orientations).sort((a, b) => b[1] - a[1]).forEach(([orientation, count]) => {
                     const label = orientation.charAt(0).toUpperCase() + orientation.slice(1);
-                    html += `<span class="stats-badge">${label} (${count})</span>`;
+                    html += `<span class="stats-badge">${escapeHtml(label)} (${count})</span>`;
                 });
                 html += '</div>';
             }
@@ -1047,7 +1076,7 @@
             // Total size
             if (stats.total_size_formatted) {
                 html += '<div class="stats-row"><span class="stats-label">Total Size:</span>';
-                html += `<span class="stats-value">${stats.total_size_formatted}</span>`;
+                html += `<span class="stats-value">${escapeHtml(stats.total_size_formatted)}</span>`;
                 html += '</div>';
             }
 
@@ -1073,16 +1102,16 @@
             const statsId = 'stats-' + folderId;
 
             let html = `
-                <div class="tree-item folder" onclick="toggleFolder('${childrenId}', '${statsId}')" data-path="${folder.path}" data-name="${folder.name}">
-                    <span class="folder-icon" id="icon-${childrenId}">▶</span>
-                    <span class="folder-name">${folder.name || 'Root'}</span>
+                <div class="tree-item folder" onclick="toggleFolder(this)" data-children-id="${escapeHtml(childrenId)}" data-stats-id="${escapeHtml(folder.stats ? statsId : '')}" data-path="${escapeHtml(folder.path)}" data-name="${escapeHtml(folder.name)}">
+                    <span class="folder-icon" id="icon-${escapeHtml(childrenId)}">▶</span>
+                    <span class="folder-name">${escapeHtml(folder.name) || 'Root'}</span>
                     <span class="folder-stats">(${folder.file_count} files, ${folder.folder_count} folders)</span>
                 </div>
             `;
 
             // Add stats detail section (hidden by default)
             if (folder.stats) {
-                html += `<div class="folder-stats-detail" id="${statsId}">${renderFolderStats(folder.stats)}</div>`;
+                html += `<div class="folder-stats-detail" id="${escapeHtml(statsId)}">${renderFolderStats(folder.stats)}</div>`;
             }
 
             if (hasChildren) {
@@ -1090,7 +1119,7 @@
                 const files = folder.children.filter(c => c.type === 'file');
                 const subfolders = folder.children.filter(c => c.type === 'folder');
 
-                html += `<div class="children" id="${childrenId}">`;
+                html += `<div class="children" id="${escapeHtml(childrenId)}">`;
 
                 // Render subfolders first
                 for (const subfolder of subfolders) {
@@ -1099,7 +1128,7 @@
 
                 // Render files in grid if there are any
                 if (files.length > 0) {
-                    html += `<div class="image-grid" data-folder-id="${folderId}">`;
+                    html += `<div class="image-grid" data-folder-id="${escapeHtml(folderId)}">`;
                     for (const file of files) {
                         html += renderFileCard(file, folderId);
                     }
@@ -1108,7 +1137,7 @@
 
                 html += '</div>';
             } else if (folder.file_count === 0) {
-                html += `<div class="children" id="${childrenId}"><div class="empty">Empty folder</div></div>`;
+                html += `<div class="children" id="${escapeHtml(childrenId)}"><div class="empty">Empty folder</div></div>`;
             }
 
             return html;
@@ -1143,22 +1172,22 @@
             return `
                 <div class="image-card"
                      onclick="openLightboxWithNavigation(this)"
-                     data-path="${file.path}"
-                     data-name="${file.name}"
+                     data-path="${escapeHtml(file.path)}"
+                     data-name="${escapeHtml(file.name)}"
                      data-orientation="${orientation}"
-                     data-format="${file.format || ''}"
+                     data-format="${escapeHtml(file.format || '')}"
                      data-size="${sizeCategory}"
                      data-size-bytes="${sizeBytes}"
-                     data-url="${fullImageUrl}"
-                     data-dimensions="${file.dimensions}"
-                     data-filesize="${file.size_formatted}"
-                     data-folder-id="${folderId}">
+                     data-url="${escapeHtml(fullImageUrl)}"
+                     data-dimensions="${escapeHtml(file.dimensions)}"
+                     data-filesize="${escapeHtml(file.size_formatted)}"
+                     data-folder-id="${escapeHtml(folderId)}">
                     <div class="thumbnail-container">
-                        <img src="${thumbnailUrl}" alt="${file.name}" loading="lazy">
+                        <img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(file.name)}" loading="lazy">
                     </div>
                     <div class="image-info">
-                        <div class="image-name" title="${file.name}">${file.name}</div>
-                        <div class="image-meta">${file.dimensions} • ${file.size_formatted}</div>
+                        <div class="image-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
+                        <div class="image-meta">${escapeHtml(file.dimensions)} • ${escapeHtml(file.size_formatted)}</div>
                     </div>
                 </div>
             `;
@@ -1170,7 +1199,9 @@
         }
 
         // Toggle folder expand/collapse
-        function toggleFolder(childrenId, statsId) {
+        function toggleFolder(itemEl) {
+            const childrenId = itemEl.dataset.childrenId;
+            const statsId = itemEl.dataset.statsId;
             const childrenEl = document.getElementById(childrenId);
             const iconEl = document.getElementById('icon-' + childrenId);
             const statsEl = statsId ? document.getElementById(statsId) : null;
@@ -1327,7 +1358,7 @@
                         const objectUrl = URL.createObjectURL(blob);
 
                         // Cache the result
-                        einkPreviewCache.set(imagePath, objectUrl);
+                        cacheEinkPreview(imagePath, objectUrl);
 
                         // Update display
                         lightboxImage.src = objectUrl;
@@ -1497,7 +1528,7 @@
 
                 // Cache this version
                 const imagePath = currentImageUrl.replace('/images/', '');
-                einkPreviewCache.set(imagePath, previewImg.src);
+                cacheEinkPreview(imagePath, previewImg.src);
 
                 closeEinkSettings();
                 showToast('E-Ink settings applied', 'success');

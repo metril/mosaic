@@ -25,6 +25,13 @@ _hasher = PasswordHasher(
 )
 
 
+# Length of the non-secret lookup prefix taken from the start of a key.
+# "sk_" + 9 hex chars = 36 bits, enough to disambiguate candidate keys for an
+# O(1) lookup while leaving the bulk of the key's entropy (still ~92 bits)
+# unexposed. Used only to avoid an O(n) Argon2 scan per authentication.
+KEY_LOOKUP_LEN = 12
+
+
 @dataclass
 class APIKey:
     """Represents an API key with metadata."""
@@ -36,6 +43,9 @@ class APIKey:
     last_used: Optional[datetime] = None
     scopes: List[str] = field(default_factory=lambda: ["images:read"])
     enabled: bool = True
+    # Non-secret prefix of the key for fast candidate lookup ("" for legacy
+    # keys created before this field existed — those use the linear fallback).
+    lookup_prefix: str = ""
 
     def to_dict(self, include_hash: bool = False) -> dict:
         """Convert to dictionary for API responses."""
@@ -59,6 +69,7 @@ class APIKey:
             "name": self.name,
             "key_hash": self.key_hash,
             "key_prefix": self.key_prefix,
+            "lookup_prefix": self.lookup_prefix,
             "created_at": self.created_at.isoformat(),
             "last_used": self.last_used.isoformat() if self.last_used else None,
             "scopes": self.scopes,
@@ -87,6 +98,7 @@ class APIKey:
             last_used=last_used,
             scopes=data.get("scopes", ["images:read"]),
             enabled=data.get("enabled", True),
+            lookup_prefix=data.get("lookup_prefix", ""),
         )
 
 
@@ -96,14 +108,23 @@ class APIKeyManager:
     def __init__(self, config_path: Path = Path("config/api_keys.yaml")):
         self.config_path = config_path
         self.keys: Dict[str, APIKey] = {}
+        # lookup_prefix -> list of key ids (fast candidate lookup for verify)
+        self._lookup_index: Dict[str, List[str]] = {}
         self._dirty = False  # Track if save is needed
 
-    def generate_key(self) -> tuple[str, str, str]:
+    def _rebuild_index(self) -> None:
+        """Rebuild the lookup_prefix -> key ids index from self.keys."""
+        self._lookup_index = {}
+        for key_id, api_key in self.keys.items():
+            if api_key.lookup_prefix:
+                self._lookup_index.setdefault(api_key.lookup_prefix, []).append(key_id)
+
+    def generate_key(self) -> tuple[str, str, str, str]:
         """
         Generate a new API key with Argon2id hash.
 
         Returns:
-            Tuple of (full_key, key_hash, key_prefix)
+            Tuple of (full_key, key_hash, key_prefix, lookup_prefix)
         """
         # Generate 32 character hex key with sk_ prefix
         key = "sk_" + secrets.token_hex(16)
@@ -111,11 +132,16 @@ class APIKeyManager:
         key_hash = _hasher.hash(key)
         # Show first 4 and last 4 chars of the random part
         key_prefix = f"sk_{key[3:7]}...{key[-4:]}"
-        return key, key_hash, key_prefix
+        lookup_prefix = key[:KEY_LOOKUP_LEN]
+        return key, key_hash, key_prefix, lookup_prefix
 
     def verify_key(self, key: str) -> Optional[APIKey]:
         """
         Verify an API key against stored Argon2id hash.
+
+        Uses a non-secret lookup prefix to test only the matching candidate
+        key(s) instead of running Argon2 against every stored key. Legacy keys
+        without a lookup prefix fall back to a linear scan.
 
         Args:
             key: The full API key to verify
@@ -126,18 +152,32 @@ class APIKeyManager:
         if not key or not key.startswith("sk_"):
             return None
 
-        for api_key in self.keys.values():
+        def _try(api_key: APIKey) -> bool:
             if not api_key.enabled:
-                continue
+                return False
             try:
-                # Argon2 verify handles salt extraction from stored hash
                 _hasher.verify(api_key.key_hash, key)
-                # Update last_used timestamp
+                return True
+            except VerifyMismatchError:
+                return False
+
+        # Fast path: candidates sharing this key's lookup prefix
+        candidate_ids = self._lookup_index.get(key[:KEY_LOOKUP_LEN], [])
+        for key_id in candidate_ids:
+            api_key = self.keys.get(key_id)
+            if api_key and _try(api_key):
                 api_key.last_used = datetime.now()
                 self._dirty = True
                 return api_key
-            except VerifyMismatchError:
-                continue
+
+        # Fallback: legacy keys with no stored lookup prefix
+        for api_key in self.keys.values():
+            if api_key.lookup_prefix:
+                continue  # already covered by the index
+            if _try(api_key):
+                api_key.last_used = datetime.now()
+                self._dirty = True
+                return api_key
 
         return None
 
@@ -162,7 +202,7 @@ class APIKeyManager:
             key_id = secrets.token_hex(8)
 
         # Generate the key
-        full_key, key_hash, key_prefix = self.generate_key()
+        full_key, key_hash, key_prefix, lookup_prefix = self.generate_key()
 
         # Create APIKey object
         api_key = APIKey(
@@ -173,9 +213,12 @@ class APIKeyManager:
             created_at=datetime.now(),
             scopes=scopes,
             enabled=True,
+            lookup_prefix=lookup_prefix,
         )
 
         self.keys[key_id] = api_key
+        if lookup_prefix:
+            self._lookup_index.setdefault(lookup_prefix, []).append(key_id)
         self._dirty = True
 
         logger.info(f"Created API key '{name}' (id: {key_id})")
@@ -192,7 +235,14 @@ class APIKeyManager:
             True if key was found and deleted, False otherwise
         """
         if key_id in self.keys:
-            key_name = self.keys[key_id].name
+            api_key = self.keys[key_id]
+            key_name = api_key.name
+            if api_key.lookup_prefix:
+                ids = self._lookup_index.get(api_key.lookup_prefix)
+                if ids and key_id in ids:
+                    ids.remove(key_id)
+                    if not ids:
+                        del self._lookup_index[api_key.lookup_prefix]
             del self.keys[key_id]
             self._dirty = True
             logger.info(f"Revoked API key '{key_name}' (id: {key_id})")
@@ -269,6 +319,7 @@ class APIKeyManager:
                 except Exception as e:
                     logger.error(f"Failed to load API key: {e}")
 
+            self._rebuild_index()
             logger.info(f"Loaded {len(self.keys)} API keys from {self.config_path}")
             self._dirty = False
             return len(self.keys)

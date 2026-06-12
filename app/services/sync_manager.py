@@ -376,12 +376,13 @@ class ImagePool:
         IMPORTANT: Caller must hold the ImagePool._lock or DisplayGroup._lock
         to ensure atomic assignment and prevent duplicate images (#1).
         """
-        # Handle empty image pool (#28)
+        # Handle empty image pool (#28). Do NOT rescan the filesystem here:
+        # this runs while a DisplayGroup._lock is held and get_image_files()
+        # is blocking I/O that would stall the event loop on large libraries.
+        # The periodic health_check_groups() repopulates an empty pool instead.
         if not self._all_images:
-            self._refresh_images()
-            if not self._all_images:
-                logger.warning("No images available in pool")
-                return None
+            logger.warning("No images available in pool")
+            return None
 
         all_paths = self.get_all_image_paths()
 
@@ -855,34 +856,44 @@ class DisplayManager:
 
     async def delete_group(self, group_id: str) -> bool:
         """Delete a display group and disconnect all browsers"""
+        # Phase 1: under the lock, remove the group and snapshot its browsers
+        # and cycle task. We do NOT perform any network I/O (send_json/close)
+        # or await task cancellation here — a slow/hung browser would otherwise
+        # freeze the whole DisplayManager while it holds self._lock.
         async with self._lock:
             group = self.groups.get(group_id)
             if not group:
                 return False
 
-            # Stop the cycle task
-            if group._cycle_task and not group._cycle_task.done():
-                group._cycle_task.cancel()
-                try:
-                    await group._cycle_task
-                except asyncio.CancelledError:
-                    pass
+            cycle_task = group._cycle_task
+            if cycle_task and not cycle_task.done():
+                cycle_task.cancel()
 
-            # Send disconnect message to all browsers
-            for browser in list(group.browsers.values()):
-                try:
-                    await browser.websocket.send_json({
-                        "type": "DISCONNECT",
-                        "reason": "Group deleted"
-                    })
-                    await browser.websocket.close()
-                except Exception as e:
-                    # Log error but continue cleanup (P2)
-                    logger.debug(f"Error closing browser {browser.browser_id}: {e}")
+            browsers = list(group.browsers.values())
 
             del self.groups[group_id]
             metrics.record_group_deleted()  # A6
             logger.info(f"Deleted display group: {group_id}")
+
+        # Phase 2: outside the lock, await the cancelled cycle task and close
+        # browser sockets with a per-socket timeout so one stuck client can't
+        # block the cleanup.
+        if cycle_task and not cycle_task.done():
+            try:
+                await cycle_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        for browser in browsers:
+            try:
+                await asyncio.wait_for(browser.websocket.send_json({
+                    "type": "DISCONNECT",
+                    "reason": "Group deleted"
+                }), timeout=5)
+                await asyncio.wait_for(browser.websocket.close(), timeout=5)
+            except Exception as e:
+                # Log error but continue cleanup (P2)
+                logger.debug(f"Error closing browser {browser.browser_id}: {e}")
 
         # Notify admin clients (outside lock to avoid deadlock)
         await self._notify_admins({
@@ -977,7 +988,7 @@ class DisplayManager:
 
         if total_cleaned > 0:
             logger.info(f"Cleaned {total_cleaned} stale history entries in group {group_id}")
-            self.save_config()
+            await asyncio.get_running_loop().run_in_executor(None, self.save_config)
             await self._notify_admins({"type": "GROUP_UPDATED", "group": group.to_dict()})
 
         return count
@@ -1250,7 +1261,7 @@ class DisplayManager:
             return create_blur_background(img, settings.background_blur_amount)
 
         try:
-            return await asyncio.get_event_loop().run_in_executor(None, _generate)
+            return await asyncio.get_running_loop().run_in_executor(None, _generate)
         except Exception as e:
             logger.warning(f"Failed to generate blur for {image_path}: {e}")
             return None
@@ -1510,8 +1521,8 @@ class DisplayManager:
                     )
 
         if cleaned_count > 0:
-            # Save config after cleanup
-            self.save_config()
+            # Save config after cleanup (off-thread to avoid blocking the loop)
+            await asyncio.get_running_loop().run_in_executor(None, self.save_config)
 
         return cleaned_count
 
@@ -1530,10 +1541,16 @@ class DisplayManager:
         for group in groups_snapshot:
             actions = []
 
-            # Check 1: Image pool has error but images might now be available
+            # Check 1: Image pool has error but images might now be available.
+            # Hold the group lock so we don't mutate pool state concurrently
+            # with assign_unique_image, and run the blocking filesystem scan in
+            # a thread so it doesn't stall the event loop.
             if group.image_pool.error and group.browsers:
                 old_error = group.image_pool.error
-                group.image_pool.refresh_images()
+                async with group._lock:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, group.image_pool.refresh_images
+                    )
                 if not group.image_pool.error:
                     actions.append(f"image pool recovered from: {old_error}")
 
@@ -2277,21 +2294,12 @@ class DisplayManager:
         Used by the /display?action=next URL and API endpoints.
         Returns the new current_image path, or None if no images available.
         """
-        # Get folder paths from settings
-        folder_paths = None
-        if group.settings.folders:
-            folder_paths = [f.strip() for f in group.settings.folders.split(",") if f.strip()]
-
-        # get_image_files returns List[Path]
-        image_paths = self.image_service.get_image_files(
-            folder_paths=folder_paths,
-            recursive=group.settings.recursive
-        )
-        if not image_paths:
+        # Reuse the group's image pool (cached relative paths) instead of a
+        # fresh filesystem scan on every call. The pool is kept current by the
+        # file watcher and periodic health check.
+        images = group.image_pool.get_all_image_paths()
+        if not images:
             return None
-
-        # Convert to relative string paths
-        images = [str(p.relative_to(self.image_service.image_dir)) for p in image_paths]
 
         import random
         next_img = random.choice(images)

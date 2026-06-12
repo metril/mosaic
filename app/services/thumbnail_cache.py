@@ -229,7 +229,7 @@ class ThumbnailCache:
         if not to_generate:
             return 0
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         tasks = [self._generate_one(img, loop) for img in to_generate]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -262,7 +262,7 @@ class ThumbnailCache:
         )
 
         if to_generate:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             generated = 0
             failed = 0
 

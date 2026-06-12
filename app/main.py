@@ -273,7 +273,7 @@ async def lifespan(app: FastAPI):
                 pass
 
         app.state.file_watcher = ImageFileWatcher(image_service.image_dir, on_folder_changed)
-        app.state.file_watcher.start(asyncio.get_event_loop())
+        app.state.file_watcher.start(asyncio.get_running_loop())
         logger.info("File watcher started for image directory")
 
         # Initialize Home Assistant provider if configured
@@ -327,6 +327,10 @@ async def lifespan(app: FastAPI):
         # Shut down thumbnail cache process pool
         if hasattr(app.state, 'thumbnail_cache'):
             app.state.thumbnail_cache.shutdown()
+
+        # Shut down the shared image-processing thread pool
+        from app.api.routes import image_executor
+        image_executor.shutdown(wait=False, cancel_futures=True)
 
         # Close Immich provider HTTP client
         if hasattr(app.state, 'immich_provider'):

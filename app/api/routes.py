@@ -8,6 +8,7 @@ import os
 import asyncio
 import json
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 from email.utils import formatdate
 from io import BytesIO
 from pathlib import Path
@@ -63,6 +64,33 @@ MAX_IMMICH_PULL_COUNT = int(os.environ.get('MAX_IMMICH_PULL_COUNT', '1000'))
 router = APIRouter()
 image_service = ImageService()
 templates = Jinja2Templates(directory="templates")
+
+# Bounded thread pool for CPU-bound image work (thumbnails, resizing, blur,
+# metadata). Using the default executor would let thread count grow unbounded
+# under load; cap it to keep memory/thread usage predictable.
+_IMAGE_WORKERS = int(os.environ.get("IMAGE_WORKER_THREADS", str(min(32, (os.cpu_count() or 4) * 2))))
+image_executor = ThreadPoolExecutor(max_workers=_IMAGE_WORKERS, thread_name_prefix="img")
+
+
+def _etag_matches(if_none_match: Optional[str], etag: str) -> bool:
+    """Per-RFC-7232 If-None-Match comparison for a strong ETag value.
+
+    Handles ``*``, comma-separated lists, and weak (``W/"..."``) validators,
+    stripping exactly one surrounding quote pair rather than all quotes.
+    """
+    if not if_none_match:
+        return False
+    for candidate in if_none_match.split(","):
+        token = candidate.strip()
+        if token == "*":
+            return True
+        if token.startswith("W/"):
+            token = token[2:].strip()
+        if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
+            token = token[1:-1]
+        if token == etag:
+            return True
+    return False
 
 
 from typing import Union
@@ -304,6 +332,27 @@ async def favicon():
     )
 
 
+# Cached image count for /health — the endpoint is polled frequently (Docker
+# healthcheck every 30s, uptime monitors) and a full directory walk on each
+# call would block the event loop on large libraries.
+_image_count_cache: Dict[str, Any] = {"count": 0, "ts": 0.0, "primed": False}
+_IMAGE_COUNT_TTL = 60.0  # seconds
+
+
+async def _get_cached_image_count() -> int:
+    """Return the image count, refreshing off-thread at most every TTL seconds."""
+    import time
+    now = time.monotonic()
+    if not _image_count_cache["primed"] or (now - _image_count_cache["ts"]) > _IMAGE_COUNT_TTL:
+        count = await asyncio.get_running_loop().run_in_executor(
+            image_executor, lambda: len(image_service.get_image_files())
+        )
+        _image_count_cache["count"] = count
+        _image_count_cache["ts"] = now
+        _image_count_cache["primed"] = True
+    return _image_count_cache["count"]
+
+
 @router.get("/health", responses={
     200: {
         "description": "Health status with image count",
@@ -321,11 +370,11 @@ async def health_check():
     Returns:
         JSON with status and image count
     """
-    image_files = image_service.get_image_files()
+    image_count = await _get_cached_image_count()
 
     return {
         "status": "healthy",
-        "image_count": len(image_files),
+        "image_count": image_count,
         "image_directory": str(image_service.image_dir)
     }
 
@@ -575,8 +624,8 @@ async def browse_images(
         return RedirectResponse(url="/auth/login?redirect=/browse")
 
     # Build complete directory tree with statistics (always enabled)
-    tree_data = await asyncio.get_event_loop().run_in_executor(
-        None,
+    tree_data = await asyncio.get_running_loop().run_in_executor(
+        image_executor,
         image_service.build_directory_tree
     )
 
@@ -591,7 +640,9 @@ async def browse_images(
             "request": request,
             "total_folders": tree_data["total_folders"],
             "total_files": tree_data["total_files"],
-            "tree_json": json.dumps(tree_data)
+            # Escape "<" so filenames containing "</script>" can't break
+            # out of the inline <script> block (rendered with | safe)
+            "tree_json": json.dumps(tree_data).replace("<", "\\u003c")
         }
     )
 
@@ -676,8 +727,8 @@ async def get_thumbnail(
 
         # Cache miss — generate, cache, then serve
         if thumbnail_cache:
-            cache_path = await asyncio.get_event_loop().run_in_executor(
-                None, thumbnail_cache.generate, image_path
+            cache_path = await asyncio.get_running_loop().run_in_executor(
+                image_executor, thumbnail_cache.generate, image_path
             )
             if cache_path:
                 return FileResponse(
@@ -706,7 +757,7 @@ async def get_thumbnail(
             buffer.seek(0)
             return buffer
 
-        buffer = await asyncio.get_event_loop().run_in_executor(None, process_thumbnail)
+        buffer = await asyncio.get_running_loop().run_in_executor(image_executor, process_thumbnail)
 
         content = buffer.getvalue()
         content_length = len(content)
@@ -790,8 +841,9 @@ async def get_image_metadata(
         # Validate path using centralized security function
         full_path = resolve_image_path(image_path, image_service.image_dir)
 
-        # Check if file exists
-        if not full_path.exists() or not full_path.is_file():
+        # Check if file exists (reject symlinks to match the other image
+        # endpoints — they must not be reachable via symlinked paths)
+        if not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
             return JSONResponse(
                 status_code=404,
                 content=error_response("Image not found")
@@ -801,7 +853,7 @@ async def get_image_metadata(
         def extract_metadata():
             return image_service.get_image_metadata(full_path, include_exif=include_exif)
 
-        metadata = await asyncio.get_event_loop().run_in_executor(None, extract_metadata)
+        metadata = await asyncio.get_running_loop().run_in_executor(image_executor, extract_metadata)
 
         return JSONResponse(content=metadata)
 
@@ -927,8 +979,8 @@ async def serve_processed_image(
 
             return buffer, content_type, filename_out, mtime, content_length, etag
 
-        buffer, content_type, filename_out, mtime, content_length, etag = await asyncio.get_event_loop().run_in_executor(
-            None, process
+        buffer, content_type, filename_out, mtime, content_length, etag = await asyncio.get_running_loop().run_in_executor(
+            image_executor, process
         )
 
         # Build Content-Location URI for this specific image
@@ -942,7 +994,7 @@ async def serve_processed_image(
 
         # Check for conditional request (304 Not Modified)
         if_none_match = request.headers.get("If-None-Match")
-        if if_none_match and if_none_match.strip('"') == etag:
+        if _etag_matches(if_none_match, etag):
             return Response(status_code=304)
 
         headers = {
@@ -1031,7 +1083,7 @@ async def get_blur_background(
             img = image_service.load_image(full_path)
             return create_blur_background(img, blur_amount=blur_amount)
 
-        blur_url = await asyncio.get_event_loop().run_in_executor(None, generate_blur)
+        blur_url = await asyncio.get_running_loop().run_in_executor(image_executor, generate_blur)
 
         return JSONResponse(content={"blur_url": blur_url})
 
@@ -1860,7 +1912,8 @@ async def create_endpoint(
     group_id: str = PathParam(...),
     body: EndpointCreateRequest = None,
     request: Request = None,
-    auth: Union[APIKey, User] = Depends(get_admin_auth)
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """Create a new persistent endpoint for a display group."""
     check_admin_scope(auth, "admin:endpoints:manage")
@@ -1930,7 +1983,8 @@ async def update_endpoint(
     endpoint_id: str = PathParam(...),
     body: EndpointUpdateRequest = None,
     request: Request = None,
-    auth: Union[APIKey, User] = Depends(get_admin_auth)
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """Update an endpoint (e.g., rename or promote from anonymous to persistent)."""
     check_admin_scope(auth, "admin:endpoints:manage")
@@ -1974,7 +2028,8 @@ async def delete_endpoint(
     group_id: str = PathParam(...),
     endpoint_id: str = PathParam(...),
     request: Request = None,
-    auth: Union[APIKey, User] = Depends(get_admin_auth)
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """Delete an endpoint. Cannot delete if a browser is currently connected."""
     check_admin_scope(auth, "admin:endpoints:manage")
@@ -2078,7 +2133,8 @@ async def endpoint_next_image(
     group_id: str = PathParam(...),
     endpoint_id: str = PathParam(...),
     request: Request = None,
-    auth: Union[APIKey, User] = Depends(get_admin_auth)
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """
     Request next image for a specific endpoint.
@@ -2130,7 +2186,8 @@ async def endpoint_previous_image(
     group_id: str = PathParam(...),
     endpoint_id: str = PathParam(...),
     request: Request = None,
-    auth: Union[APIKey, User] = Depends(get_admin_auth)
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
 ):
     """
     Request previous image for a specific endpoint.
@@ -2283,6 +2340,56 @@ async def display_page(
     )
 
 
+def _ws_admin_authorized(websocket: WebSocket) -> bool:
+    """Authorize an admin WebSocket via session user OR an admin API key.
+
+    Mirrors the dual auth (session + API key) used by every other admin
+    endpoint. API keys may be supplied via the Authorization header or the
+    ``?key=`` query param (used by the session-less display dashboards).
+    """
+    # Session user (OIDC) — full admin access
+    if hasattr(websocket, "session") and websocket.session.get("user"):
+        return True
+
+    manager = getattr(websocket.app.state, "api_key_manager", None)
+    if manager is None:
+        return False
+
+    # Extract a key from the Authorization header or the query param
+    key: Optional[str] = None
+    authorization = websocket.headers.get("authorization")
+    if authorization and authorization.startswith("Bearer "):
+        key = authorization[7:]
+    else:
+        key_param = websocket.query_params.get("key")
+        if key_param and key_param.startswith("sk_"):
+            key = key_param
+
+    if not key:
+        # Previously validated key stored in session
+        key_id = websocket.session.get("api_key_id") if hasattr(websocket, "session") else None
+        api_key = manager.get_key(key_id) if key_id else None
+        if api_key and api_key.enabled:
+            return _key_has_admin_monitor(api_key.scopes)
+        return False
+
+    api_key = manager.verify_key(key)
+    if not api_key or not api_key.enabled:
+        return False
+    return _key_has_admin_monitor(api_key.scopes)
+
+
+def _key_has_admin_monitor(scopes: Optional[List[str]]) -> bool:
+    """True if the key may monitor admin display state (admin:display:monitor)."""
+    scopes = scopes or []
+    return (
+        "*" in scopes
+        or "admin:*" in scopes
+        or "admin:display:*" in scopes
+        or "admin:display:monitor" in scopes
+    )
+
+
 @router.websocket("/ws/admin")
 async def websocket_admin(websocket: WebSocket):
     """
@@ -2304,9 +2411,7 @@ async def websocket_admin(websocket: WebSocket):
 
     # Authentication check
     if oidc_config.enabled:
-        # Check session for authenticated user
-        user_info = websocket.session.get("user") if hasattr(websocket, 'session') else None
-        if not user_info:
+        if not _ws_admin_authorized(websocket):
             await websocket.close(code=4001, reason="Not authenticated")
             return
 
@@ -2958,8 +3063,12 @@ async def create_folder(
         # Resolve and validate the path
         full_path = (base_dir / folder_path).resolve()
 
-        # Ensure the path is within the base directory (security check)
-        if not str(full_path).startswith(str(base_dir.resolve())):
+        # Ensure the path is within the base directory. Use relative_to (raises
+        # ValueError on escape) rather than a string prefix check, which would
+        # accept siblings like "/www/imagesX" for base "/www/images".
+        try:
+            full_path.relative_to(base_dir.resolve())
+        except ValueError:
             raise HTTPException(status_code=400, detail="Invalid folder path")
 
         # Create the folder
@@ -3325,8 +3434,8 @@ async def root(
             actual_sharpen = sharpen if sharpen is not None else EINK_SHARPEN
 
             # Run CPU-intensive image processing in thread pool to avoid blocking event loop
-            result = await asyncio.get_event_loop().run_in_executor(
-                None,  # Use default ThreadPoolExecutor
+            result = await asyncio.get_running_loop().run_in_executor(
+                image_executor,
                 image_service.process_image,
                 width,
                 height,
@@ -3372,7 +3481,7 @@ async def root(
 
         # Check for conditional request (304 Not Modified)
         if_none_match = request.headers.get("If-None-Match")
-        if if_none_match and if_none_match.strip('"') == etag:
+        if _etag_matches(if_none_match, etag):
             buffer.close()
             return Response(status_code=304)
 
@@ -3457,8 +3566,12 @@ async def root(
                 # Original slideshow mode: all images for JavaScript rotation
                 image_files = image_service.get_image_files(final_folder_paths, recursive)
 
-                # Build image URLs
-                image_urls = [f"{base_url}/images/{file.relative_to(image_service.image_dir)}" for file in image_files]
+                # Build image URLs — URL-encode the relative path so filenames
+                # with spaces or non-ASCII characters produce valid URLs.
+                image_urls = [
+                    f"{base_url}/images/{quote(str(file.relative_to(image_service.image_dir)))}"
+                    for file in image_files
+                ]
 
                 return templates.TemplateResponse(
                     "index.html",

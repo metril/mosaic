@@ -2558,11 +2558,15 @@
                 setTimeout(() => el.innerHTML = '', 5000);
             }
 
-            // Escape HTML to prevent XSS
+            // Escape HTML to prevent XSS (includes quotes so the result is
+            // also safe inside attribute values)
             function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
+                return String(text == null ? '' : text)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
             }
 
             // Format time ago for endpoint last_seen
@@ -2862,12 +2866,6 @@
                         </div>
                     </div>
                 `).join('');
-            }
-
-            function escapeHtml(text) {
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
             }
 
             let editingWebhookIndex = null;  // null = adding new, number = editing existing
@@ -4850,18 +4848,35 @@
                                 <span class="pull-progress-text" id="pull-progress-text-${nameSafe}">0/0</span>
                             </div>
                             <div class="pull-actions">
-                                <button class="btn-trigger" onclick="triggerPull('${nameSafe}')" id="pull-trigger-${nameSafe}">
+                                <button class="btn-trigger" data-pull-action="trigger" id="pull-trigger-${nameSafe}">
                                     ▶ Pull Now
                                 </button>
-                                <button class="btn btn-danger" onclick="cancelPull('${nameSafe}')" id="pull-cancel-${nameSafe}" style="display: none;">
+                                <button class="btn btn-danger" data-pull-action="cancel" id="pull-cancel-${nameSafe}" style="display: none;">
                                     ✕ Cancel
                                 </button>
-                                <button class="btn btn-secondary" onclick="openImmichPanel('edit', '${nameSafe}')">Edit</button>
-                                <button class="btn btn-danger" onclick="deletePull('${nameSafe}', this)">Delete</button>
+                                <button class="btn btn-secondary" data-pull-action="edit">Edit</button>
+                                <button class="btn btn-danger" data-pull-action="delete">Delete</button>
                             </div>
                         </div>
                     `;
                 }).join('');
+
+                // Delegated handler — avoids inline onclick with interpolated
+                // names (which would allow JS injection via the pull name).
+                // Using onclick (not addEventListener) so re-renders don't stack.
+                container.onclick = (e) => {
+                    const btn = e.target.closest('[data-pull-action]');
+                    if (!btn) return;
+                    const card = btn.closest('.pull-card');
+                    if (!card) return;
+                    const name = card.dataset.pull;
+                    switch (btn.dataset.pullAction) {
+                        case 'trigger': triggerPull(name); break;
+                        case 'cancel': cancelPull(name); break;
+                        case 'edit': openImmichPanel('edit', name); break;
+                        case 'delete': deletePull(name, btn); break;
+                    }
+                };
 
                 // Check status for any running pulls
                 pulls.forEach(pull => {

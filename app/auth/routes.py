@@ -11,7 +11,7 @@ Endpoints:
 
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
@@ -25,6 +25,18 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 
 # Templates for login page
 templates = Jinja2Templates(directory=Path(__file__).parent.parent.parent / "templates")
+
+
+def _safe_redirect(redirect: Optional[str], default: str = "/admin") -> str:
+    """Only allow same-origin relative redirects to prevent open redirects."""
+    if not redirect:
+        return default
+    parsed = urlparse(redirect)
+    if parsed.scheme or parsed.netloc or redirect.startswith("//"):
+        return default
+    if not redirect.startswith("/"):
+        return default
+    return redirect
 
 
 @router.get("/login")
@@ -42,6 +54,7 @@ async def login(
     - After successful auth, user is redirected back to /auth/callback
     """
     config = get_oidc_config()
+    redirect = _safe_redirect(redirect)
 
     if not config.enabled:
         # OIDC not configured - redirect directly (dev mode)
@@ -95,7 +108,7 @@ async def auth_callback(request: Request):
         raise HTTPException(status_code=500, detail="OIDC client not initialized")
 
     # Get intended redirect destination
-    redirect_dest = request.session.pop("auth_redirect", "/admin")
+    redirect_dest = _safe_redirect(request.session.pop("auth_redirect", "/admin"))
 
     try:
         # Exchange code for tokens
@@ -137,8 +150,8 @@ async def logout(request: Request, redirect: str = "/"):
     request.session.clear()
     logger.info("User logged out")
 
-    # Redirect to home or specified URL
-    return RedirectResponse(url=redirect)
+    # Redirect to home or specified URL (same-origin only)
+    return RedirectResponse(url=_safe_redirect(redirect, default="/"))
 
 
 @router.get("/me")
