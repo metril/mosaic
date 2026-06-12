@@ -334,6 +334,7 @@
         }
 
         .thumbnail-container {
+            position: relative;
             width: 100%;
             height: 200px;
             background: var(--thumbnail-bg);
@@ -348,6 +349,58 @@
             height: 100%;
             object-fit: cover;
         }
+
+        /* Curation controls on each gallery card (F6) */
+        .card-curation {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            display: flex;
+            gap: 6px;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 2;
+        }
+        .image-card:hover .card-curation,
+        .image-card.is-favorite .card-curation { opacity: 1; }
+        @media (hover: none) { .card-curation { opacity: 1; } }  /* touch devices */
+
+        .card-curate-btn {
+            width: 30px;
+            height: 30px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            color: #fff;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(2px);
+            transition: background 0.15s, transform 0.1s;
+        }
+        .card-curate-btn:hover { transform: scale(1.1); background: rgba(0, 0, 0, 0.75); }
+        .image-card.is-favorite .card-curate-btn.fav { color: #e0245e; }
+        .image-card.is-favorite .card-curate-btn.fav .heart-path { fill: currentColor; }
+        .image-card.is-hidden .card-curate-btn.hide { color: #ffb4b4; background: rgba(120, 0, 0, 0.6); }
+
+        .hidden-badge {
+            position: absolute;
+            left: 8px;
+            top: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: #fff;
+            background: rgba(40, 40, 40, 0.85);
+            padding: 2px 8px;
+            border-radius: 10px;
+            display: none;
+            z-index: 2;
+        }
+        .image-card.is-hidden .hidden-badge { display: block; }
+        .image-card.is-hidden .thumbnail-container img { opacity: 0.4; filter: grayscale(0.4); }
 
         .image-info {
             padding: 12px;
@@ -901,6 +954,14 @@
                 </select>
             </div>
             <div class="filter-group">
+                <label for="curationFilter">Show:</label>
+                <select id="curationFilter" onchange="applyFilters()">
+                    <option value="">All</option>
+                    <option value="favorites">★ Favorites</option>
+                    <option value="hidden">Hidden</option>
+                </select>
+            </div>
+            <div class="filter-group">
                 <label for="sortBy">Sort:</label>
                 <select id="sortBy" onchange="applySorting()">
                     <option value="name-asc">Name (A-Z)</option>
@@ -1204,6 +1265,15 @@
                      data-folder-id="${escapeHtml(folderId)}">
                     <div class="thumbnail-container">
                         <img src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(file.name)}" loading="lazy">
+                        <div class="card-curation">
+                            <button class="card-curate-btn fav" title="Favorite" onclick="toggleCardCuration(event, 'favorite')">
+                                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path class="heart-path" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 21s-7.5-4.6-10-9.3C.6 8.9 2 5.5 5.2 5.5c1.9 0 3.2 1.1 3.8 2.2C9.6 6.6 10.9 5.5 12.8 5.5 16 5.5 17.4 8.9 16 11.7 13.5 16.4 12 21 12 21z"/></svg>
+                            </button>
+                            <button class="card-curate-btn hide" title="Hide from slideshow" onclick="toggleCardCuration(event, 'exclude')">
+                                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.6-7 10-7c2 0 3.7.7 5.1 1.6M22 12s-3.6 7-10 7c-2 0-3.7-.7-5.1-1.6"/><path d="M9.5 9.5a3.5 3.5 0 0 0 5 5"/><line x1="3" y1="3" x2="21" y2="21"/></g></svg>
+                            </button>
+                        </div>
+                        <span class="hidden-badge">Hidden</span>
                     </div>
                     <div class="image-info">
                         <div class="image-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</div>
@@ -1590,14 +1660,45 @@
         }
 
         // --- Curation (favorite / hide-from-slideshow) — F6 ---
-        function applyCurationButtons(state) {
+        // Shared client-side state so the gallery grid and the lightbox stay in sync.
+        const favSet = new Set();
+        const hiddenSet = new Set();
+
+        // Fetch the full curation state once and apply it to all rendered cards.
+        async function loadCurationAll() {
+            try {
+                const res = await fetch('/api/curation');
+                if (!res.ok) return;
+                const data = await res.json();
+                favSet.clear(); hiddenSet.clear();
+                (data.favorites || []).forEach(p => favSet.add(p));
+                (data.excluded || []).forEach(p => hiddenSet.add(p));
+                applyCurationToCards();
+            } catch (e) { /* non-fatal */ }
+        }
+
+        function applyCardCuration(card) {
+            const path = card.dataset.path;
+            card.classList.toggle('is-favorite', favSet.has(path));
+            card.classList.toggle('is-hidden', hiddenSet.has(path));
+            card.dataset.favorite = favSet.has(path) ? '1' : '';
+            card.dataset.hidden = hiddenSet.has(path) ? '1' : '';
+        }
+
+        function applyCurationToCards() {
+            document.querySelectorAll('.image-card').forEach(applyCardCuration);
+        }
+
+        // Update the lightbox favorite/hide buttons from shared state.
+        function applyCurationButtons(path) {
             const favBtn = document.getElementById('favorite-toggle');
+            if (!favBtn) return;
             const favText = document.getElementById('favorite-toggle-text');
             const favPath = document.getElementById('favorite-icon-path');
             const hideBtn = document.getElementById('hide-toggle');
             const hideText = document.getElementById('hide-toggle-text');
-            const fav = !!(state && state.favorite);
-            const hidden = !!(state && state.excluded);
+            const fav = favSet.has(path);
+            const hidden = hiddenSet.has(path);
             favBtn.classList.toggle('active', fav);
             favPath.setAttribute('fill', fav ? 'currentColor' : 'none');
             favText.textContent = fav ? 'Favorited' : 'Favorite';
@@ -1605,35 +1706,59 @@
             hideText.textContent = hidden ? 'Hidden' : 'Hide from slideshow';
         }
 
-        async function loadCurationState(path) {
-            applyCurationButtons(null);
-            if (!path) return;
-            try {
-                const res = await fetch('/api/curation/state?path=' + encodeURIComponent(path));
-                if (res.ok) applyCurationButtons(await res.json());
-            } catch (e) { /* non-fatal */ }
+        function loadCurationState(path) {
+            applyCurationButtons(path);
         }
 
-        async function toggleCuration(kind) {
-            if (!currentCurationPath) return;
+        // Single source of truth for toggling curation — updates server, the
+        // shared Sets, the affected grid card, and the lightbox if open.
+        async function setCuration(path, kind, value) {
+            if (!path) return;
             const isFav = kind === 'favorite';
-            const cur = document.getElementById(isFav ? 'favorite-toggle' : 'hide-toggle').classList.contains('active');
             const endpoint = isFav ? '/api/curation/favorite' : '/api/curation/exclude';
             try {
                 const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-                    body: JSON.stringify({ path: currentCurationPath, value: !cur })
+                    body: JSON.stringify({ path: path, value: value })
                 });
                 if (!res.ok) throw new Error('request failed');
                 const state = await res.json();
-                applyCurationButtons(state);
+                const set = isFav ? favSet : hiddenSet;
+                if (isFav ? state.favorite : state.excluded) set.add(path); else set.delete(path);
+                // Update the matching grid card(s)
+                document.querySelectorAll(`.image-card[data-path="${cssEscape(path)}"]`).forEach(applyCardCuration);
+                // Keep lightbox buttons in sync if it's showing this image
+                if (currentCurationPath === path) applyCurationButtons(path);
+                // Re-apply the Show filter (a now-hidden card may need to drop out)
+                applyFilters();
                 showToast(isFav
                     ? (state.favorite ? 'Added to favorites' : 'Removed from favorites')
                     : (state.excluded ? 'Hidden from slideshow' : 'Un-hidden'), 'success');
             } catch (e) {
                 showToast('Failed to update', 'error');
             }
+        }
+
+        // Lightbox button handler
+        function toggleCuration(kind) {
+            const set = kind === 'favorite' ? favSet : hiddenSet;
+            setCuration(currentCurationPath, kind, !set.has(currentCurationPath));
+        }
+
+        // Gallery card button handler (stops the card's lightbox onclick)
+        function toggleCardCuration(event, kind) {
+            event.stopPropagation();
+            const card = event.target.closest('.image-card');
+            if (!card) return;
+            const path = card.dataset.path;
+            const set = kind === 'favorite' ? favSet : hiddenSet;
+            setCuration(path, kind, !set.has(path));
+        }
+
+        // Minimal CSS.escape fallback for attribute selectors
+        function cssEscape(s) {
+            return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/["\\\]]/g, '\\$&');
         }
 
         // Copy image link to clipboard
@@ -1790,25 +1915,34 @@
 
         // Apply filters to image cards
         function applyFilters() {
-            const orientationFilter = document.getElementById('orientationFilter').value;
-            const sizeFilter = document.getElementById('sizeFilter').value;
-            const allCards = document.querySelectorAll('.image-card');
+            const orientation = document.getElementById('orientationFilter')?.value || '';
+            const format = document.getElementById('formatFilter')?.value || '';
+            const curation = document.getElementById('curationFilter')?.value || '';
 
-            allCards.forEach(card => {
+            document.querySelectorAll('.image-card').forEach(card => {
                 let show = true;
-
-                // Check orientation filter
-                if (orientationFilter && orientationFilter !== 'all' && card.dataset.orientation !== orientationFilter) {
-                    show = false;
-                }
-
-                // Check size filter
-                if (sizeFilter && sizeFilter !== 'all' && card.dataset.size !== sizeFilter) {
-                    show = false;
-                }
-
-                // Apply visibility
+                if (orientation && card.dataset.orientation !== orientation) show = false;
+                if (format && (card.dataset.format || '') !== format) show = false;
+                if (curation === 'favorites' && card.dataset.favorite !== '1') show = false;
+                if (curation === 'hidden' && card.dataset.hidden !== '1') show = false;
                 card.style.display = show ? '' : 'none';
+            });
+        }
+
+        // Clear all filters (the "Clear Filters" button handler)
+        function clearFilters() {
+            ['orientationFilter', 'formatFilter', 'curationFilter'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+            const search = document.getElementById('searchInput');
+            if (search) search.value = '';
+            document.querySelectorAll('.image-card').forEach(c => { c.style.display = ''; });
+            document.querySelectorAll('.tree-item.folder').forEach(i => { i.style.display = ''; });
+            document.querySelectorAll('.children.expanded').forEach(el => {
+                el.classList.remove('expanded');
+                const icon = document.getElementById('icon-' + el.id);
+                if (icon) icon.textContent = '▶';
             });
         }
 
@@ -1921,6 +2055,8 @@
         setTimeout(() => {
             populateFormatFilter();
             applySorting();
+            // Load curation state and mark cards (F6)
+            loadCurationAll();
         }, 100);
     </script>
 </body>
