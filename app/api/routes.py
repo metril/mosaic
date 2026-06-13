@@ -42,6 +42,7 @@ from app.utils.path_security import resolve_image_path
 from app.utils.logging import logger
 from app.utils.metrics import metrics
 from app.utils.blur import create_blur_background, should_skip_blur
+from app.utils.lru_cache import BoundedLRU
 from app.services.thumbnail_cache import ThumbnailCache
 from app.services import cron_utils
 
@@ -120,6 +121,20 @@ async def get_csrf(request: Request):
 # under load; cap it to keep memory/thread usage predictable.
 _IMAGE_WORKERS = int(os.environ.get("IMAGE_WORKER_THREADS", str(min(32, (os.cpu_count() or 4) * 2))))
 image_executor = ThreadPoolExecutor(max_workers=_IMAGE_WORKERS, thread_name_prefix="img")
+
+# Server-side cache of fully-processed image bytes for /api/image. The output is
+# deterministic in (path, mtime, processing params), so repeat requests — and
+# even conditional (304) requests, which otherwise re-encode just to recompute
+# the ETag — are served without touching the executor. Keyed with mtime so a
+# changed source file produces a fresh key; bounded by a byte budget. The E-Ink
+# path benefits most (it sends Cache-Control: no-cache, so clients always
+# re-request). Set PROCESSED_IMAGE_CACHE_BYTES=0 to disable.
+PROCESSED_IMAGE_CACHE_BYTES = int(os.environ.get("PROCESSED_IMAGE_CACHE_BYTES", str(256 * 1024 * 1024)))
+processed_image_cache = BoundedLRU(PROCESSED_IMAGE_CACHE_BYTES)
+
+
+def _processed_cache_key(image_path: str, mtime: float, *params: Any) -> str:
+    return image_path + "\x00" + repr(mtime) + "\x00" + "\x00".join(repr(p) for p in params)
 
 
 def _etag_matches(if_none_match: Optional[str], etag: str) -> bool:
@@ -987,6 +1002,13 @@ async def serve_processed_image(
                 content=error_response("Image not found")
             )
 
+        # mtime keys the server-side cache and feeds Last-Modified.
+        mtime = full_path.stat().st_mtime
+        cache_key = _processed_cache_key(
+            image_path, mtime, width, height, preserve_aspect, mode, pad_color,
+            eink, format, saturation, contrast, brightness, sharpen,
+        )
+
         # Process image in thread pool (CPU-intensive operations)
         def process():
             from app.utils.color_mapping import apply_spectra_6
@@ -1022,24 +1044,23 @@ async def serve_processed_image(
             # Save to buffer
             buffer = BytesIO()
             img.save(buffer, format=output_format.upper(), quality=IMAGE_JPEG_QUALITY, optimize=True)
-
-            # Get buffer content for ETag and length (single read)
             content = buffer.getvalue()
-            content_length = len(content)
-            etag = hashlib.md5(content).hexdigest()
-            buffer.seek(0)
 
             content_type = f"image/{output_format}"
             filename_out = f"{full_path.stem}.{output_format}"
+            etag = hashlib.md5(content).hexdigest()
+            return content, content_type, filename_out, etag
 
-            # Get file mtime for Last-Modified header
-            mtime = full_path.stat().st_mtime
+        cached = processed_image_cache.get(cache_key)
+        if cached is not None:
+            content, content_type, filename_out, etag = cached
+        else:
+            content, content_type, filename_out, etag = await asyncio.get_running_loop().run_in_executor(
+                image_executor, process
+            )
+            processed_image_cache.put(cache_key, (content, content_type, filename_out, etag), len(content))
 
-            return buffer, content_type, filename_out, mtime, content_length, etag
-
-        buffer, content_type, filename_out, mtime, content_length, etag = await asyncio.get_running_loop().run_in_executor(
-            image_executor, process
-        )
+        content_length = len(content)
 
         # Build Content-Location URI for this specific image
         # RFC 7231: indicates a URI that can be used as an identifier for this resource
@@ -1066,16 +1087,11 @@ async def serve_processed_image(
             "Vary": "Accept",  # Response varies based on Accept header
         }
 
-        # HEAD request - return headers only, no body (close buffer)
+        # HEAD request - return headers only, no body
         if request.method == "HEAD":
-            buffer.close()
             return Response(status_code=200, headers=headers, media_type=content_type)
 
-        return StreamingResponse(
-            iter_buffer_with_cleanup(buffer),
-            media_type=content_type,
-            headers=headers
-        )
+        return Response(content=content, media_type=content_type, headers=headers)
 
     except PathSecurityError:
         return JSONResponse(
@@ -1515,8 +1531,8 @@ async def create_display_group(
                         is_persistent=True,
                     )
                     group.endpoints[ep.endpoint_id] = endpoint
-            # Save config to persist the endpoints
-            display_manager.save_config()
+            # Persist the endpoints (debounced, non-blocking)
+            display_manager.schedule_save()
 
         return JSONResponse(
             status_code=201,
@@ -2086,8 +2102,8 @@ async def create_endpoint(
     )
     group.endpoints[body.endpoint_id] = endpoint
 
-    # Save config to persist the new endpoint
-    display_manager.save_config()
+    # Persist the new endpoint (debounced, non-blocking)
+    display_manager.schedule_save()
 
     # Notify admin clients of the change
     await display_manager._notify_admins({
@@ -2164,7 +2180,7 @@ async def update_endpoint(
 
     # Save config if endpoint is now persistent (includes promotions)
     if endpoint.is_persistent:
-        display_manager.save_config()
+        display_manager.schedule_save()
 
     # Push merged settings to this endpoint's connected browsers immediately
     if override_changed:
@@ -2229,7 +2245,7 @@ async def delete_endpoint(
 
     # Save config if the deleted endpoint was persistent
     if was_persistent:
-        display_manager.save_config()
+        display_manager.schedule_save()
 
     # Notify admin clients of the change
     await display_manager._notify_admins({
@@ -2290,7 +2306,7 @@ async def remove_from_history(
 
     if removed:
         # Persist cleaned history and notify admin clients for real-time UI update
-        display_manager.save_config()
+        display_manager.schedule_save()
         await display_manager._notify_admins({
             "type": "GROUP_UPDATED",
             "group": group.to_dict()

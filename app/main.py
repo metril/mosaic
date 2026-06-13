@@ -286,8 +286,13 @@ async def lifespan(app: FastAPI):
                 app.state.thumbnail_cache.invalidate_folder(rel_str)
                 asyncio.create_task(app.state.thumbnail_cache.pre_generate_folder(rel_str))
 
-                # Invalidate EXIF caption cache (F4) — files may have changed
+                # Invalidate EXIF caption + blur caches (F4) — files may have changed
                 app.state.display_manager.clear_caption_cache()
+
+                # Drop cached processed-image bytes for the changed folder so memory
+                # is reclaimed promptly (mtime-keying already guarantees freshness).
+                from app.api.routes import processed_image_cache
+                processed_image_cache.clear_prefix(rel_str)
 
                 # Refresh affected display groups
                 refreshed = await app.state.display_manager.refresh_groups_by_folder(rel_str)
@@ -345,6 +350,13 @@ async def lifespan(app: FastAPI):
         raise
     finally:
         # Shutdown
+        # Flush any pending debounced config save so a recent edit isn't lost.
+        if hasattr(app.state, 'display_manager'):
+            try:
+                await app.state.display_manager.flush_save()
+            except Exception as e:
+                logger.warning(f"Config flush on shutdown failed: {e}")
+
         if cleanup_task:
             cleanup_task.cancel()
             try:

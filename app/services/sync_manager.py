@@ -11,6 +11,7 @@ import math
 import os
 import random
 import uuid
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from enum import Enum
@@ -31,6 +32,10 @@ PRELOAD_LEAD_TIME_SECONDS = int(os.environ.get("PRELOAD_LEAD_TIME", "5"))
 MAX_CYCLE_COUNT = 2**31  # Wrap cycle counter to prevent overflow (S14)
 MAX_IMAGE_HISTORY = int(os.environ.get("MAX_IMAGE_HISTORY", "100"))
 WEBSOCKET_SEND_TIMEOUT = float(os.environ.get("WEBSOCKET_SEND_TIMEOUT", "5.0"))
+# Bound the per-path EXIF caption cache so a huge library can't leak memory.
+_CAPTION_CACHE_MAX = int(os.environ.get("CAPTION_CACHE_MAX", "5000"))
+# Bound the blur data-URL cache (entries; each is a downscaled JPEG data URL).
+_BLUR_CACHE_MAX = int(os.environ.get("BLUR_CACHE_MAX", "256"))
 
 # Connection limits (A10) - configurable via environment variables
 MAX_BROWSERS_PER_GROUP = int(os.environ.get("MAX_BROWSERS_PER_GROUP", "100"))
@@ -611,6 +616,12 @@ class DisplayManager:
         self._admin_lock = asyncio.Lock()
         # Config file path for persistence
         self.config_path = config_path or Path("config/display_groups.yaml")
+        # Caches keyed by (path, mtime, …); bounded LRUs invalidated on folder change.
+        self._caption_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        self._blur_cache: "OrderedDict[str, str]" = OrderedDict()
+        # Debounced-save bookkeeping (see schedule_save / flush_save).
+        self._save_handle: Optional[asyncio.TimerHandle] = None
+        self._save_pending = False
 
     def set_base_url(self, base_url: str) -> None:
         """Set the base URL for image URLs"""
@@ -684,6 +695,53 @@ class DisplayManager:
 
         logger.info(f"Saved {len(self.groups)} display groups to config: {self.config_path}")
         return len(self.groups)
+
+    def schedule_save(self, delay: float = 1.0) -> None:
+        """Debounced, non-blocking config save.
+
+        Many admin/endpoint operations previously called the synchronous
+        save_config() directly inside async handlers, blocking the event loop on
+        a full YAML rewrite. This coalesces a burst of edits into a single write
+        ~`delay`s later, run in the default executor. flush_save() forces an
+        immediate write (used on shutdown) so nothing is lost. Best-effort if no
+        running loop (e.g. called from a sync context outside the app)."""
+        self._save_pending = True
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No event loop — fall back to a direct synchronous save.
+            self._save_pending = False
+            try:
+                self.save_config()
+            except Exception as e:
+                logger.error(f"schedule_save fallback failed: {e}")
+            return
+        if self._save_handle is not None:
+            self._save_handle.cancel()
+
+        def _fire():
+            self._save_handle = None
+            if not self._save_pending:
+                return
+            self._save_pending = False
+            loop.run_in_executor(None, self._save_config_safe)
+
+        self._save_handle = loop.call_later(delay, _fire)
+
+    def _save_config_safe(self) -> None:
+        try:
+            self.save_config()
+        except Exception as e:
+            logger.error(f"Debounced save_config failed: {e}")
+
+    async def flush_save(self) -> None:
+        """Immediately persist if a debounced save is pending (call on shutdown)."""
+        if self._save_handle is not None:
+            self._save_handle.cancel()
+            self._save_handle = None
+        if self._save_pending:
+            self._save_pending = False
+            await asyncio.get_running_loop().run_in_executor(None, self._save_config_safe)
 
     async def register_admin(self, websocket: WebSocket) -> None:
         """Register an admin WebSocket connection for real-time updates."""
@@ -1339,11 +1397,16 @@ class DisplayManager:
         return out or None
 
     def _caption_exif(self, image_path: str) -> Dict[str, Any]:
-        """Read date_taken + location from EXIF (cached per relative path)."""
+        """Read date_taken + location from EXIF (cached per relative path).
+
+        Bounded LRU so a large library can't grow this cache without limit;
+        entries are evicted oldest-first past _CAPTION_CACHE_MAX."""
         if not hasattr(self, "_caption_cache"):
-            self._caption_cache: Dict[str, Dict[str, Any]] = {}
-        if image_path in self._caption_cache:
-            return self._caption_cache[image_path]
+            self._caption_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
+        cached = self._caption_cache.get(image_path)
+        if cached is not None:
+            self._caption_cache.move_to_end(image_path)
+            return cached
         meta: Dict[str, Any] = {}
         try:
             from PIL import Image as _PILImage
@@ -1369,6 +1432,8 @@ class DisplayManager:
         except Exception as e:
             logger.debug(f"Caption EXIF read failed for {image_path}: {e}")
         self._caption_cache[image_path] = meta
+        while len(self._caption_cache) > _CAPTION_CACHE_MAX:
+            self._caption_cache.popitem(last=False)
         return meta
 
     @staticmethod
@@ -1388,9 +1453,10 @@ class DisplayManager:
             return None
 
     def clear_caption_cache(self) -> None:
-        """Invalidate the EXIF caption cache (call on folder change)."""
-        if hasattr(self, "_caption_cache"):
-            self._caption_cache.clear()
+        """Invalidate the per-image EXIF caption and blur caches. Called on a
+        folder change so regenerated/replaced images aren't served stale."""
+        self._caption_cache.clear()
+        self._blur_cache.clear()
 
     def build_image_url(self, image_path: str, settings: DisplayGroupSettings) -> str:
         """Build a full image URL with processing parameters"""
@@ -1435,16 +1501,37 @@ class DisplayManager:
         if not settings.background_blur or settings.image_fit == 'cover':
             return None
 
+        # The blur is deterministic in (path, mtime, amount). When several
+        # browsers in a group show the same image — or the same image recurs
+        # across cycles — this avoids regenerating an identical expensive
+        # Gaussian blur each time. Bounded LRU; invalidated on folder change.
+        amount = settings.background_blur_amount
+        try:
+            mtime = (self.image_service.image_dir / image_path).stat().st_mtime
+        except OSError:
+            mtime = 0
+        cache_key = f"{image_path}\x00{mtime}\x00{amount}"
+        cached = self._blur_cache.get(cache_key)
+        if cached is not None:
+            self._blur_cache.move_to_end(cache_key)
+            return cached
+
         def _generate():
             full_path = resolve_image_path(image_path, self.image_service.image_dir)
             img = self.image_service.load_image(full_path)
-            return create_blur_background(img, settings.background_blur_amount)
+            return create_blur_background(img, amount)
 
         try:
-            return await asyncio.get_running_loop().run_in_executor(None, _generate)
+            blur = await asyncio.get_running_loop().run_in_executor(None, _generate)
         except Exception as e:
             logger.warning(f"Failed to generate blur for {image_path}: {e}")
             return None
+
+        if blur:
+            self._blur_cache[cache_key] = blur
+            while len(self._blur_cache) > _BLUR_CACHE_MAX:
+                self._blur_cache.popitem(last=False)
+        return blur
 
     async def _send_to_browser(
         self,
