@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useWindowVirtualizer } from '@tanstack/react-virtual'
 import type { FileNode } from '@/api/types'
 import { ImageCard } from './ImageCard'
+import { Spinner } from '@/components/ui'
 
 const MIN_COL = 170 // matches the old auto-fill minmax
 const GAP = 16 // var(--s4)
@@ -14,11 +15,14 @@ interface Props {
   onOpen: (index: number) => void
   onToggleFav: (path: string) => void
   onToggleHide: (path: string) => void
+  hasNextPage?: boolean
+  isFetchingNextPage?: boolean
+  fetchNextPage?: () => void
 }
 
 /** Windowed photo grid: virtualizes rows against the window scroll so only the
- *  visible rows (plus a small overscan) ever mount. Thumbnails are therefore
- *  requested on demand — a folder with tens of thousands of images stays fast. */
+ *  visible rows (plus a small overscan) ever mount. As the last rows enter view
+ *  it pulls the next page, so the data set loads lazily too. */
 export function VirtualGrid({
   files,
   favSet,
@@ -26,6 +30,9 @@ export function VirtualGrid({
   onOpen,
   onToggleFav,
   onToggleHide,
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
 }: Props) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [cols, setCols] = useState(1)
@@ -63,52 +70,67 @@ export function VirtualGrid({
     scrollMargin,
   })
 
-  // Re-measure when the estimate (and thus row height) changes.
   useEffect(() => {
     virtualizer.measure()
   }, [estRow, cols, virtualizer])
 
   const rows = virtualizer.getVirtualItems()
 
+  // Pull the next page once the last row comes within the overscan window.
+  useEffect(() => {
+    const last = rows[rows.length - 1]
+    if (!last) return
+    if (last.index >= rowCount - 2 && hasNextPage && !isFetchingNextPage) {
+      fetchNextPage?.()
+    }
+  }, [rows, rowCount, hasNextPage, isFetchingNextPage, fetchNextPage])
+
   return (
-    <div ref={parentRef} style={{ position: 'relative', height: virtualizer.getTotalSize() }}>
-      {rows.map((row) => {
-        const start = row.index * cols
-        const rowFiles = files.slice(start, start + cols)
-        return (
-          <div
-            key={row.key}
-            data-index={row.index}
-            ref={virtualizer.measureElement}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              transform: `translateY(${row.start - virtualizer.options.scrollMargin}px)`,
-              display: 'grid',
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              gap: GAP,
-              paddingBottom: GAP,
-            }}
-          >
-            {rowFiles.map((file, j) => {
-              const index = start + j
-              return (
-                <ImageCard
-                  key={file.path}
-                  file={file}
-                  favorite={favSet.has(file.path)}
-                  hidden={hiddenSet.has(file.path)}
-                  onOpen={() => onOpen(index)}
-                  onToggleFav={() => onToggleFav(file.path)}
-                  onToggleHide={() => onToggleHide(file.path)}
-                />
-              )
-            })}
-          </div>
-        )
-      })}
-    </div>
+    <>
+      <div ref={parentRef} style={{ position: 'relative', height: virtualizer.getTotalSize() }}>
+        {rows.map((row) => {
+          const start = row.index * cols
+          const rowFiles = files.slice(start, start + cols)
+          return (
+            <div
+              key={row.key}
+              data-index={row.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${row.start - virtualizer.options.scrollMargin}px)`,
+                display: 'grid',
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                gap: GAP,
+                paddingBottom: GAP,
+              }}
+            >
+              {rowFiles.map((file, j) => {
+                const index = start + j
+                return (
+                  <ImageCard
+                    key={file.path}
+                    file={file}
+                    favorite={favSet.has(file.path)}
+                    hidden={hiddenSet.has(file.path)}
+                    onOpen={() => onOpen(index)}
+                    onToggleFav={() => onToggleFav(file.path)}
+                    onToggleHide={() => onToggleHide(file.path)}
+                  />
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+      {isFetchingNextPage && (
+        <div style={{ display: 'grid', placeItems: 'center', padding: 'var(--s5)' }}>
+          <Spinner />
+        </div>
+      )}
+    </>
   )
 }

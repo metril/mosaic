@@ -817,6 +817,103 @@ class ImageService:
 
         return stats
 
+    @staticmethod
+    def _format_size(file_size: int) -> str:
+        """Human-readable byte size (shared by the fast scan)."""
+        if file_size < 1024:
+            return f"{file_size} B"
+        if file_size < 1024 * 1024:
+            return f"{file_size / 1024:.1f} KB"
+        if file_size < 1024 * 1024 * 1024:
+            return f"{file_size / (1024 * 1024):.1f} MB"
+        return f"{file_size / (1024 * 1024 * 1024):.2f} GB"
+
+    def build_browse_index(self) -> Dict[str, Any]:
+        """
+        Fast, metadata-free scan of the image directory.
+
+        Unlike build_directory_tree(), this never opens image files (no
+        dimensions/EXIF) — it only walks directories and stats files, so it
+        stays fast on large libraries. Produces, in a single pass:
+
+          - a folders-only tree (each folder has file_count/folder_count and
+            child *folders* only), for the sidebar, and
+          - a flat, path-sorted list of every image file (stat-only metadata),
+            for paginated/filtered grid queries.
+
+        Returns:
+            {root, total_folders, total_files, tree, files}
+        """
+        flat_files: List[Dict[str, Any]] = []
+
+        def scan(directory: Path, relative_path: str) -> Dict[str, Any]:
+            folder = {
+                "type": "folder",
+                "name": directory.name if directory.name else "images",
+                "path": relative_path,
+                "children": [],
+                "file_count": 0,
+                "folder_count": 0,
+            }
+            try:
+                if not directory.exists() or directory.is_symlink():
+                    return folder
+                entries = sorted(
+                    directory.iterdir(),
+                    key=lambda x: (not x.is_dir(), x.name.lower()),
+                )
+                for item in entries:
+                    if item.is_symlink() or item.name.startswith('.'):
+                        continue
+                    if item.is_dir():
+                        child_rel = f"{relative_path}/{item.name}" if relative_path else item.name
+                        child = scan(item, child_rel)
+                        folder["children"].append(child)
+                        folder["folder_count"] += 1
+                        folder["file_count"] += child["file_count"]
+                    elif item.is_file() and item.suffix.lower() in SUPPORTED_FORMATS:
+                        try:
+                            st = item.stat()
+                            size = st.st_size
+                            modified = datetime.fromtimestamp(st.st_mtime).isoformat()
+                        except OSError:
+                            size, modified = 0, None
+                        rel = f"{relative_path}/{item.name}" if relative_path else item.name
+                        flat_files.append({
+                            "type": "file",
+                            "name": item.name,
+                            "path": rel,
+                            "size": size,
+                            "size_formatted": self._format_size(size),
+                            "dimensions": "Unknown",
+                            "width": None,
+                            "height": None,
+                            "format": None,
+                            "mode": None,
+                            "modified": modified,
+                        })
+                        folder["file_count"] += 1
+            except PermissionError:
+                logger.debug(f"Permission denied reading directory: {directory}")
+            except Exception as e:
+                logger.warning(f"Error scanning directory {directory}: {e}")
+                folder["error"] = str(e)
+            return folder
+
+        tree = scan(self.image_dir, "")
+        flat_files.sort(key=lambda f: f["path"].lower())
+
+        def count_folders(node: Dict[str, Any]) -> int:
+            return sum(1 + count_folders(c) for c in node["children"] if c["type"] == "folder")
+
+        return {
+            "root": str(self.image_dir),
+            "total_folders": count_folders(tree),
+            "total_files": len(flat_files),
+            "tree": tree,
+            "files": flat_files,
+        }
+
     def build_directory_tree(self) -> Dict[str, Any]:
         """
         Build a complete recursive directory tree of all folders and image files with statistics.

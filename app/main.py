@@ -291,8 +291,11 @@ async def lifespan(app: FastAPI):
 
                 # Drop cached processed-image bytes for the changed folder so memory
                 # is reclaimed promptly (mtime-keying already guarantees freshness).
-                from app.api.routes import processed_image_cache
+                from app.api.routes import processed_image_cache, invalidate_browse_cache
                 processed_image_cache.clear_prefix(rel_str)
+
+                # Drop the cached browse index so the new/changed files show up.
+                invalidate_browse_cache()
 
                 # Refresh affected display groups
                 refreshed = await app.state.display_manager.refresh_groups_by_folder(rel_str)

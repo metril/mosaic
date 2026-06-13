@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { listGroups } from '@/api/admin'
 import { listPulls } from '@/api/immich'
 import { useAdminWs, GROUPS_KEY } from '@/hooks/useAdminWs'
-import { fetchTree, thumbUrl } from '@/api/browse'
+import { fetchFolders, thumbUrl } from '@/api/browse'
 import type { DisplayGroup, ImmichPull } from '@/api/types'
 import { cn } from '@/lib/cn'
 import {
@@ -101,7 +101,13 @@ function GroupRow({ g, now }: { g: DisplayGroup; now: number }) {
         </span>
         <span className={styles.groupSub}>
           {g.browser_count} {g.browser_count === 1 ? 'display' : 'displays'}
-          {g.next_switch_at && !g.paused ? ` · next ${relative(g.next_switch_at, now)}` : ''}
+          {(() => {
+            // Only show the countdown when the next switch is genuinely upcoming;
+            // a stale past timestamp (idle group) would read "next … ago".
+            if (g.paused || !g.next_switch_at) return ''
+            const t = new Date(g.next_switch_at).getTime()
+            return t > now ? ` · next ${relative(g.next_switch_at, now)}` : ''
+          })()}
         </span>
       </span>
       <ChevronRightIcon size={16} className={styles.chevron} />
@@ -132,9 +138,10 @@ export default function Home() {
 
   const { data: groups } = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
   const { data: pulls } = useQuery({ queryKey: ['pulls'], queryFn: listPulls })
-  // Shares the ['tree'] cache with Browse; total_files is the true recursive
-  // count (unlike /health, which only counts the root folder).
-  const { data: tree } = useQuery({ queryKey: ['tree'], queryFn: fetchTree })
+  // Shares the ['folders'] cache with Browse; total_files is the true recursive
+  // count (unlike /health, which only counts the root folder), and the
+  // folders-only scan never opens images so it's fast.
+  const { data: tree } = useQuery({ queryKey: ['folders'], queryFn: fetchFolders })
 
   const groupList = groups ?? []
   const displaysOnline = groupList.reduce((n, g) => n + g.browser_count, 0)

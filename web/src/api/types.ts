@@ -36,12 +36,20 @@ export interface FolderNode {
 
 export type TreeNode = FileNode | FolderNode
 
-/** Shape of GET /browse?format=json — the root folder is under `tree`. */
+/** Shape of GET /browse?format=json and GET /api/browse/folders — the root
+ *  folder is under `tree`. The folders endpoint omits file children. */
 export interface BrowseTree {
   root: string
   total_folders: number
   total_files: number
   tree: FolderNode
+}
+
+/** A page of GET /api/browse/files. */
+export interface FilesPage {
+  total: number
+  offset: number
+  files: FileNode[]
 }
 
 export interface CurationState {

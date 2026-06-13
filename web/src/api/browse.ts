@@ -1,9 +1,36 @@
 import { api } from './client'
-import type { BrowseTree, CurationState } from './types'
+import type { BrowseTree, CurationState, FilesPage } from './types'
 
 /** The full recursive directory tree (root node under `.tree` + totals). */
 export function fetchTree() {
   return api.get<BrowseTree>('/browse?format=json')
+}
+
+/** Fast folders-only tree (no per-file image opens) for the sidebar + counts. */
+export function fetchFolders() {
+  return api.get<BrowseTree>('/api/browse/folders')
+}
+
+export type FileFilter = 'all' | 'favorites' | 'hidden'
+
+export interface FilesQuery {
+  folder?: string
+  q?: string
+  filter?: FileFilter
+  offset?: number
+  limit?: number
+}
+
+/** A page of image files, scoped/filtered/paginated server-side. */
+export function fetchFiles({ folder = '', q = '', filter = 'all', offset = 0, limit = 200 }: FilesQuery) {
+  const params = new URLSearchParams({
+    folder,
+    q,
+    filter,
+    offset: String(offset),
+    limit: String(limit),
+  })
+  return api.get<FilesPage>(`/api/browse/files?${params.toString()}`)
 }
 
 /** Favorited + excluded path lists. */

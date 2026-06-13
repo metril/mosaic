@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import type { FileNode } from '@/api/types'
 import { imageUrl } from '@/api/browse'
 import { cn } from '@/lib/cn'
@@ -27,6 +27,10 @@ export function Lightbox({
   onToggleHide,
 }: Props) {
   const file = files[index]
+  // The stat-only tree no longer ships dimensions; read them from the loaded
+  // full image instead (free — it loads anyway). Keyed reset on index change.
+  const [natural, setNatural] = useState<string | null>(null)
+  useEffect(() => setNatural(null), [index])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -48,7 +52,7 @@ export function Lightbox({
         <div className={styles.lbInfo}>
           <div className={styles.lbName}>{file.name}</div>
           <div className={styles.lbDims}>
-            {file.dimensions !== 'Unknown' ? `${file.dimensions} · ` : ''}
+            {file.dimensions !== 'Unknown' ? `${file.dimensions} · ` : natural ? `${natural} · ` : ''}
             {file.size_formatted}
             {' · '}
             {index + 1} / {files.length}
@@ -94,6 +98,9 @@ export function Lightbox({
           src={imageUrl(file.path)}
           alt={file.name}
           onClick={(e) => e.stopPropagation()}
+          onLoad={(e) =>
+            setNatural(`${e.currentTarget.naturalWidth}×${e.currentTarget.naturalHeight}`)
+          }
         />
         {files.length > 1 && (
           <button

@@ -401,6 +401,31 @@ async def favicon():
 # healthcheck every 30s, uptime monitors) and a full directory walk on each
 # call would block the event loop on large libraries.
 _image_count_cache: Dict[str, Any] = {"count": 0, "ts": 0.0, "primed": False}
+
+# Cached fast browse index (folders-only tree + flat stat-only file list) shared
+# by /api/browse/folders and /api/browse/files. Built once via the stat-only
+# scan and reused until the file watcher invalidates it (on_folder_changed).
+_browse_index_lock = asyncio.Lock()
+_browse_index_cache: Dict[str, Any] = {"data": None}
+
+
+def invalidate_browse_cache() -> None:
+    """Drop the cached browse index so the next request rebuilds it."""
+    _browse_index_cache["data"] = None
+
+
+async def _get_browse_index() -> Dict[str, Any]:
+    """Return the cached fast browse index, building it off-thread on a miss."""
+    data = _browse_index_cache["data"]
+    if data is not None:
+        return data
+    async with _browse_index_lock:
+        # Re-check: another coroutine may have built it while we awaited the lock.
+        if _browse_index_cache["data"] is None:
+            _browse_index_cache["data"] = await asyncio.get_running_loop().run_in_executor(
+                image_executor, image_service.build_browse_index
+            )
+        return _browse_index_cache["data"]
 _IMAGE_COUNT_TTL = 60.0  # seconds
 
 
@@ -718,6 +743,62 @@ async def browse_images(
             "tree_json": json.dumps(tree_data).replace("<", "\\u003c")
         }
     )
+
+
+def _require_browse_auth(user: Optional[User]) -> None:
+    """401 when OIDC is enabled and the caller is unauthenticated (the SPA's API
+    client turns the 401 into a login redirect)."""
+    if get_oidc_config().enabled and user is None:
+        raise HTTPException(status_code=401, detail="Authentication required.")
+
+
+@router.get("/api/browse/folders", include_in_schema=True,
+            responses={200: {"description": "Folders-only directory tree with counts"}})
+async def browse_folders(request: Request, user: Optional[User] = Depends(get_optional_user)):
+    """Fast folders-only tree (no per-file image opens) for the browse sidebar."""
+    _require_browse_auth(user)
+    index = await _get_browse_index()
+    return JSONResponse(content={
+        "root": index["root"],
+        "total_folders": index["total_folders"],
+        "total_files": index["total_files"],
+        "tree": index["tree"],
+    })
+
+
+@router.get("/api/browse/files", include_in_schema=True,
+            responses={200: {"description": "Paginated, filtered image list"}})
+async def browse_files(
+    request: Request,
+    folder: str = Query("", description="Folder path to scope to (recursive); empty = whole library"),
+    q: str = Query("", description="Case-insensitive filename substring filter"),
+    filter: Literal["all", "favorites", "hidden"] = Query("all"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(200, ge=1, le=1000),
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """Paginated image files from the cached index, filtered by folder/search/curation."""
+    _require_browse_auth(user)
+    index = await _get_browse_index()
+    files: List[Dict[str, Any]] = index["files"]
+
+    # Scope to a folder subtree (recursive). folder="trips" matches "trips/..".
+    if folder:
+        prefix = folder.strip("/") + "/"
+        files = [f for f in files if f["path"].startswith(prefix)]
+
+    if q:
+        needle = q.lower()
+        files = [f for f in files if needle in f["name"].lower()]
+
+    if filter != "all":
+        curation = request.app.state.curation_service
+        wanted = curation.favorite_paths() if filter == "favorites" else curation.excluded_paths()
+        files = [f for f in files if f["path"] in wanted]
+
+    total = len(files)
+    page = files[offset:offset + limit]
+    return JSONResponse(content={"total": total, "offset": offset, "files": page})
 
 
 @router.get("/thumbnail/{image_path:path}", responses={
