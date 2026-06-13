@@ -2506,7 +2506,7 @@ async def endpoint_previous_image(
 @router.get("/display", include_in_schema=False)
 async def display_page(
     request: Request,
-    group: str = Query(..., description="Display group ID to join"),
+    group: Optional[str] = Query(None, description="Display group ID to join"),
     endpoint: Optional[str] = Query(
         None,
         description="Endpoint ID for persistent history",
@@ -2543,6 +2543,10 @@ async def display_page(
     # bypassed. (group remains a required query param at the signature level.)
     if resp := spa_shell("/display"):
         return resp
+
+    # Legacy (no SPA build) path requires an explicit group.
+    if not group:
+        raise HTTPException(status_code=400, detail="Query parameter 'group' is required.")
 
     # Check authentication if OIDC is enabled
     config = get_oidc_config()

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { mountDisplay } from '@/lib/displayController'
 import '@/styles/display.css'
 
@@ -39,6 +39,92 @@ function buildWsUrl(): string | null {
   return q ? `${url}?${q}` : url
 }
 
+interface GroupLite {
+  group_id: string
+  image_count: number
+  browser_count: number
+}
+
+/** Shown when /display is opened without a group (e.g. the dashboard's "Open
+ *  kiosk" action). Lists groups to join; auto-opens when there's exactly one. */
+function GroupPicker() {
+  const [groups, setGroups] = useState<GroupLite[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/display/groups', { credentials: 'same-origin' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: GroupLite[]) => {
+        if (!alive) return
+        if (data.length === 1) {
+          // Single group → just open its kiosk.
+          window.location.replace(`/display?group=${encodeURIComponent(data[0].group_id)}`)
+          return
+        }
+        setGroups(data)
+      })
+      .catch((e) => alive && setError(String(e)))
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  let body
+  if (error) {
+    body = <div style={{ color: '#aaa' }}>Couldn’t load display groups ({error}).</div>
+  } else if (!groups) {
+    body = <div style={{ color: '#aaa' }}>Loading display groups…</div>
+  } else if (groups.length === 0) {
+    body = (
+      <div style={{ color: '#aaa' }}>
+        No display groups yet. Create one in{' '}
+        <a href="/admin" style={{ color: '#60a5fa' }}>
+          Admin
+        </a>
+        .
+      </div>
+    )
+  } else {
+    body = (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20, minWidth: 280 }}>
+        {groups.map((g) => (
+          <a
+            key={g.group_id}
+            href={`/display?group=${encodeURIComponent(g.group_id)}`}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '14px 18px',
+              borderRadius: 10,
+              border: '1px solid #2a2a2a',
+              background: '#161616',
+              color: '#eee',
+              textDecoration: 'none',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>{g.group_id}</span>
+            <span style={{ fontSize: 13, color: '#888' }}>{g.image_count} photos</span>
+          </a>
+        ))}
+      </div>
+    )
+  }
+
+  return (
+    <div className="display-root">
+      <div id="display-fatal" style={{ color: '#eee' }}>
+        <div style={{ fontSize: 22, fontWeight: 700 }}>Open a display</div>
+        <div style={{ fontSize: 14, color: '#aaa', marginTop: 6 }}>
+          Pick a group to start its kiosk slideshow.
+        </div>
+        {body}
+      </div>
+    </div>
+  )
+}
+
 export default function Display() {
   const wsUrl = buildWsUrl()
 
@@ -53,19 +139,7 @@ export default function Display() {
     }
   }, [wsUrl])
 
-  if (!wsUrl) {
-    return (
-      <div className="display-root">
-        <div id="display-fatal">
-          <div style={{ fontSize: 48, marginBottom: 20 }}>⚠</div>
-          <div>Missing “group” parameter.</div>
-          <div style={{ fontSize: 16, color: '#aaa', marginTop: 8 }}>
-            Open this page as <code>/display?group=&lt;id&gt;</code>.
-          </div>
-        </div>
-      </div>
-    )
-  }
+  if (!wsUrl) return <GroupPicker />
 
   // Static markup — rendered once, then the controller drives it imperatively.
   // IDs/classes match the original display.html so the ported logic works.
