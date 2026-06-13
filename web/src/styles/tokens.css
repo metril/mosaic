@@ -1,0 +1,138 @@
+/* =============================================================================
+   Design tokens — "Midnight atelier"
+   One CSS-variable system, two themes. Dark is the default (set on <html> in
+   index.html and toggled by the theme store). Photos supply the color; the UI
+   is a quiet, precise frame. Contrast targets WCAG AA.
+   ============================================================================= */
+
+:root {
+  /* ---- Type ---------------------------------------------------------------- */
+  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+  --font-sans: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Code', monospace;
+
+  /* Modular type scale (1.20 minor third), rem-based */
+  --text-xs: 0.75rem;     /* 12 */
+  --text-sm: 0.8125rem;   /* 13 */
+  --text-base: 0.9375rem; /* 15 */
+  --text-md: 1.0625rem;   /* 17 */
+  --text-lg: 1.3125rem;   /* 21 */
+  --text-xl: 1.75rem;     /* 28 */
+  --text-2xl: 2.5rem;     /* 40 */
+  --text-3xl: 3.5rem;     /* 56 */
+
+  --leading-tight: 1.1;
+  --leading-snug: 1.3;
+  --leading-normal: 1.55;
+
+  /* ---- Spacing scale (4px base) ------------------------------------------- */
+  --s1: 0.25rem;
+  --s2: 0.5rem;
+  --s3: 0.75rem;
+  --s4: 1rem;
+  --s5: 1.5rem;
+  --s6: 2rem;
+  --s7: 3rem;
+  --s8: 4rem;
+  --s9: 6rem;
+
+  /* ---- Radii --------------------------------------------------------------- */
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 16px;
+  --r-xl: 22px;
+  --r-pill: 999px;
+
+  /* ---- Motion -------------------------------------------------------------- */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-1: 120ms;
+  --dur-2: 220ms;
+  --dur-3: 380ms;
+
+  /* ---- Layout -------------------------------------------------------------- */
+  --nav-h: 60px;
+  --container: 1280px;
+}
+
+/* ---- Dark theme (default) -------------------------------------------------- */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --color-bg: #101019;
+  --color-bg-deep: #0a0a11;
+  --color-surface: #181826;
+  --color-surface-hi: #21212f;
+  --color-surface-press: #14141f;
+  --color-border: #2a2a3d;
+  --color-border-hi: #3a3a52;
+  --color-line: rgba(255, 255, 255, 0.07);
+
+  --color-text: #ededf3;
+  --color-text-muted: #9fa0b4;
+  --color-text-faint: #6b6c82;
+  --color-on-accent: #ffffff;
+
+  --accent: #e94560;
+  --accent-hi: #ff5c77;
+  --accent-soft: rgba(233, 69, 96, 0.15);
+  --accent-line: rgba(233, 69, 96, 0.4);
+
+  --color-success: #41c08a;
+  --color-success-soft: rgba(65, 192, 138, 0.16);
+  --color-warning: #e6ab4f;
+  --color-warning-soft: rgba(230, 171, 79, 0.16);
+  --color-danger: #f0595e;
+  --color-danger-soft: rgba(240, 89, 94, 0.16);
+
+  --ring: rgba(233, 69, 96, 0.55);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 24px 60px -16px rgba(0, 0, 0, 0.7);
+
+  /* Atmospheric backdrop: two faint colored pools behind the canvas */
+  --atmos-1: rgba(233, 69, 96, 0.10);
+  --atmos-2: rgba(60, 90, 200, 0.10);
+}
+
+/* ---- Light theme ----------------------------------------------------------- */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --color-bg: #f4f1ea;
+  --color-bg-deep: #ece8df;
+  --color-surface: #ffffff;
+  --color-surface-hi: #faf7f1;
+  --color-surface-press: #f1ede5;
+  --color-border: #e4ddd0;
+  --color-border-hi: #d4cbb9;
+  --color-line: rgba(28, 22, 16, 0.09);
+
+  --color-text: #1d1a15;
+  --color-text-muted: #645e53;
+  --color-text-faint: #948d7f;
+  --color-on-accent: #ffffff;
+
+  --accent: #d2334f;
+  --accent-hi: #b8293f;
+  --accent-soft: rgba(210, 51, 79, 0.10);
+  --accent-line: rgba(210, 51, 79, 0.3);
+
+  --color-success: #2c9a6a;
+  --color-success-soft: rgba(44, 154, 106, 0.12);
+  --color-warning: #b9802a;
+  --color-warning-soft: rgba(185, 128, 42, 0.12);
+  --color-danger: #cf3b40;
+  --color-danger-soft: rgba(207, 59, 64, 0.10);
+
+  --ring: rgba(210, 51, 79, 0.45);
+
+  --shadow-sm: 0 1px 2px rgba(40, 30, 20, 0.08);
+  --shadow: 0 8px 24px -10px rgba(40, 30, 20, 0.18);
+  --shadow-lg: 0 28px 60px -20px rgba(40, 30, 20, 0.25);
+
+  --atmos-1: rgba(210, 51, 79, 0.07);
+  --atmos-2: rgba(70, 100, 190, 0.06);
+}

@@ -33,6 +33,10 @@ export default defineConfig({
     outDir: '../app/static/spa',
     emptyOutDir: true,
     assetsDir: 'assets',
+    // Never inline assets as data: URIs — the app's CSP is default-src 'self'
+    // with no font-src, so data: fonts are blocked. Keep every font/asset as a
+    // real /assets/* file served from 'self'.
+    assetsInlineLimit: 0,
   },
   server: {
     port: 5173,
