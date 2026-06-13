@@ -14,12 +14,10 @@ interface NavItem {
   external?: boolean
 }
 
-// Admin is still server-rendered until Phase 2 — use a full navigation so the
-// browser fetches the Jinja page instead of client-routing to a placeholder.
 const NAV: NavItem[] = [
   { to: '/', label: 'Home', icon: <GridIcon size={17} /> },
   { to: '/browse', label: 'Browse', icon: <ImageIcon size={17} /> },
-  { to: '/admin', label: 'Admin', icon: <SettingsIcon size={17} />, external: true },
+  { to: '/admin', label: 'Admin', icon: <SettingsIcon size={17} /> },
 ]
 
 function initials(name: string) {

@@ -81,9 +81,9 @@ templates = Jinja2Templates(directory="templates")
 # env var (comma-separated) for testing/rollback.
 # -----------------------------------------------------------------------------
 _SPA_INDEX = Path(__file__).parent.parent / "static" / "spa" / "index.html"
-# Migrated routes, grown per phase. Phase 1: Home + Browse. (/admin, /display
-# follow in later phases.) Override at deploy time with the SPA_ROUTES env var.
-_DEFAULT_SPA_ROUTES = "/,/browse"
+# Migrated routes, grown per phase. Phase 1: Home + Browse. Phase 2: + Admin.
+# (/display follows in Phase 3.) Override at deploy time with SPA_ROUTES env var.
+_DEFAULT_SPA_ROUTES = "/,/browse,/admin"
 SPA_ROUTES = {
     r.strip()
     for r in os.environ.get("SPA_ROUTES", _DEFAULT_SPA_ROUTES).split(",")

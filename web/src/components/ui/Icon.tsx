@@ -130,3 +130,106 @@ export const SettingsIcon = (p: Props) => (
     <path d="M19.4 13.5a7.6 7.6 0 0 0 0-3l1.7-1.3-1.7-3-2 .8a7.6 7.6 0 0 0-2.6-1.5L14.5 3h-3l-.3 2a7.6 7.6 0 0 0-2.6 1.5l-2-.8-1.7 3L4.6 9a7.6 7.6 0 0 0 0 3l-1.7 1.3 1.7 3 2-.8a7.6 7.6 0 0 0 2.6 1.5l.3 2h3l.3-2a7.6 7.6 0 0 0 2.6-1.5l2 .8 1.7-3Z" />
   </Svg>
 )
+
+export const PlayIcon = (p: Props) => (
+  <Svg {...p} fill="currentColor" stroke="none">
+    <path d="M7 5.5v13a1 1 0 0 0 1.5.87l11-6.5a1 1 0 0 0 0-1.74l-11-6.5A1 1 0 0 0 7 5.5Z" />
+  </Svg>
+)
+
+export const PauseIcon = (p: Props) => (
+  <Svg {...p} fill="currentColor" stroke="none">
+    <rect x="6" y="5" width="4" height="14" rx="1" />
+    <rect x="14" y="5" width="4" height="14" rx="1" />
+  </Svg>
+)
+
+export const SkipBackIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M16 6 9 12l7 6V6Z" fill="currentColor" />
+    <path d="M8 6v12" />
+  </Svg>
+)
+
+export const SkipForwardIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M8 6l7 6-7 6V6Z" fill="currentColor" />
+    <path d="M16 6v12" />
+  </Svg>
+)
+
+export const PrevIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M15 6l-6 6 6 6V6Z" fill="currentColor" />
+  </Svg>
+)
+
+export const NextIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M9 6l6 6-6 6V6Z" fill="currentColor" />
+  </Svg>
+)
+
+export const RefreshIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M21 12a9 9 0 1 1-2.6-6.4M21 4v5h-5" />
+  </Svg>
+)
+
+export const PlusIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 5v14M5 12h14" />
+  </Svg>
+)
+
+export const TrashIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M10 11v6M14 11v6" />
+  </Svg>
+)
+
+export const CopyIcon = (p: Props) => (
+  <Svg {...p}>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15V5a2 2 0 0 1 2-2h8" />
+  </Svg>
+)
+
+export const EditIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </Svg>
+)
+
+export const ExternalIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3" />
+  </Svg>
+)
+
+export const CheckIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M5 12l5 5L20 7" />
+  </Svg>
+)
+
+export const KeyIcon = (p: Props) => (
+  <Svg {...p}>
+    <circle cx="7.5" cy="15.5" r="4.5" />
+    <path d="m10.5 12.5 8-8M16 5l3 3M14 7l2 2" />
+  </Svg>
+)
+
+export const CloudIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M17.5 19a4.5 4.5 0 0 0 .3-9 6 6 0 0 0-11.5 1.5A3.75 3.75 0 0 0 6.5 19h11Z" />
+  </Svg>
+)
+
+export const ServerIcon = (p: Props) => (
+  <Svg {...p}>
+    <rect x="3" y="4" width="18" height="7" rx="2" />
+    <rect x="3" y="13" width="18" height="7" rx="2" />
+    <path d="M7 7.5h.01M7 16.5h.01" />
+  </Svg>
+)

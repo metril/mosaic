@@ -1,0 +1,160 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { ImmichPull, PullResult } from '@/api/types'
+import { listPulls, triggerPull, cancelPull, deletePull, pullStatus } from '@/api/immich'
+import {
+  Button,
+  Card,
+  EmptyState,
+  Loading,
+  IconButton,
+  CloudIcon,
+  PlusIcon,
+  PlayIcon,
+  XIcon,
+  EditIcon,
+  TrashIcon,
+} from '@/components/ui'
+import { toast } from '@/stores/toast'
+import { ApiError } from '@/api/client'
+import { cn } from '@/lib/cn'
+import { ImmichPullModal } from './ImmichPullModal'
+import styles from '@/pages/Admin.module.css'
+
+export function ImmichTab() {
+  const { data: pulls, isLoading } = useQuery({ queryKey: ['pulls'], queryFn: listPulls })
+  const [editing, setEditing] = useState<ImmichPull | null>(null)
+  const [creating, setCreating] = useState(false)
+
+  if (isLoading) return <Loading label="Loading pulls…" />
+
+  return (
+    <>
+      <div style={{ display: 'flex', marginBottom: 'var(--s4)' }}>
+        <Button variant="primary" onClick={() => setCreating(true)}>
+          <PlusIcon size={16} /> New pull
+        </Button>
+      </div>
+
+      {!pulls || pulls.length === 0 ? (
+        <EmptyState icon={<CloudIcon size={38} />} title="No Immich pulls configured">
+          Connect an Immich server to pull albums and people into a folder, on demand or on a cron
+          schedule.
+        </EmptyState>
+      ) : (
+        <div className={styles.list}>
+          {pulls.map((p) => (
+            <PullCard key={p.name} pull={p} onEdit={() => setEditing(p)} />
+          ))}
+        </div>
+      )}
+
+      {creating && <ImmichPullModal pull={null} onClose={() => setCreating(false)} />}
+      {editing && <ImmichPullModal pull={editing} onClose={() => setEditing(null)} />}
+    </>
+  )
+}
+
+function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
+  const qc = useQueryClient()
+  const [running, setRunning] = useState(false)
+
+  const status = useQuery({
+    queryKey: ['pull-status', pull.name],
+    queryFn: () => pullStatus(pull.name),
+    refetchInterval: running ? 1200 : false,
+  })
+  const result = status.data as PullResult | undefined
+  const isRunning = result?.status === 'running'
+  if (isRunning && !running) setRunning(true)
+  if (!isRunning && running && result) setRunning(false)
+
+  const trigger = useMutation({
+    mutationFn: () => triggerPull(pull.name),
+    onSuccess: () => {
+      setRunning(true)
+      qc.invalidateQueries({ queryKey: ['pull-status', pull.name] })
+      toast.info(`Pull “${pull.name}” started`)
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Trigger failed'),
+  })
+  const cancel = useMutation({
+    mutationFn: () => cancelPull(pull.name),
+    onSuccess: () => toast.info('Pull cancelled'),
+  })
+  const del = useMutation({
+    mutationFn: () => deletePull(pull.name),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pulls'] })
+      toast.success(`Deleted “${pull.name}”`)
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Delete failed'),
+  })
+
+  const st = result?.status ?? 'idle'
+  const pct =
+    result && result.total > 0 ? Math.round((result.downloaded / result.total) * 100) : 0
+
+  const stClass =
+    st === 'running'
+      ? styles.stRunning
+      : st === 'completed'
+        ? styles.stCompleted
+        : st === 'failed'
+          ? styles.stFailed
+          : styles.stIdle
+
+  return (
+    <Card className={styles.item}>
+      <div className={styles.itemMain}>
+        <div className={styles.itemTitle}>
+          {pull.name}
+          <span className={cn(styles.statusPill, stClass)}>{st}</span>
+        </div>
+        <div className={styles.itemSub}>
+          → {pull.target_folder} · {pull.count} images
+          {pull.schedule_description ? ` · ${pull.schedule_description}` : ' · manual'}
+        </div>
+        {isRunning && result && (
+          <>
+            <div className={styles.progress}>
+              <div className={styles.progressBar} style={{ width: `${pct}%` }} />
+            </div>
+            <div className={styles.itemSub}>
+              {result.phase} · {result.downloaded}/{result.total} downloaded
+              {result.skipped ? ` · ${result.skipped} skipped` : ''}
+            </div>
+          </>
+        )}
+        {!isRunning && result && result.errors?.length > 0 && (
+          <div className={styles.itemSub} style={{ color: 'var(--color-danger)' }}>
+            {result.errors.length} error(s): {result.errors[0]}
+          </div>
+        )}
+      </div>
+      <div className={styles.itemActions}>
+        {isRunning ? (
+          <IconButton label="Cancel pull" bordered onClick={() => cancel.mutate()}>
+            <XIcon size={16} />
+          </IconButton>
+        ) : (
+          <IconButton label="Run now" bordered onClick={() => trigger.mutate()}>
+            <PlayIcon size={15} />
+          </IconButton>
+        )}
+        <IconButton label="Edit" bordered onClick={onEdit}>
+          <EditIcon size={15} />
+        </IconButton>
+        <IconButton
+          label="Delete"
+          bordered
+          onClick={() => {
+            if (confirm(`Delete pull “${pull.name}”? Downloaded images are kept.`)) del.mutate()
+          }}
+        >
+          <TrashIcon size={15} />
+        </IconButton>
+      </div>
+    </Card>
+  )
+}

@@ -1,0 +1,117 @@
+import { useState } from 'react'
+import { useMutation } from '@tanstack/react-query'
+import type { DisplayGroup, DisplayEndpoint } from '@/api/types'
+import { endpointNav, deleteEndpoint } from '@/api/admin'
+import { useCuration } from '@/hooks/useCuration'
+import { IconButton, PrevIcon, NextIcon, SlidersIcon, TrashIcon, HeartIcon, EyeOffIcon } from '@/components/ui'
+import { toast } from '@/stores/toast'
+import { ApiError } from '@/api/client'
+import { cn } from '@/lib/cn'
+import { EndpointOverrideModal } from './EndpointOverrideModal'
+import styles from '@/pages/Admin.module.css'
+
+export function EndpointsPanel({ group }: { group: DisplayGroup }) {
+  const [editing, setEditing] = useState<DisplayEndpoint | null>(null)
+  const { favSet, hiddenSet, toggleFavorite, toggleHidden } = useCuration()
+
+  const nav = useMutation({
+    mutationFn: ({ id, dir }: { id: string; dir: 'next' | 'previous' }) =>
+      endpointNav(group.group_id, id, dir),
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Failed'),
+  })
+  const del = useMutation({
+    mutationFn: (id: string) => deleteEndpoint(group.group_id, id),
+    onSuccess: () => toast.success('Endpoint removed'),
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Failed'),
+  })
+
+  const eps = group.endpoints ?? []
+
+  return (
+    <details className={styles.endpoints}>
+      <summary className={styles.endpointsSummary}>
+        Endpoints <span className={styles.tabCount}>{eps.length}</span>
+      </summary>
+
+      {eps.length === 0 ? (
+        <div className={styles.epEmpty}>
+          No persistent endpoints. Open a display with <code>?endpoint=name</code> to create one.
+        </div>
+      ) : (
+        eps.map((ep) => {
+          const overrides = Object.keys(ep.settings_override ?? {}).length
+          const img = ep.current_image
+          return (
+            <div key={ep.endpoint_id} className={styles.endpointRow}>
+              <span className={cn(styles.epDot, ep.last_seen && styles.epDotOn)} />
+              <div style={{ minWidth: 0 }}>
+                <div className={styles.epName}>{ep.name || ep.endpoint_id}</div>
+                <div className={styles.epMeta}>
+                  {img ? img.split('/').pop() : 'no image'}
+                  {overrides > 0 && ` · ${overrides} override${overrides > 1 ? 's' : ''}`}
+                </div>
+              </div>
+              <div className={styles.epActions}>
+                {img && (
+                  <>
+                    <IconButton
+                      label="Favorite current"
+                      size="sm"
+                      active={favSet.has(img)}
+                      onClick={() => toggleFavorite(img)}
+                    >
+                      <HeartIcon size={14} filled={favSet.has(img)} />
+                    </IconButton>
+                    <IconButton
+                      label="Hide current"
+                      size="sm"
+                      active={hiddenSet.has(img)}
+                      onClick={() => toggleHidden(img)}
+                    >
+                      <EyeOffIcon size={14} />
+                    </IconButton>
+                  </>
+                )}
+                <IconButton
+                  label="Previous"
+                  size="sm"
+                  onClick={() => nav.mutate({ id: ep.endpoint_id, dir: 'previous' })}
+                >
+                  <PrevIcon size={14} />
+                </IconButton>
+                <IconButton
+                  label="Next"
+                  size="sm"
+                  onClick={() => nav.mutate({ id: ep.endpoint_id, dir: 'next' })}
+                >
+                  <NextIcon size={14} />
+                </IconButton>
+                <IconButton label="Overrides" size="sm" active={overrides > 0} onClick={() => setEditing(ep)}>
+                  <SlidersIcon size={14} />
+                </IconButton>
+                <IconButton
+                  label="Remove endpoint"
+                  size="sm"
+                  onClick={() => {
+                    if (confirm(`Remove endpoint “${ep.name || ep.endpoint_id}”?`)) del.mutate(ep.endpoint_id)
+                  }}
+                >
+                  <TrashIcon size={14} />
+                </IconButton>
+              </div>
+            </div>
+          )
+        })
+      )}
+
+      {editing && (
+        <EndpointOverrideModal
+          groupId={group.group_id}
+          endpoint={editing}
+          groupSettings={group.settings}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </details>
+  )
+}
