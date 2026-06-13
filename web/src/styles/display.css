@@ -1,0 +1,282 @@
+/* =============================================================================
+   Display kiosk styles — ported verbatim from the original display.html inline
+   <style> block. The overlay theme CSS (clock/weather gradients & positioning)
+   still comes from the server's /css/*.css files, injected as <link>s by the
+   Display component. Scoped under .display-root so it can't affect the rest of
+   the SPA. Class/ID names match the original so the ported controller works.
+   ============================================================================= */
+
+.display-root {
+  position: fixed;
+  inset: 0;
+  background-color: #000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 0;
+}
+
+.display-root .image-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.display-root .screensaver-image {
+  border: none;
+  max-height: 100vh;
+  max-width: 100vw;
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+.display-root .hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.display-root .visible {
+  opacity: 1;
+}
+
+.display-root .fade-transition {
+  transition: opacity 0.3s ease-in-out;
+}
+.display-root .img-transition {
+  transition:
+    opacity var(--transition-ms, 500ms) ease-in-out,
+    transform var(--transition-ms, 500ms) ease-in-out;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(8%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+@keyframes dissolve-in {
+  from {
+    opacity: 0;
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+@keyframes kenburns {
+  from {
+    transform: scale(1) translate(0, 0);
+  }
+  to {
+    transform: scale(var(--kb-scale, 1.15)) translate(var(--kb-x, 0%), var(--kb-y, 0%));
+  }
+}
+
+.display-root .caption-overlay .caption-text {
+  color: #fff;
+  font-size: 1.4vw;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45vw;
+}
+
+#nightOverlay {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  display: none;
+  z-index: 2000;
+  transition: opacity 0.8s ease-in-out;
+  pointer-events: none;
+}
+
+.status-indicator {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background-color: #888;
+  z-index: 1000;
+  transition: opacity 0.5s ease-out;
+}
+.status-indicator.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.status-indicator.connected {
+  background-color: #4caf50;
+}
+.status-indicator.disconnected {
+  background-color: #f44336;
+}
+.status-indicator.connecting {
+  background-color: #ff9800;
+  animation: status-pulse 1s infinite;
+}
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.debug-overlay {
+  position: fixed;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #0f0;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 10px;
+  border-radius: 5px;
+  z-index: 1000;
+  max-width: 400px;
+  display: none;
+}
+.debug-overlay.visible {
+  display: block;
+}
+.debug-overlay dt {
+  color: #888;
+  float: left;
+  clear: left;
+  width: 100px;
+}
+.debug-overlay dd {
+  margin-left: 110px;
+}
+
+.display-root .frame--background {
+  position: absolute;
+  top: -5%;
+  left: -5%;
+  width: 110%;
+  height: 110%;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  z-index: 0;
+  transition: background-image 0.5s ease-in-out;
+}
+
+/* Layouts */
+.display-root .layout-single {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.display-root .frame--layout-single {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+.display-root .layout-splitview {
+  display: flex;
+  flex-direction: row;
+}
+.display-root .layout-splitview .frame {
+  width: 50%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+.display-root .layout-splitview .frame .screensaver-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  position: relative;
+}
+.display-root .layout-splitview-landscape {
+  display: flex;
+  flex-direction: column;
+}
+.display-root .layout-splitview-landscape .frame {
+  width: 100%;
+  height: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+}
+.display-root .layout-splitview-landscape .frame .screensaver-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  position: relative;
+}
+@media (orientation: portrait) {
+  .display-root .layout-splitview {
+    flex-direction: column;
+  }
+  .display-root .layout-splitview .frame {
+    width: 100%;
+    height: 50%;
+  }
+}
+@media (orientation: landscape) {
+  .display-root .layout-splitview-landscape {
+    flex-direction: row;
+  }
+  .display-root .layout-splitview-landscape .frame {
+    width: 50%;
+    height: 100%;
+  }
+}
+
+.display-root .screensaver-image.fit-cover {
+  object-fit: cover;
+}
+.display-root .screensaver-image.fit-contain {
+  object-fit: contain;
+}
+
+#no-images-error,
+#display-fatal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: #f44336;
+  padding: 40px;
+  border-radius: 12px;
+  font-size: 24px;
+  text-align: center;
+  max-width: 80%;
+  z-index: 1500;
+}
