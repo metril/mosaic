@@ -14,26 +14,23 @@
   align-items: center;
   gap: var(--s5);
   padding-inline: var(--s5);
-  background: color-mix(in srgb, var(--color-bg) 78%, transparent);
-  backdrop-filter: saturate(1.4) blur(14px);
-  border-bottom: 1px solid var(--color-line);
+  background: color-mix(in srgb, var(--color-bg) 86%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .brand {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.5ch;
   font-family: var(--font-display);
-  font-optical-sizing: auto;
-  font-weight: 500;
-  font-size: var(--text-lg);
+  font-weight: 600;
+  font-size: var(--text-md);
   letter-spacing: -0.02em;
   color: var(--color-text);
 }
 .brandMark {
-  color: var(--accent);
-}
-.brandDot {
+  display: inline-flex;
   color: var(--accent);
 }
 

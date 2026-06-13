@@ -1,5 +1,4 @@
-/* Self-hosted variable fonts (bundled by Vite -> /assets, CSP-safe) */
-@import '@fontsource-variable/fraunces';
+/* Self-hosted variable font (bundled by Vite -> /assets, CSP-safe) */
 @import '@fontsource-variable/hanken-grotesk';
 
 @import './tokens.css';
@@ -86,28 +85,6 @@ a {
   background-clip: padding-box;
 }
 
-/* ====================== App atmospheric backdrop =========================== */
-/* A fixed, subtle two-pool gradient mesh + fine grain. Gives the dark canvas
-   depth without competing with photography. */
-.app-atmosphere {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(900px 600px at 12% -8%, var(--atmos-1), transparent 60%),
-    radial-gradient(1000px 700px at 100% 0%, var(--atmos-2), transparent 55%),
-    var(--color-bg);
-}
-.app-atmosphere::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0.5;
-  mix-blend-mode: soft-light;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.32'/%3E%3C/svg%3E");
-}
-
 /* =========================== Typography ==================================== */
 h1,
 h2,
@@ -124,12 +101,11 @@ samp {
   font-size: 0.92em;
 }
 
-/* The wordmark + hero titles use the editorial display face */
+/* Headings / wordmark: tighter weight + tracking of the same sans face */
 .font-display {
   font-family: var(--font-display);
-  font-optical-sizing: auto;
-  font-weight: 500;
-  letter-spacing: -0.015em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .eyebrow {
@@ -180,7 +156,7 @@ samp {
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;

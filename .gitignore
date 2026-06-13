@@ -68,3 +68,6 @@ app/static/spa/
 
 # Node (frontend lives in web/, has its own .gitignore too)
 node_modules/
+
+# Playwright MCP run artifacts
+.playwright-mcp/

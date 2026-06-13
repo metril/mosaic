@@ -7,7 +7,7 @@ import type { FileNode } from '@/api/types'
 import { cn } from '@/lib/cn'
 import { Loading, EmptyState, SearchInput, ImageIcon, HeartIcon, EyeOffIcon } from '@/components/ui'
 import { FolderTree } from '@/components/browse/FolderTree'
-import { ImageCard } from '@/components/browse/ImageCard'
+import { VirtualGrid } from '@/components/browse/VirtualGrid'
 import { Lightbox } from '@/components/browse/Lightbox'
 import styles from '@/components/browse/Browse.module.css'
 
@@ -177,19 +177,14 @@ export default function Browse() {
                     : 'This folder has no images. Pick another from the sidebar.'}
             </EmptyState>
           ) : (
-            <div className={styles.grid}>
-              {files.map((file, i) => (
-                <ImageCard
-                  key={file.path}
-                  file={file}
-                  favorite={favSet.has(file.path)}
-                  hidden={hiddenSet.has(file.path)}
-                  onOpen={() => setLightbox(i)}
-                  onToggleFav={() => toggleFavorite(file.path)}
-                  onToggleHide={() => toggleHidden(file.path)}
-                />
-              ))}
-            </div>
+            <VirtualGrid
+              files={files}
+              favSet={favSet}
+              hiddenSet={hiddenSet}
+              onOpen={setLightbox}
+              onToggleFav={toggleFavorite}
+              onToggleHide={toggleHidden}
+            />
           )}
         </div>
       </div>

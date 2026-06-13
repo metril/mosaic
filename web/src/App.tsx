@@ -24,14 +24,7 @@ export default function App() {
           }
         />
 
-        <Route
-          element={
-            <>
-              <div className="app-atmosphere" />
-              <AppShell />
-            </>
-          }
-        >
+        <Route element={<AppShell />}>
           <Route path="/" element={<Home />} />
           <Route path="/browse" element={<Browse />} />
           <Route path="/admin" element={<Admin />} />

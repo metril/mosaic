@@ -34,9 +34,10 @@ export function AppShell() {
     <div className={styles.shell}>
       <header className={styles.nav}>
         <NavLink to="/" className={styles.brand} onClick={() => setOpen(false)}>
-          <span className={styles.brandMark}>◆</span>
-          Atelier
-          <span className={styles.brandDot}>.</span>
+          <span className={styles.brandMark} aria-hidden="true">
+            <ImageIcon size={18} />
+          </span>
+          Screensaver
         </NavLink>
 
         <nav className={cn(styles.links, !open && styles.linksClosed)} onClick={() => setOpen(false)}>
