@@ -45,6 +45,10 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
   })
 
   const past = data?.history ?? []
+  // Images shown after the current one (present when you've jumped back). They're
+  // preserved in memory, so show them above NOW instead of letting them vanish.
+  const ahead = data?.forward ?? []
+  const totalOther = (data?.history_count ?? 0) + (data?.forward_count ?? 0)
   const name = ep?.name || ep?.endpoint_id || ''
 
   function Thumb({ path, isCurrent }: { path: string; isCurrent: boolean }) {
@@ -88,7 +92,7 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
   return (
     <Modal
       title="Image history"
-      subtitle={`${name} · ${data?.history_count ?? 0} previously shown`}
+      subtitle={`${name} · ${totalOther} image${totalOther === 1 ? '' : 's'} shown this session`}
       onClose={onClose}
       width={780}
     >
@@ -108,15 +112,19 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
 
       {isPending ? (
         <Loading label="Loading history…" />
-      ) : !currentImage && past.length === 0 ? (
+      ) : !currentImage && past.length === 0 && ahead.length === 0 ? (
         <EmptyState icon={<HistoryIcon size={36} />} title="No history yet">
           Connect a display and let it cycle — images shown here can be revisited.
         </EmptyState>
       ) : (
         <div className={styles.grid}>
+          {/* Newest first: images shown after current (jumped past), then NOW, then older. */}
+          {ahead.map((p, i) => (
+            <Thumb key={`f-${p}-${i}`} path={p} isCurrent={false} />
+          ))}
           {currentImage && <Thumb path={currentImage} isCurrent />}
           {past.map((p, i) => (
-            <Thumb key={`${p}-${i}`} path={p} isCurrent={false} />
+            <Thumb key={`h-${p}-${i}`} path={p} isCurrent={false} />
           ))}
         </div>
       )}

@@ -2253,8 +2253,12 @@ async def get_endpoint_history(
     return JSONResponse(content={
         "endpoint_id": endpoint.endpoint_id,
         "current_image": endpoint.current_image,
-        # image_history is stored oldest->newest; present newest first.
+        # Both stacks are stored oldest->newest; present newest first. `forward`
+        # holds images shown *after* the current one (when you've jumped back) —
+        # they're preserved, not discarded, so the full session timeline is:
+        #   forward (newest..), current, history (newest..)
         "history": list(reversed(endpoint.image_history)),
+        "forward": list(reversed(endpoint.forward_history)),
         "history_count": len(endpoint.image_history),
         "forward_count": len(endpoint.forward_history),
     })

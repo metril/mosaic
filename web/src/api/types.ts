@@ -174,11 +174,13 @@ export interface DisplayGroup {
   endpoints: DisplayEndpoint[]
 }
 
-/** Full in-memory image history for one endpoint (newest first). */
+/** Full in-memory image history for one endpoint (newest first). `forward` holds
+ *  images shown after the current one (preserved when you jump back). */
 export interface EndpointHistory {
   endpoint_id: string
   current_image: string | null
   history: string[]
+  forward: string[]
   history_count: number
   forward_count: number
 }
