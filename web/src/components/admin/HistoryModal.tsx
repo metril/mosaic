@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { memo, useEffect, useRef, useState } from 'react'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { DisplayEndpoint, DisplayGroup } from '@/api/types'
 import { fetchEndpointHistory, endpointJump, groupAction, listGroups } from '@/api/admin'
 import { thumbUrl } from '@/api/browse'
@@ -18,6 +18,68 @@ interface Props {
   onClose: () => void
 }
 
+interface ItemProps {
+  path: string
+  isCurrent: boolean
+  favorite: boolean
+  hidden: boolean
+  jumpDisabled: boolean
+  onJump: (path: string) => void
+  onFavorite: (path: string) => void
+  onHide: (path: string) => void
+}
+
+/** One history thumbnail. Module-level + memoized so React reconciles items
+ *  across re-renders instead of remounting them (which would reload thumbnails
+ *  and make the grid flash). */
+const HistoryItem = memo(function HistoryItem({
+  path,
+  isCurrent,
+  favorite,
+  hidden,
+  jumpDisabled,
+  onJump,
+  onFavorite,
+  onHide,
+}: ItemProps) {
+  const fileName = path.split('/').pop()
+  return (
+    <div className={cn(styles.item, isCurrent && styles.itemCurrent)}>
+      <button
+        className={styles.thumbBtn}
+        disabled={isCurrent || jumpDisabled}
+        title={isCurrent ? 'Currently showing' : `Jump display to ${fileName}`}
+        onClick={() => !isCurrent && onJump(path)}
+      >
+        <img className={styles.thumb} src={thumbUrl(path)} alt="" loading="lazy" decoding="async" />
+        {isCurrent && <span className={styles.nowBadge}>Now</span>}
+        {hidden && <span className={styles.hiddenBadge}>Hidden</span>}
+      </button>
+      <div className={styles.itemBar}>
+        <span className={styles.itemName} title={path}>
+          {fileName}
+        </span>
+        <IconButton
+          label={favorite ? 'Remove favorite' : 'Favorite'}
+          size="sm"
+          active={favorite}
+          onClick={() => onFavorite(path)}
+        >
+          <HeartIcon size={14} filled={favorite} />
+        </IconButton>
+        <IconButton
+          label={hidden ? 'Unhide' : 'Hide from slideshows'}
+          size="sm"
+          active={hidden}
+          onClick={() => onHide(path)}
+        >
+          <EyeOffIcon size={14} />
+        </IconButton>
+      </div>
+    </div>
+  )
+})
+
 /** Per-display image history: previously shown images, newest first. Clicking a
  *  past image jumps the live display back to it. Favorite/hide per image. */
 export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }: Props) {
@@ -34,6 +96,10 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
     queryKey: ['endpoint-history', groupId, ep?.endpoint_id, currentImage],
     queryFn: () => fetchEndpointHistory(groupId, ep!.endpoint_id),
     enabled: !!ep,
+    // Keep showing the previous history while a jump/auto-advance changes the
+    // key, so the grid never blanks to a spinner (no flash). Loading only on
+    // the genuine first open.
+    placeholderData: keepPreviousData,
   })
 
   const jump = useMutation({
@@ -74,44 +140,21 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
   const ahead = data?.forward ?? []
   const totalOther = (data?.history_count ?? 0) + (data?.forward_count ?? 0)
   const name = ep?.name || ep?.endpoint_id || ''
+  const jumpDisabled = jump.isPending
 
-  function Thumb({ path, isCurrent }: { path: string; isCurrent: boolean }) {
-    return (
-      <div className={cn(styles.item, isCurrent && styles.itemCurrent)}>
-        <button
-          className={styles.thumbBtn}
-          disabled={isCurrent || jump.isPending}
-          title={isCurrent ? 'Currently showing' : `Jump display to ${path.split('/').pop()}`}
-          onClick={() => !isCurrent && jump.mutate(path)}
-        >
-          <img className={styles.thumb} src={thumbUrl(path)} alt="" loading="lazy" decoding="async" />
-          {isCurrent && <span className={styles.nowBadge}>Now</span>}
-          {hiddenSet.has(path) && <span className={styles.hiddenBadge}>Hidden</span>}
-        </button>
-        <div className={styles.itemBar}>
-          <span className={styles.itemName} title={path}>
-            {path.split('/').pop()}
-          </span>
-          <IconButton
-            label={favSet.has(path) ? 'Remove favorite' : 'Favorite'}
-            size="sm"
-            active={favSet.has(path)}
-            onClick={() => toggleFavorite(path)}
-          >
-            <HeartIcon size={14} filled={favSet.has(path)} />
-          </IconButton>
-          <IconButton
-            label={hiddenSet.has(path) ? 'Unhide' : 'Hide from slideshows'}
-            size="sm"
-            active={hiddenSet.has(path)}
-            onClick={() => toggleHidden(path)}
-          >
-            <EyeOffIcon size={14} />
-          </IconButton>
-        </div>
-      </div>
-    )
-  }
+  // One ordered timeline (newest first): forward, then NOW, then past. The order
+  // is stable across a jump — only which entry is "current" moves — so path-based
+  // keys (deduped for repeats) keep DOM nodes mounted instead of reloading.
+  const seen = new Map<string, number>()
+  const timeline = [
+    ...ahead.map((p) => ({ path: p, isCurrent: false })),
+    ...(currentImage ? [{ path: currentImage, isCurrent: true }] : []),
+    ...past.map((p) => ({ path: p, isCurrent: false })),
+  ].map((t) => {
+    const n = seen.get(t.path) ?? 0
+    seen.set(t.path, n + 1)
+    return { ...t, key: `${t.path}#${n}` }
+  })
 
   return (
     <Modal
@@ -160,12 +203,18 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
       ) : (
         <div className={styles.grid}>
           {/* Newest first: images shown after current (jumped past), then NOW, then older. */}
-          {ahead.map((p, i) => (
-            <Thumb key={`f-${p}-${i}`} path={p} isCurrent={false} />
-          ))}
-          {currentImage && <Thumb path={currentImage} isCurrent />}
-          {past.map((p, i) => (
-            <Thumb key={`h-${p}-${i}`} path={p} isCurrent={false} />
+          {timeline.map((t) => (
+            <HistoryItem
+              key={t.key}
+              path={t.path}
+              isCurrent={t.isCurrent}
+              favorite={favSet.has(t.path)}
+              hidden={hiddenSet.has(t.path)}
+              jumpDisabled={jumpDisabled}
+              onJump={jump.mutate}
+              onFavorite={toggleFavorite}
+              onHide={toggleHidden}
+            />
           ))}
         </div>
       )}
