@@ -233,3 +233,11 @@ export const ServerIcon = (p: Props) => (
     <path d="M7 7.5h.01M7 16.5h.01" />
   </Svg>
 )
+
+export const HistoryIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M3 3v5h5" />
+    <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
+    <path d="M12 7v5l3.5 2" />
+  </Svg>
+)

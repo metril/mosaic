@@ -174,6 +174,15 @@ export interface DisplayGroup {
   endpoints: DisplayEndpoint[]
 }
 
+/** Full in-memory image history for one endpoint (newest first). */
+export interface EndpointHistory {
+  endpoint_id: string
+  current_image: string | null
+  history: string[]
+  history_count: number
+  forward_count: number
+}
+
 /** Per-endpoint override whitelist (must mirror ENDPOINT_OVERRIDE_KEYS). */
 export const ENDPOINT_OVERRIDE_KEYS = [
   'layout',

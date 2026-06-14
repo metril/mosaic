@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import type { DisplayGroup } from '@/api/types'
 import { groupAction, deleteGroup, type PlaybackAction } from '@/api/admin'
@@ -18,11 +19,13 @@ import {
   ExternalIcon,
   HeartIcon,
   EyeOffIcon,
+  HistoryIcon,
 } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
 import { EndpointsPanel } from './EndpointsPanel'
+import { HistoryModal } from './HistoryModal'
 import styles from '@/pages/Admin.module.css'
 
 interface Props {
@@ -33,6 +36,7 @@ interface Props {
 
 export function GroupCard({ group, onEdit, onClone }: Props) {
   const { favSet, hiddenSet, toggleFavorite, toggleHidden } = useCuration()
+  const [showHistory, setShowHistory] = useState(false)
 
   const action = useMutation({
     mutationFn: (a: PlaybackAction) => groupAction(group.group_id, a),
@@ -47,6 +51,10 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
 
   const current = group.browsers.find((b) => b.current_image)?.current_image ?? null
   const live = group.browser_count > 0
+  const endpoints = group.endpoints ?? []
+  // Default the history view to the endpoint currently on screen, else the first.
+  const shownEndpointId = group.browsers.find((b) => b.current_image)?.endpoint_id as string | undefined
+  const historyEndpointId = shownEndpointId ?? endpoints[0]?.endpoint_id ?? null
 
   return (
     <Card className={styles.group}>
@@ -141,6 +149,15 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
             <ExternalIcon size={15} /> Open display
           </Button>
         </a>
+        <IconButton
+          label="Image history"
+          size="sm"
+          bordered
+          disabled={!historyEndpointId}
+          onClick={() => setShowHistory(true)}
+        >
+          <HistoryIcon size={15} />
+        </IconButton>
         <IconButton label="Edit" size="sm" bordered onClick={onEdit}>
           <EditIcon size={15} />
         </IconButton>
@@ -158,6 +175,15 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
           <TrashIcon size={15} />
         </IconButton>
       </div>
+
+      {showHistory && historyEndpointId && (
+        <HistoryModal
+          groupId={group.group_id}
+          endpoints={endpoints}
+          initialEndpointId={historyEndpointId}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </Card>
   )
 }

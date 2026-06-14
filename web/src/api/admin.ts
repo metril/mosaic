@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { DisplayGroup, DisplayGroupSettings, DisplayEndpoint } from './types'
+import type { DisplayGroup, DisplayGroupSettings, DisplayEndpoint, EndpointHistory } from './types'
 
 /* ---- Groups -------------------------------------------------------------- */
 
@@ -71,5 +71,21 @@ export function deleteEndpoint(groupId: string, endpointId: string) {
 export function endpointNav(groupId: string, endpointId: string, dir: 'next' | 'previous') {
   return api.post<{ current_image: string | null }>(
     `/api/display/groups/${encodeURIComponent(groupId)}/endpoints/${encodeURIComponent(endpointId)}/${dir}`,
+  )
+}
+
+/* ---- History ------------------------------------------------------------- */
+
+export function fetchEndpointHistory(groupId: string, endpointId: string) {
+  return api.get<EndpointHistory>(
+    `/api/display/groups/${encodeURIComponent(groupId)}/endpoints/${encodeURIComponent(endpointId)}/history`,
+  )
+}
+
+/** Jump the live display back to a previously shown image (must be in history). */
+export function endpointJump(groupId: string, endpointId: string, imagePath: string) {
+  return api.post<{ status: string; image_path: string }>(
+    `/api/display/groups/${encodeURIComponent(groupId)}/endpoints/${encodeURIComponent(endpointId)}/jump`,
+    { image_path: imagePath },
   )
 }

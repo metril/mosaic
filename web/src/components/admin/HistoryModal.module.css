@@ -1,0 +1,112 @@
+.selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: var(--s4);
+  padding: 3px;
+  background: var(--color-surface-press);
+  border: 1px solid var(--color-border);
+  border-radius: var(--r-sm);
+}
+.selBtn {
+  padding: 0.35em 0.8em;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  border-radius: calc(var(--r-sm) - 2px);
+  cursor: pointer;
+}
+.selBtn:hover {
+  color: var(--color-text);
+}
+.selBtnActive {
+  background: var(--color-surface-hi);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--s3);
+}
+
+.item {
+  border: 1px solid var(--color-border);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+.itemCurrent {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.thumbBtn {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border: none;
+  background: var(--color-surface-press);
+  cursor: pointer;
+  overflow: hidden;
+}
+.thumbBtn:disabled {
+  cursor: default;
+}
+.thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--dur-2) var(--ease);
+}
+.thumbBtn:not(:disabled):hover .thumb {
+  transform: scale(1.05);
+}
+
+.nowBadge {
+  position: absolute;
+  top: var(--s2);
+  left: var(--s2);
+  padding: 0.15em 0.55em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-on-accent);
+  background: var(--accent);
+  border-radius: var(--r-pill);
+}
+.hiddenBadge {
+  position: absolute;
+  bottom: var(--s2);
+  left: var(--s2);
+  padding: 0.15em 0.5em;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--r-pill);
+}
+
+.itemBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s2);
+}
+.itemName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

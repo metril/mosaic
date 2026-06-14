@@ -2225,6 +2225,41 @@ async def get_endpoint(
     return JSONResponse(content=endpoint.to_dict())
 
 
+@router.get("/api/display/groups/{group_id}/endpoints/{endpoint_id}/history", responses={
+    200: {"description": "Full image history for the endpoint (newest first)"},
+    404: {"description": "Group or endpoint not found"},
+})
+async def get_endpoint_history(
+    group_id: str = PathParam(...),
+    endpoint_id: str = PathParam(...),
+    request: Request = None,
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
+):
+    """Full in-memory image history for an endpoint, newest first.
+
+    Unlike the endpoint's to_dict() (which embeds only the last 10 for the live
+    WS broadcast), this returns the complete history (up to MAX_IMAGE_HISTORY).
+    """
+    check_admin_scope(auth, "admin:endpoints:monitor")
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+
+    endpoint = group.endpoints.get(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail=f"Endpoint '{endpoint_id}' not found")
+
+    return JSONResponse(content={
+        "endpoint_id": endpoint.endpoint_id,
+        "current_image": endpoint.current_image,
+        # image_history is stored oldest->newest; present newest first.
+        "history": list(reversed(endpoint.image_history)),
+        "history_count": len(endpoint.image_history),
+        "forward_count": len(endpoint.forward_history),
+    })
+
+
 @router.patch("/api/display/groups/{group_id}/endpoints/{endpoint_id}", responses={
     200: {"description": "Endpoint updated successfully"},
     404: {"description": "Group or endpoint not found"},

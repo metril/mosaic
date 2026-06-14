@@ -3,15 +3,17 @@ import { useMutation } from '@tanstack/react-query'
 import type { DisplayGroup, DisplayEndpoint } from '@/api/types'
 import { endpointNav, deleteEndpoint } from '@/api/admin'
 import { useCuration } from '@/hooks/useCuration'
-import { IconButton, PrevIcon, NextIcon, SlidersIcon, TrashIcon, HeartIcon, EyeOffIcon } from '@/components/ui'
+import { IconButton, PrevIcon, NextIcon, SlidersIcon, TrashIcon, HeartIcon, EyeOffIcon, HistoryIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
 import { EndpointOverrideModal } from './EndpointOverrideModal'
+import { HistoryModal } from './HistoryModal'
 import styles from '@/pages/Admin.module.css'
 
 export function EndpointsPanel({ group }: { group: DisplayGroup }) {
   const [editing, setEditing] = useState<DisplayEndpoint | null>(null)
+  const [historyEp, setHistoryEp] = useState<string | null>(null)
   const { favSet, hiddenSet, toggleFavorite, toggleHidden } = useCuration()
 
   const nav = useMutation({
@@ -73,6 +75,14 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
                   </>
                 )}
                 <IconButton
+                  label={`History (${ep.history_count})`}
+                  size="sm"
+                  active={ep.history_count > 0}
+                  onClick={() => setHistoryEp(ep.endpoint_id)}
+                >
+                  <HistoryIcon size={14} />
+                </IconButton>
+                <IconButton
                   label="Previous"
                   size="sm"
                   onClick={() => nav.mutate({ id: ep.endpoint_id, dir: 'previous' })}
@@ -110,6 +120,15 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
           endpoint={editing}
           groupSettings={group.settings}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {historyEp && (
+        <HistoryModal
+          groupId={group.group_id}
+          endpoints={eps}
+          initialEndpointId={historyEp}
+          onClose={() => setHistoryEp(null)}
         />
       )}
     </details>
