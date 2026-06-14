@@ -23,7 +23,9 @@ interface ItemProps {
   isCurrent: boolean
   favorite: boolean
   hidden: boolean
-  jumpDisabled: boolean
+  /** Whether clicking the thumbnail may change the live display (only when the
+   *  group is paused). When false, the image is view-only. */
+  jumpEnabled: boolean
   onJump: (path: string) => void
   onFavorite: (path: string) => void
   onHide: (path: string) => void
@@ -37,19 +39,26 @@ const HistoryItem = memo(function HistoryItem({
   isCurrent,
   favorite,
   hidden,
-  jumpDisabled,
+  jumpEnabled,
   onJump,
   onFavorite,
   onHide,
 }: ItemProps) {
   const fileName = path.split('/').pop()
+  const canJump = jumpEnabled && !isCurrent
   return (
     <div className={cn(styles.item, isCurrent && styles.itemCurrent)}>
       <button
         className={styles.thumbBtn}
-        disabled={isCurrent || jumpDisabled}
-        title={isCurrent ? 'Currently showing' : `Jump display to ${fileName}`}
-        onClick={() => !isCurrent && onJump(path)}
+        disabled={!canJump}
+        title={
+          isCurrent
+            ? 'Currently showing'
+            : canJump
+              ? `Jump display to ${fileName}`
+              : 'Pause cycling to display a past image'
+        }
+        onClick={() => canJump && onJump(path)}
       >
         <img className={styles.thumb} src={thumbUrl(path)} alt="" loading="lazy" decoding="async" />
         {isCurrent && <span className={styles.nowBadge}>Now</span>}
@@ -140,7 +149,8 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
   const ahead = data?.forward ?? []
   const totalOther = (data?.history_count ?? 0) + (data?.forward_count ?? 0)
   const name = ep?.name || ep?.endpoint_id || ''
-  const jumpDisabled = jump.isPending
+  // Manual display control is only allowed while cycling is paused.
+  const jumpEnabled = paused && !jump.isPending
 
   // One ordered timeline (newest first): forward, then NOW, then past. The order
   // is stable across a jump — only which entry is "current" moves — so path-based
@@ -163,21 +173,27 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
       onClose={onClose}
       width={780}
     >
-      <div className={styles.toolbar}>
+      <div className={styles.banner} data-paused={paused}>
+        <span className={cn(styles.bannerDot, paused ? styles.dotPaused : styles.dotLive)} />
+        <div className={styles.bannerText}>
+          <div className={styles.bannerTitle}>
+            {paused ? 'Cycling paused — manual control' : 'Cycling active'}
+          </div>
+          <div className={styles.bannerHint}>
+            {paused
+              ? 'Click any image below to display it on the screen.'
+              : 'Pause cycling to manually pick which image is displayed.'}
+          </div>
+        </div>
         <Button
-          size="sm"
-          variant={paused ? 'primary' : 'ghost'}
+          size="md"
+          variant={paused ? 'secondary' : 'primary'}
           loading={toggleCycle.isPending}
           onClick={() => toggleCycle.mutate()}
         >
-          {paused ? <PlayIcon size={14} /> : <PauseIcon size={14} />}
+          {paused ? <PlayIcon size={16} /> : <PauseIcon size={16} />}
           {paused ? 'Resume cycling' : 'Pause cycling'}
         </Button>
-        <span className={styles.hint}>
-          {paused
-            ? 'Cycling paused — pick an image to hold it on the display.'
-            : 'Pause cycling to hold the image you pick.'}
-        </span>
       </div>
 
       {endpoints.length > 1 && (
@@ -210,7 +226,7 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
               isCurrent={t.isCurrent}
               favorite={favSet.has(t.path)}
               hidden={hiddenSet.has(t.path)}
-              jumpDisabled={jumpDisabled}
+              jumpEnabled={jumpEnabled}
               onJump={jump.mutate}
               onFavorite={toggleFavorite}
               onHide={toggleHidden}
