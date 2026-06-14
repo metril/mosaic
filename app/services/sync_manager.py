@@ -1075,10 +1075,7 @@ class DisplayManager:
 
         # Phase 3: Restart cycle under lock (only if auto_cycle enabled)
         async with group._lock:
-            if not group.paused and group.settings.auto_cycle and group.browsers:
-                group._cycle_task = asyncio.create_task(
-                    self._run_cycle_loop(group)
-                )
+            self._start_cycle_if_needed(group)
 
         # Log only field names, not values (S11)
         logger.info(f"Updated settings for group {group_id}: {list(updates.keys())}")
@@ -1198,15 +1195,7 @@ class DisplayManager:
 
                 # Start cycle task if none is running. The cycle loop exits on
                 # its own when browsers disconnect, so we just check done/None.
-                should_start_task = (
-                    not group.paused and
-                    group.settings.auto_cycle and
-                    (group._cycle_task is None or group._cycle_task.done())
-                )
-                if should_start_task:
-                    group._cycle_task = asyncio.create_task(
-                        self._run_cycle_loop(group)
-                    )
+                self._start_cycle_if_needed(group)
 
             metrics.record_connection()  # A6
             logger.info(f"Browser {browser_id} joined group {group_id} (endpoint: {endpoint.endpoint_id})")
@@ -1588,6 +1577,23 @@ class DisplayManager:
         for browser_id in disconnected:
             await self.remove_browser(group.group_id, browser_id)
 
+    def _start_cycle_if_needed(self, group: DisplayGroup) -> None:
+        """Start the group's cycle loop, but only if one isn't already running.
+
+        Guards every cycle-task start site so a group can never end up with two
+        concurrent loops — two loops broadcast PRELOAD/SWITCH at different cron
+        boundaries and the displays drift out of sync. Callers that want fresh
+        timing must cancel the existing task first (a cancelled task is done(),
+        so this still (re)starts it).
+        """
+        if (
+            not group.paused
+            and group.settings.auto_cycle
+            and group.browsers
+            and (group._cycle_task is None or group._cycle_task.done())
+        ):
+            group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
+
     async def _run_cycle_loop(self, group: DisplayGroup) -> None:
         """Main loop that coordinates image cycling for a group with cron-aligned timing.
 
@@ -1841,13 +1847,8 @@ class DisplayManager:
             if should_have_task and task_dead:
                 async with group._lock:
                     # Re-check under lock to avoid race
-                    if (group.browsers and not group.paused
-                            and group.settings.auto_cycle
-                            and (group._cycle_task is None or group._cycle_task.done())):
-                        group._cycle_task = asyncio.create_task(
-                            self._run_cycle_loop(group)
-                        )
-                        actions.append("restarted dead cycle task")
+                    self._start_cycle_if_needed(group)
+                actions.append("restarted dead cycle task")
 
             if actions:
                 recovered += 1
@@ -1920,9 +1921,8 @@ class DisplayManager:
                 "opacity": group.settings.night_dim_opacity,
             })
             # Restart a cycle task on wake if one should be running but isn't
-            if not night and group.browsers and not group.paused and group.settings.auto_cycle:
-                if group._cycle_task is None or group._cycle_task.done():
-                    group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
+            if not night:
+                self._start_cycle_if_needed(group)
             await self._notify_admins({"type": "GROUP_UPDATED", "group": group.to_dict()})
         return changed
 
@@ -1967,11 +1967,10 @@ class DisplayManager:
                 return True  # Already playing
 
             group.paused = False
-            # Restart the cycle task if there are browsers and auto_cycle is enabled
-            if len(group.browsers) > 0 and group.settings.auto_cycle:
-                group._cycle_task = asyncio.create_task(
-                    self._run_cycle_loop(group)
-                )
+            # Drop any stale boundary so the resumed loop computes a fresh,
+            # cron-aligned next switch (keeps multi-display groups in sync).
+            group.next_switch_time = None
+            self._start_cycle_if_needed(group)
             logger.info(f"Group {group_id} resumed")
 
         # Notify admin clients
@@ -2015,10 +2014,7 @@ class DisplayManager:
 
         async with group._lock:
             # Restart cycle task if not paused and auto_cycle enabled
-            if not group.paused and group.settings.auto_cycle and group.browsers:
-                group._cycle_task = asyncio.create_task(
-                    self._run_cycle_loop(group)
-                )
+            self._start_cycle_if_needed(group)
 
         logger.info(f"Group {group_id} skipped to next")
 
@@ -2068,10 +2064,7 @@ class DisplayManager:
 
         async with group._lock:
             # Restart cycle task if not paused and auto_cycle enabled
-            if not group.paused and group.settings.auto_cycle and group.browsers:
-                group._cycle_task = asyncio.create_task(
-                    self._run_cycle_loop(group)
-                )
+            self._start_cycle_if_needed(group)
 
         logger.info(f"Group {group_id} went to previous")
 
@@ -2140,8 +2133,7 @@ class DisplayManager:
 
         # Restart cycle if not paused and auto_cycle enabled
         async with group._lock:
-            if not group.paused and group.settings.auto_cycle and group.browsers:
-                group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
+            self._start_cycle_if_needed(group)
 
         logger.info(f"Group {group_id} rewound to first image")
 
@@ -2214,8 +2206,7 @@ class DisplayManager:
 
         # Restart cycle if not paused and auto_cycle enabled
         async with group._lock:
-            if not group.paused and group.settings.auto_cycle and group.browsers:
-                group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
+            self._start_cycle_if_needed(group)
 
         logger.info(f"Group {group_id} forwarded to most recent image")
 
@@ -2319,10 +2310,7 @@ class DisplayManager:
 
         # Restart cycle if not paused and auto_cycle enabled
         async with group._lock:
-            if not group.paused and group.settings.auto_cycle and group.browsers:
-                group._cycle_task = asyncio.create_task(
-                    self._run_cycle_loop(group)
-                )
+            self._start_cycle_if_needed(group)
 
         logger.info(f"Browser {browser_id} in group {group_id} jumped to {image_path}")
 
@@ -2423,8 +2411,7 @@ class DisplayManager:
 
         # Resume normal cycling from the jumped image.
         async with group._lock:
-            if not group.paused and group.settings.auto_cycle and group.browsers:
-                group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
+            self._start_cycle_if_needed(group)
 
         logger.info(f"Endpoint {endpoint_id} in group {group_id} jumped to {image_path}")
 

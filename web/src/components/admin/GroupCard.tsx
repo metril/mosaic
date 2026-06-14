@@ -4,6 +4,7 @@ import type { DisplayGroup } from '@/api/types'
 import { groupAction, deleteGroup, type PlaybackAction } from '@/api/admin'
 import { thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
+import { useNow, secondsUntil } from '@/hooks/useNow'
 import { Card, IconButton, Button } from '@/components/ui'
 import {
   PlayIcon,
@@ -51,6 +52,8 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
 
   const current = group.browsers.find((b) => b.current_image)?.current_image ?? null
   const live = group.browser_count > 0
+  const now = useNow()
+  const secs = group.paused ? null : secondsUntil(group.next_switch_at, now)
   const endpoints = group.endpoints ?? []
   // Default the history view to the endpoint currently on screen, else the first.
   const shownEndpointId = group.browsers.find((b) => b.current_image)?.endpoint_id as string | undefined
@@ -131,6 +134,18 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
           <IconButton label="Refresh image pool" size="sm" onClick={() => action.mutate('refresh')}>
             <RefreshIcon size={16} />
           </IconButton>
+        </div>
+
+        <div className={styles.countdown}>
+          {group.paused ? (
+            <span>Paused</span>
+          ) : secs != null ? (
+            <>
+              Next image in <span className={styles.countdownValue}>{secs}s</span>
+            </>
+          ) : (
+            <span className="faint">Idle</span>
+          )}
         </div>
 
         {group.error && <div style={{ color: 'var(--color-danger)', fontSize: 'var(--text-xs)' }}>{group.error}</div>}

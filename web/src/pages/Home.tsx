@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { listGroups } from '@/api/admin'
 import { listPulls } from '@/api/immich'
 import { useAdminWs, GROUPS_KEY } from '@/hooks/useAdminWs'
+import { useNow } from '@/hooks/useNow'
 import { fetchFolders, thumbUrl } from '@/api/browse'
 import type { DisplayGroup, ImmichPull } from '@/api/types'
 import { cn } from '@/lib/cn'
@@ -17,16 +17,6 @@ import {
   SettingsIcon,
 } from '@/components/ui'
 import styles from './Home.module.css'
-
-/** A shared 1s ticker so countdowns stay live without one timer per row. */
-function useNow(intervalMs = 1000) {
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
-    return () => window.clearInterval(id)
-  }, [intervalMs])
-  return now
-}
 
 function relative(ts: string | null, now: number): string {
   if (!ts) return 'never'

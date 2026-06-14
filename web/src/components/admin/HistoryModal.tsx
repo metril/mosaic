@@ -5,6 +5,7 @@ import { fetchEndpointHistory, endpointJump, groupAction, listGroups } from '@/a
 import { thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
 import { GROUPS_KEY } from '@/hooks/useAdminWs'
+import { useNow, secondsUntil } from '@/hooks/useNow'
 import { Modal, IconButton, Button, Loading, EmptyState, HeartIcon, EyeOffIcon, HistoryIcon, PlayIcon, PauseIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
@@ -123,7 +124,10 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
   // Live pause state from the shared groups cache (kept current by the admin WS).
   // Pause to hold a jumped image and step through history manually, then resume.
   const { data: groups } = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
-  const paused = groups?.find((g) => g.group_id === groupId)?.paused ?? false
+  const liveGroup = groups?.find((g) => g.group_id === groupId)
+  const paused = liveGroup?.paused ?? false
+  const now = useNow()
+  const nextSecs = paused ? null : secondsUntil(liveGroup?.next_switch_at, now)
   const toggleCycle = useMutation({
     mutationFn: () => groupAction(groupId, paused ? 'play' : 'pause'),
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Could not change cycling'),
@@ -177,7 +181,11 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
         <span className={cn(styles.bannerDot, paused ? styles.dotPaused : styles.dotLive)} />
         <div className={styles.bannerText}>
           <div className={styles.bannerTitle}>
-            {paused ? 'Cycling paused — manual control' : 'Cycling active'}
+            {paused
+              ? 'Cycling paused — manual control'
+              : nextSecs != null
+                ? `Cycling active · next image in ${nextSecs}s`
+                : 'Cycling active'}
           </div>
           <div className={styles.bannerHint}>
             {paused
