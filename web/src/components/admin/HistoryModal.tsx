@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { DisplayEndpoint } from '@/api/types'
-import { fetchEndpointHistory, endpointJump } from '@/api/admin'
+import { fetchEndpointHistory, endpointJump, groupAction, listGroups } from '@/api/admin'
 import { thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
-import { Modal, IconButton, Loading, EmptyState, HeartIcon, EyeOffIcon, HistoryIcon } from '@/components/ui'
+import { GROUPS_KEY } from '@/hooks/useAdminWs'
+import { Modal, IconButton, Button, Loading, EmptyState, HeartIcon, EyeOffIcon, HistoryIcon, PlayIcon, PauseIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -42,6 +43,15 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
       toast.success('Display jumped to image')
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Could not jump'),
+  })
+
+  // Live pause state from the shared groups cache (kept current by the admin WS).
+  // Pause to hold a jumped image and step through history manually, then resume.
+  const { data: groups } = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
+  const paused = groups?.find((g) => g.group_id === groupId)?.paused ?? false
+  const toggleCycle = useMutation({
+    mutationFn: () => groupAction(groupId, paused ? 'play' : 'pause'),
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Could not change cycling'),
   })
 
   const past = data?.history ?? []
@@ -96,6 +106,23 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
       onClose={onClose}
       width={780}
     >
+      <div className={styles.toolbar}>
+        <Button
+          size="sm"
+          variant={paused ? 'primary' : 'ghost'}
+          loading={toggleCycle.isPending}
+          onClick={() => toggleCycle.mutate()}
+        >
+          {paused ? <PlayIcon size={14} /> : <PauseIcon size={14} />}
+          {paused ? 'Resume cycling' : 'Pause cycling'}
+        </Button>
+        <span className={styles.hint}>
+          {paused
+            ? 'Cycling paused — pick an image to hold it on the display.'
+            : 'Pause cycling to hold the image you pick.'}
+        </span>
+      </div>
+
       {endpoints.length > 1 && (
         <div className={styles.selector} role="group" aria-label="Display">
           {endpoints.map((e) => (

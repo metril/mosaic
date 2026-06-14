@@ -2356,6 +2356,16 @@ class DisplayManager:
             self._clean_endpoint_history(endpoint)
             return False
 
+        # Cancel the running cycle so it doesn't immediately switch away from the
+        # jumped image (mirrors the per-browser jump_to_image behaviour).
+        async with group._lock:
+            if group._cycle_task and not group._cycle_task.done():
+                group._cycle_task.cancel()
+                try:
+                    await group._cycle_task
+                except asyncio.CancelledError:
+                    pass
+
         # Find image in history or forward_history
         if image_path in endpoint.image_history:
             idx = endpoint.image_history.index(image_path)
@@ -2387,6 +2397,34 @@ class DisplayManager:
             return False
 
         endpoint.next_image = None
+
+        # Push the new image to every browser attached to this endpoint so the
+        # live display actually changes (not just the server-side state).
+        image_url = self.build_image_url(image_path, group.settings)
+        blur_url = await self.build_blur_url(image_path, group.settings)
+        caption = self.build_caption(image_path, group.settings)
+        targets = [b for b in group.browsers.values() if b.endpoint_id == endpoint_id]
+        for browser in targets:
+            try:
+                await asyncio.wait_for(
+                    browser.websocket.send_json({
+                        "type": "ASSIGN",
+                        "image_url": image_url,
+                        "blur_url": blur_url,
+                        "image_id": image_path,
+                        "caption": caption,
+                        "cycle": group.current_cycle,
+                    }),
+                    timeout=WEBSOCKET_SEND_TIMEOUT
+                )
+                browser.status = BrowserStatus.READY
+            except Exception as e:
+                logger.warning(f"Failed to send jump assign to {browser.browser_id}: {e}")
+
+        # Resume normal cycling from the jumped image.
+        async with group._lock:
+            if not group.paused and group.settings.auto_cycle and group.browsers:
+                group._cycle_task = asyncio.create_task(self._run_cycle_loop(group))
 
         logger.info(f"Endpoint {endpoint_id} in group {group_id} jumped to {image_path}")
 

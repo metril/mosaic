@@ -690,6 +690,18 @@ export function mountDisplay(wsUrl: string): () => void {
 
   function handleAssign(msg: any) {
     clearNoImagesError()
+    // An ASSIGN is authoritative (e.g. a history jump arriving mid-cycle): cancel
+    // any in-flight preload/switch so a pending client-side switch can't override
+    // the image we're about to show.
+    if (timers.switch) {
+      clearTimeout(timers.switch)
+      timers.switch = null
+    }
+    preloadComplete = false
+    switchPending = false
+    nextSwitchTime = null
+    preloadImage.classList.remove('visible')
+    preloadImage.classList.add('hidden')
     currentCycle = msg.cycle
     updateDebug('Cycle', currentCycle)
     updateDebug('CurrentImage', msg.image_id)
