@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { DisplayEndpoint } from '@/api/types'
+import type { DisplayEndpoint, DisplayGroup } from '@/api/types'
 import { fetchEndpointHistory, endpointJump, groupAction, listGroups } from '@/api/admin'
 import { thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
@@ -53,6 +53,20 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
     mutationFn: () => groupAction(groupId, paused ? 'play' : 'pause'),
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Could not change cycling'),
   })
+
+  // Restore cycling on close: if the group was playing when this view opened and
+  // is paused when it closes (we/the user paused it to inspect), resume it. Never
+  // auto-pause, and never un-pause a group that was already paused beforehand.
+  const wasPlayingOnOpen = useRef<boolean | null>(null)
+  useEffect(() => {
+    const g = qc.getQueryData<DisplayGroup[]>(GROUPS_KEY)?.find((x) => x.group_id === groupId)
+    wasPlayingOnOpen.current = g ? !g.paused : null
+    return () => {
+      if (!wasPlayingOnOpen.current) return
+      const cur = qc.getQueryData<DisplayGroup[]>(GROUPS_KEY)?.find((x) => x.group_id === groupId)
+      if (cur?.paused) void groupAction(groupId, 'play').catch(() => {})
+    }
+  }, [groupId, qc])
 
   const past = data?.history ?? []
   // Images shown after the current one (present when you've jumped back). They're
