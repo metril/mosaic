@@ -291,3 +291,27 @@ export interface Health {
   image_count: number
   image_directory: string
 }
+
+/* ============================== Settings ================================= */
+
+export interface AppSettings {
+  ha_url: string
+  has_ha_token: boolean
+  ha_enabled: boolean
+  ha_http_timeout: number
+  ha_weather_cache_ttl: number
+  immich_http_timeout: number
+  max_immich_pull_count: number
+  preload_lead_time: number
+  browser_stale_timeout: number
+  cleanup_interval: number
+  endpoint_cleanup: string
+  max_browsers_per_group: number
+  max_groups: number
+  base_url: string
+}
+
+export interface HaEntity {
+  entity_id: string
+  friendly_name: string
+}

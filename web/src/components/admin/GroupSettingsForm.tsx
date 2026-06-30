@@ -12,6 +12,7 @@ import {
 } from '@/components/ui'
 import { POSITION_OPTS, CAPTION_FIELD_OPTS } from '@/lib/settingsDefaults'
 import { FolderCheckTree } from './FolderCheckTree'
+import { HaEntityRow } from './HaEntityRow'
 import styles from '@/pages/Admin.module.css'
 
 function parseFolders(s: string | null): Set<string> {
@@ -322,11 +323,13 @@ export function GroupSettingsForm({ value, onChange }: Props) {
         />
         {value.show_weather && (
           <>
-            <TextRow
+            <HaEntityRow
               label="HA entity"
-              hint="e.g. weather.home"
+              domain="weather"
               value={value.weather_ha_entity ?? ''}
               onChange={(v) => set('weather_ha_entity', v || null)}
+              placeholder="weather.home"
+              allowEmpty
             />
             <SelectRow
               label="Position"
@@ -432,8 +435,9 @@ export function GroupSettingsForm({ value, onChange }: Props) {
                 />
               </>
             ) : (
-              <TextRow
+              <HaEntityRow
                 label="Sun entity"
+                domain="sun"
                 value={value.night_ha_sun_entity}
                 onChange={(v) => set('night_ha_sun_entity', v)}
                 placeholder="sun.sun"

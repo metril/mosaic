@@ -1,7 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { fetchMetrics, fetchHealth, testHomeAssistant } from '@/api/system'
-import { saveConfig } from '@/api/admin'
-import { Button, Card, Loading, ServerIcon } from '@/components/ui'
+import { Button, Card, Loading } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import styles from '@/pages/Admin.module.css'
@@ -19,11 +18,6 @@ export function SystemTab() {
   const health = useQuery({ queryKey: ['health'], queryFn: fetchHealth })
   const metrics = useQuery({ queryKey: ['metrics'], queryFn: fetchMetrics, refetchInterval: 10_000 })
 
-  const save = useMutation({
-    mutationFn: saveConfig,
-    onSuccess: (r) => toast.success(r.message || `Saved ${r.saved} group(s)`),
-    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Save failed'),
-  })
   const haTest = useMutation({
     mutationFn: testHomeAssistant,
     onSuccess: (r) => (r.success ? toast.success('Home Assistant reachable') : toast.error(r.error || 'HA unreachable')),
@@ -64,9 +58,6 @@ export function SystemTab() {
       <div>
         <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)' }}>Actions</h3>
         <div style={{ display: 'flex', gap: 'var(--s3)', flexWrap: 'wrap' }}>
-          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>
-            <ServerIcon size={16} /> Save config to disk
-          </Button>
           <Button loading={haTest.isPending} onClick={() => haTest.mutate()}>
             Test Home Assistant
           </Button>
@@ -75,7 +66,7 @@ export function SystemTab() {
           </a>
         </div>
         <div className={styles.scopeNote} style={{ marginTop: 'var(--s2)' }}>
-          “Save config” persists groups &amp; endpoints to YAML so they survive a restart.
+          Groups, endpoints and pulls now save automatically.
         </div>
       </div>
     </div>

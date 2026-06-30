@@ -31,16 +31,25 @@ class HomeAssistantProvider:
     Weather data is cached to avoid excessive API calls.
     """
 
-    def __init__(self, config: Optional[HomeAssistantConfig] = None):
+    def __init__(self, config: Optional[HomeAssistantConfig] = None, settings=None):
         self.config = config
+        self._settings = settings
         self._http_client: Optional[httpx.AsyncClient] = None
         self._weather_cache: Dict[str, tuple] = {}  # entity_id -> (data, timestamp)
-        self._cache_ttl = int(os.environ.get("HA_WEATHER_CACHE_TTL", "600"))
+
+    @property
+    def _cache_ttl(self) -> int:
+        if self._settings is not None:
+            return self._settings.get_int("ha_weather_cache_ttl")
+        return int(os.environ.get("HA_WEATHER_CACHE_TTL", "600"))
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client"""
         if self._http_client is None or self._http_client.is_closed:
-            timeout = float(os.environ.get("HA_HTTP_TIMEOUT", "10.0"))
+            if self._settings is not None:
+                timeout = self._settings.get_float("ha_http_timeout")
+            else:
+                timeout = float(os.environ.get("HA_HTTP_TIMEOUT", "10.0"))
             self._http_client = httpx.AsyncClient(timeout=timeout)
         return self._http_client
 
@@ -211,6 +220,31 @@ class HomeAssistantProvider:
             logger.error(f"Failed to get HA sun: {e}")
             return {"error": str(e)}
 
+    async def get_entities(self, domain: str) -> list:
+        """List HA entities in a domain (e.g. 'weather', 'sun') for picker UIs.
+
+        Returns a list of {entity_id, friendly_name}, or raises on transport
+        error. Empty list when HA isn't configured.
+        """
+        if not self.config or not self.config.enabled:
+            return []
+        client = await self._get_client()
+        headers = self._get_headers()
+        base_url = self.config.url.rstrip('/')
+        prefix = f"{domain}."
+        response = await client.get(f"{base_url}/api/states", headers=headers)
+        response.raise_for_status()
+        out = []
+        for state in response.json():
+            eid = state.get("entity_id", "")
+            if eid.startswith(prefix):
+                out.append({
+                    "entity_id": eid,
+                    "friendly_name": state.get("attributes", {}).get("friendly_name", eid),
+                })
+        out.sort(key=lambda e: e["entity_id"])
+        return out
+
     async def get_forecast(
         self,
         entity_id: str,
@@ -360,3 +394,16 @@ class HomeAssistantProvider:
         if self._http_client and not self._http_client.is_closed:
             await self._http_client.aclose()
             self._http_client = None
+
+
+def build_ha_provider(settings) -> Optional["HomeAssistantProvider"]:
+    """Build a provider from the settings service, or None when HA is disabled
+    or its URL/token are unset. Called at startup and whenever HA settings
+    change (the result replaces app.state.ha_provider)."""
+    cfg = settings.ha_config()
+    if not (cfg["enabled"] and cfg["url"] and cfg["token"]):
+        return None
+    return HomeAssistantProvider(
+        HomeAssistantConfig(url=cfg["url"], access_token=cfg["token"], enabled=True),
+        settings=settings,
+    )

@@ -17,6 +17,9 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import httpx
 
+from app.services.config_store import ConfigStore
+from app.auth.key_crypto import decrypt_secret, encrypt_secret
+
 logger = logging.getLogger(__name__)
 
 # Cap stored per-asset error messages so a fully-failed large pull doesn't
@@ -143,10 +146,14 @@ class ImmichProvider:
         image_dir: Path,
         config_path: Optional[Path] = None,
         on_pull_complete: Optional[Callable[[str], Awaitable[None]]] = None,
-        curation=None
+        curation=None,
+        settings=None
     ):
         self.image_dir = image_dir
-        self.config_path = config_path or Path("config/immich_pulls.yaml")
+        self.settings = settings
+        # SQLite-backed persistence; the per-pull api_key is encrypted at rest.
+        self.config_path = config_path or Path("config/immich_pulls.db")
+        self._store = ConfigStore(self.config_path, "pulls")
         # Curation service (F6) — drives skip_excluded / protect_favorites
         self.curation = curation
         self.pulls: Dict[str, ImmichPullConfig] = {}
@@ -164,7 +171,10 @@ class ImmichProvider:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the HTTP client"""
         if self._http_client is None or self._http_client.is_closed:
-            timeout = float(os.environ.get("IMMICH_HTTP_TIMEOUT", "30.0"))
+            if self.settings is not None:
+                timeout = self.settings.get_float("immich_http_timeout")
+            else:
+                timeout = float(os.environ.get("IMMICH_HTTP_TIMEOUT", "30.0"))
             self._http_client = httpx.AsyncClient(timeout=timeout)
         return self._http_client
 
@@ -175,21 +185,18 @@ class ImmichProvider:
             self._http_client = None
 
     async def load_config(self) -> int:
-        """Load pull configurations from YAML file.
+        """Load pull configurations from the SQLite store.
 
-        Returns the number of pulls loaded.
+        The stored ``api_key`` is encrypted at rest; it is decrypted back to the
+        plaintext the provider uses in memory. Returns the number of pulls loaded.
         """
-        if not self.config_path.exists():
-            logger.debug(f"Immich config file not found: {self.config_path}")
-            return 0
-
-        import yaml
-        with open(self.config_path, "r") as f:
-            config = yaml.safe_load(f) or {}
-
         loaded = 0
-        for name, pull_dict in config.get("pulls", {}).items():
+        for name, pull_dict in self._store.load_all().items():
             try:
+                pull_dict = dict(pull_dict)
+                enc = pull_dict.get("api_key")
+                if enc:
+                    pull_dict["api_key"] = decrypt_secret(enc) or ""
                 pull_config = ImmichPullConfig.from_dict(name, pull_dict)
                 self.pulls[name] = pull_config
                 logger.info(f"Loaded Immich pull config: {name}")
@@ -200,26 +207,23 @@ class ImmichProvider:
         return loaded
 
     def save_config(self) -> int:
-        """Save current pull configurations to YAML file.
+        """Persist all pull configurations to the SQLite store (write-through).
 
-        Returns the number of pulls saved.
+        The ``api_key`` is Fernet-encrypted before storage so the DB never holds
+        the raw token. Returns the number of pulls saved.
         """
-        import yaml
-
-        config: Dict[str, Any] = {"pulls": {}}
+        items: Dict[str, Dict[str, Any]] = {}
         for name, pull in self.pulls.items():
             pull_dict = pull.to_dict()
-            # Remove 'name' as it's the key
-            del pull_dict["name"]
-            # Filter out None values and defaults for cleaner output
-            config["pulls"][name] = {k: v for k, v in pull_dict.items() if v is not None}
+            del pull_dict["name"]  # name is the row id
+            pull_dict = {k: v for k, v in pull_dict.items() if v is not None}
+            if pull_dict.get("api_key"):
+                pull_dict["api_key"] = encrypt_secret(pull_dict["api_key"])
+            items[name] = pull_dict
 
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-
-        logger.info(f"Saved {len(self.pulls)} Immich pull configs to: {self.config_path}")
-        return len(self.pulls)
+        self._store.replace_all(items)
+        logger.debug(f"Persisted {len(items)} Immich pull configs to {self.config_path}")
+        return len(items)
 
     def add_pull(self, config: ImmichPullConfig) -> None:
         """Add or update a pull configuration"""

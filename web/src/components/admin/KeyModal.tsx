@@ -8,14 +8,24 @@ import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
 import styles from '@/pages/Admin.module.css'
 
-/** One-time reveal of a freshly minted secret (used after rotation). Mirrors
- *  the create-flow reveal screen below. */
-export function RotatedKeyModal({ name, secret, onClose }: { name: string; secret: string; onClose: () => void }) {
+/** Show a key secret with a copy button (used for the post-rotate reveal and
+ *  the keys-list "reveal secret" action). */
+export function SecretRevealModal({
+  title,
+  subtitle,
+  secret,
+  onClose,
+}: {
+  title: string
+  subtitle: string
+  secret: string
+  onClose: () => void
+}) {
   const [copied, setCopied] = useState(false)
   return (
     <Modal
-      title={`Key rotated · ${name}`}
-      subtitle="Copy the new secret now — it will never be shown again. The old secret no longer works."
+      title={title}
+      subtitle={subtitle}
       onClose={onClose}
       width={520}
       footer={
@@ -36,6 +46,18 @@ export function RotatedKeyModal({ name, secret, onClose }: { name: string; secre
         {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />} {copied ? 'Copied' : 'Copy key'}
       </Button>
     </Modal>
+  )
+}
+
+/** One-time reveal of a freshly rotated secret. */
+export function RotatedKeyModal({ name, secret, onClose }: { name: string; secret: string; onClose: () => void }) {
+  return (
+    <SecretRevealModal
+      title={`Key rotated · ${name}`}
+      subtitle="The old secret no longer works. You can reveal this new secret again from the keys list."
+      secret={secret}
+      onClose={onClose}
+    />
   )
 }
 
@@ -89,7 +111,7 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
     return (
       <Modal
         title="API key created"
-        subtitle="Copy it now — it will never be shown again."
+        subtitle="Stored encrypted — you can reveal it again later from the keys list."
         onClose={onClose}
         width={520}
         footer={

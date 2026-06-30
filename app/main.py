@@ -97,9 +97,14 @@ async def periodic_cleanup(
     display_manager: DisplayManager,
     interval: int = int(os.environ.get("CLEANUP_INTERVAL", "30")),
     endpoint_cleanup_seconds: int = 86400,
-    ha_provider_getter=None
+    ha_provider_getter=None,
+    settings=None,
 ):
-    """Periodically clean up stale browser connections with resilience (#27)."""
+    """Periodically clean up stale browser connections with resilience (#27).
+
+    Tunables (interval, stale timeout, endpoint-cleanup duration) are re-read
+    from `settings` each cycle so admin Settings edits apply without a restart.
+    """
     consecutive_failures = 0
     max_failures = 5
     backoff_delay = interval
@@ -115,6 +120,13 @@ async def periodic_cleanup(
         await asyncio.sleep(backoff_delay)
         iteration_count += 1
         had_failure = False
+
+        # Live-tunable settings (fall back to constructor args when no service).
+        base_interval = interval
+        if settings is not None:
+            base_interval = settings.get_int("cleanup_interval")
+            browser_stale_timeout = settings.get_int("browser_stale_timeout")
+            endpoint_cleanup_seconds = parse_duration(settings.get_str("endpoint_cleanup")) or 0
 
         try:
             # Stage 1: Clean up stale browsers
@@ -158,12 +170,12 @@ async def periodic_cleanup(
             if had_failure:
                 consecutive_failures += 1
                 if consecutive_failures >= max_failures:
-                    backoff_delay = min(interval * (2 ** (consecutive_failures - max_failures)), 300)
+                    backoff_delay = min(base_interval * (2 ** (consecutive_failures - max_failures)), 300)
                     logger.warning(f"Cleanup failing repeatedly, backing off to {backoff_delay}s")
             else:
                 # Reset on full success
                 consecutive_failures = 0
-                backoff_delay = interval
+                backoff_delay = base_interval
         except Exception as e:
             consecutive_failures += 1
             logger.error(f"Cleanup error (attempt {consecutive_failures}): {e}")
@@ -195,6 +207,12 @@ async def lifespan(app: FastAPI):
         base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
         logger.info(f"Base URL: {base_url}")
 
+        # Initialize runtime-tunable settings (SQLite, seeded from env). Read at
+        # use-time so admin Settings edits apply without a restart.
+        from app.services.settings_service import SettingsService
+        app.state.settings = SettingsService(Path("config/settings.db"))
+        logger.info("Settings service initialized")
+
         # Initialize curation store (favorites / hidden images) — SQLite (F6)
         from app.services.curation_service import CurationService
         app.state.curation_service = CurationService(Path("config/curation.db"))
@@ -213,21 +231,21 @@ async def lifespan(app: FastAPI):
         app.state.display_manager = DisplayManager(
             image_service,
             is_folder_locked=is_folder_locked,
-            is_excluded=is_excluded
+            is_excluded=is_excluded,
+            settings=app.state.settings,
         )
         logger.info("DisplayManager initialized")
 
-        # Migrate old config file name if it exists
-        old_config = Path("config/sync_groups.yaml")
-        new_config = Path("config/display_groups.yaml")
-        if old_config.exists() and not new_config.exists():
-            old_config.rename(new_config)
-            logger.info("Migrated config/sync_groups.yaml to config/display_groups.yaml")
-
-        # Load display groups from config file
+        # Load display groups from the SQLite store
         loaded_groups = await app.state.display_manager.load_config()
         if loaded_groups > 0:
             logger.info(f"Loaded {loaded_groups} display groups from config")
+        elif Path("config/display_groups.yaml").exists():
+            logger.warning(
+                "Found legacy config/display_groups.yaml but the SQLite store is "
+                "empty. Run `python scripts/migrate_display_groups.py` to import "
+                "your groups, or they will not load."
+            )
 
         # Initialize Immich provider for pulling images from Immich servers
         # The on_pull_complete callback refreshes display groups after a pull finishes,
@@ -246,11 +264,18 @@ async def lifespan(app: FastAPI):
         app.state.immich_provider = ImmichProvider(
             image_service.image_dir,
             on_pull_complete=on_pull_complete,
-            curation=app.state.curation_service
+            curation=app.state.curation_service,
+            settings=app.state.settings,
         )
         loaded_pulls = await app.state.immich_provider.load_config()
         if loaded_pulls > 0:
             logger.info(f"Loaded {loaded_pulls} Immich pull configurations")
+        elif Path("config/immich_pulls.yaml").exists():
+            logger.warning(
+                "Found legacy config/immich_pulls.yaml but the SQLite store is "
+                "empty. Run `python scripts/migrate_immich_pulls.py` to import "
+                "your pulls, or they will not load."
+            )
 
         # Start the cron scheduler for automatic Immich pulls (F1)
         from app.services.pull_scheduler import PullScheduler
@@ -312,20 +337,14 @@ async def lifespan(app: FastAPI):
         app.state.file_watcher.start(asyncio.get_running_loop())
         logger.info("File watcher started for image directory")
 
-        # Initialize Home Assistant provider if configured
-        ha_url = os.environ.get('HOMEASSISTANT_URL', '').strip()
-        ha_token = os.environ.get('HOMEASSISTANT_TOKEN', '').strip()
-        if ha_url and ha_token:
-            ha_config = HomeAssistantConfig(
-                url=ha_url,
-                access_token=ha_token,
-                enabled=True
-            )
-            app.state.ha_provider = HomeAssistantProvider(ha_config)
-            logger.info(f"Home Assistant provider initialized: {ha_url}")
+        # Initialize Home Assistant provider from settings (env-seeded on first
+        # boot). Rebuilt live when the admin updates HA settings.
+        from app.services.homeassistant_provider import build_ha_provider
+        app.state.ha_provider = build_ha_provider(app.state.settings)
+        if app.state.ha_provider:
+            logger.info("Home Assistant provider initialized")
         else:
-            app.state.ha_provider = None
-            logger.debug("Home Assistant not configured (HOMEASSISTANT_URL/TOKEN not set)")
+            logger.debug("Home Assistant not configured")
 
         # Start cleanup task for stale browser connections
         # ENDPOINT_CLEANUP: duration before anonymous endpoints are removed (default 24h, 0=disabled)
@@ -336,7 +355,8 @@ async def lifespan(app: FastAPI):
             periodic_cleanup(
                 app.state.display_manager,
                 endpoint_cleanup_seconds=endpoint_cleanup_seconds,
-                ha_provider_getter=lambda: getattr(app.state, 'ha_provider', None)
+                ha_provider_getter=lambda: getattr(app.state, 'ha_provider', None),
+                settings=app.state.settings,
             )
         )
         if endpoint_cleanup_seconds > 0:

@@ -22,6 +22,7 @@ from fastapi import WebSocket
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.image_service import ImageService
+from app.services.config_store import ConfigStore
 from app.utils.blur import create_blur_background
 from app.utils.logging import logger
 from app.utils.metrics import metrics
@@ -602,9 +603,13 @@ class DisplayManager:
         image_service: ImageService,
         config_path: Optional[Path] = None,
         is_folder_locked: Optional[Callable[[str], bool]] = None,
-        is_excluded: Optional[Callable[[str], bool]] = None
+        is_excluded: Optional[Callable[[str], bool]] = None,
+        settings=None
     ):
         self.image_service = image_service
+        # Runtime-tunable settings (preload lead, group/browser limits). When
+        # absent, fall back to the module-level env-seeded constants.
+        self.settings = settings
         self._is_folder_locked = is_folder_locked or (lambda _: False)
         # Curation: returns True if a relative image path is hidden (F6)
         self._is_excluded = is_excluded or (lambda _: False)
@@ -614,8 +619,10 @@ class DisplayManager:
         # Admin WebSocket connections for real-time updates
         self.admin_connections: Set[WebSocket] = set()
         self._admin_lock = asyncio.Lock()
-        # Config file path for persistence
-        self.config_path = config_path or Path("config/display_groups.yaml")
+        # SQLite-backed persistence (write-through). Groups are stored as one
+        # JSON blob per group — the same shape previously written to YAML.
+        self.config_path = config_path or Path("config/display_groups.db")
+        self._store = ConfigStore(self.config_path, "groups")
         # Caches keyed by (path, mtime, …); bounded LRUs invalidated on folder change.
         self._caption_cache: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
         self._blur_cache: "OrderedDict[str, str]" = OrderedDict()
@@ -628,20 +635,14 @@ class DisplayManager:
         self._base_url = base_url.rstrip("/")
 
     async def load_config(self) -> int:
-        """Load display groups from YAML config file.
+        """Load display groups from the SQLite store.
 
         Returns the number of groups loaded.
         """
-        if not self.config_path.exists():
-            logger.debug(f"Config file not found: {self.config_path}")
-            return 0
-
-        import yaml
-        with open(self.config_path, "r") as f:
-            config = yaml.safe_load(f) or {}
+        groups = self._store.load_all()
 
         loaded = 0
-        for group_id, settings_dict in config.get("groups", {}).items():
+        for group_id, settings_dict in groups.items():
             try:
                 # Extract endpoints before creating settings (they're not part of settings)
                 settings_dict = dict(settings_dict)  # Make a copy to avoid modifying original
@@ -668,80 +669,49 @@ class DisplayManager:
 
         return loaded
 
+    def _group_to_config(self, group: "DisplayGroup") -> dict:
+        """Serialize one group to the JSON blob persisted in the store (same
+        shape previously written to YAML: settings + persistent endpoints)."""
+        group_config = group.settings.to_config_dict()
+        endpoints_config = {}
+        for endpoint_id, endpoint in group.endpoints.items():
+            if endpoint.is_persistent:
+                endpoint_data = endpoint.to_config_dict()
+                if endpoint_data:  # {} for non-persistent
+                    endpoints_config[endpoint_id] = endpoint_data
+        if endpoints_config:
+            group_config["endpoints"] = endpoints_config
+        return group_config
+
     def save_config(self) -> int:
-        """Save current display groups to YAML config file.
+        """Persist all display groups to the SQLite store (write-through).
 
-        Returns the number of groups saved.
+        Returns the number of groups saved. SQLite writes of this small dataset
+        are fast enough to run inline (matching CurationService's writes).
         """
-        import yaml
-
-        config = {"groups": {}}
-        for group_id, group in self.groups.items():
-            group_config = group.settings.to_config_dict()
-            # Add persistent endpoints
-            endpoints_config = {}
-            for endpoint_id, endpoint in group.endpoints.items():
-                if endpoint.is_persistent:
-                    endpoint_data = endpoint.to_config_dict()
-                    if endpoint_data:  # to_config_dict returns {} for non-persistent
-                        endpoints_config[endpoint_id] = endpoint_data
-            if endpoints_config:
-                group_config["endpoints"] = endpoints_config
-            config["groups"][group_id] = group_config
-
-        self.config_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.config_path, "w") as f:
-            yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-
-        logger.info(f"Saved {len(self.groups)} display groups to config: {self.config_path}")
-        return len(self.groups)
+        items = {gid: self._group_to_config(g) for gid, g in self.groups.items()}
+        self._store.replace_all(items)
+        logger.debug(f"Persisted {len(items)} display groups to {self.config_path}")
+        return len(items)
 
     def schedule_save(self, delay: float = 1.0) -> None:
-        """Debounced, non-blocking config save.
+        """Persist immediately (write-through to SQLite).
 
-        Many admin/endpoint operations previously called the synchronous
-        save_config() directly inside async handlers, blocking the event loop on
-        a full YAML rewrite. This coalesces a burst of edits into a single write
-        ~`delay`s later, run in the default executor. flush_save() forces an
-        immediate write (used on shutdown) so nothing is lost. Best-effort if no
-        running loop (e.g. called from a sync context outside the app)."""
-        self._save_pending = True
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            # No event loop — fall back to a direct synchronous save.
-            self._save_pending = False
-            try:
-                self.save_config()
-            except Exception as e:
-                logger.error(f"schedule_save fallback failed: {e}")
-            return
-        if self._save_handle is not None:
-            self._save_handle.cancel()
-
-        def _fire():
-            self._save_handle = None
-            if not self._save_pending:
-                return
-            self._save_pending = False
-            loop.run_in_executor(None, self._save_config_safe)
-
-        self._save_handle = loop.call_later(delay, _fire)
-
-    def _save_config_safe(self) -> None:
+        Kept name + ``delay`` arg for the existing call sites; persistence is now
+        synchronous and instant rather than debounced, so edits survive even an
+        abrupt restart."""
         try:
             self.save_config()
         except Exception as e:
-            logger.error(f"Debounced save_config failed: {e}")
+            logger.error(f"save_config failed: {e}")
 
     async def flush_save(self) -> None:
-        """Immediately persist if a debounced save is pending (call on shutdown)."""
-        if self._save_handle is not None:
-            self._save_handle.cancel()
-            self._save_handle = None
-        if self._save_pending:
-            self._save_pending = False
-            await asyncio.get_running_loop().run_in_executor(None, self._save_config_safe)
+        """No-op: saves are synchronous write-through now. Retained for the
+        shutdown call site; persist once more defensively."""
+        try:
+            self.save_config()
+        except Exception as e:
+            logger.error(f"flush_save failed: {e}")
 
     async def register_admin(self, websocket: WebSocket) -> None:
         """Register an admin WebSocket connection for real-time updates."""
@@ -926,8 +896,9 @@ class DisplayManager:
                 raise ValueError(f"Group '{group_id}' already exists")
 
             # Check group limit (A10)
-            if len(self.groups) >= MAX_GROUPS:
-                raise ValueError(f"Maximum number of groups ({MAX_GROUPS}) reached")
+            max_groups = self.settings.get_int("max_groups") if self.settings is not None else MAX_GROUPS
+            if len(self.groups) >= max_groups:
+                raise ValueError(f"Maximum number of groups ({max_groups}) reached")
 
             if settings is None:
                 settings = DisplayGroupSettings()
@@ -1024,6 +995,9 @@ class DisplayManager:
             "type": "GROUP_DELETED",
             "group_id": group_id
         })
+
+        # Persist the deletion (write-through rebuilds the store from self.groups)
+        self.schedule_save()
         return True
 
     async def update_group_settings(
@@ -1097,6 +1071,10 @@ class DisplayManager:
         if "webhooks" in updates:
             self._start_webhook_interval_tasks(group)
 
+        # Persist the change (previously missing — settings edits only lived in
+        # RAM until the user clicked "Save config to disk").
+        self.schedule_save()
+
         return group
 
     async def list_groups(self) -> List[Dict[str, Any]]:
@@ -1168,9 +1146,13 @@ class DisplayManager:
                 return None
 
             # Check browser limit (A10)
-            if len(group.browsers) >= MAX_BROWSERS_PER_GROUP:
+            max_browsers = (
+                self.settings.get_int("max_browsers_per_group")
+                if self.settings is not None else MAX_BROWSERS_PER_GROUP
+            )
+            if len(group.browsers) >= max_browsers:
                 raise ValueError(
-                    f"Maximum browsers per group ({MAX_BROWSERS_PER_GROUP}) reached"
+                    f"Maximum browsers per group ({max_browsers}) reached"
                 )
 
             # Get or create the endpoint
@@ -1642,7 +1624,11 @@ class DisplayManager:
                     })
 
                     # Wait until preload time (PRELOAD_LEAD_TIME_SECONDS before switch)
-                    preload_time = next_switch - timedelta(seconds=PRELOAD_LEAD_TIME_SECONDS)
+                    preload_lead = (
+                        self.settings.get_int("preload_lead_time")
+                        if self.settings is not None else PRELOAD_LEAD_TIME_SECONDS
+                    )
+                    preload_time = next_switch - timedelta(seconds=preload_lead)
                     now = _utc_now()
                     preload_delay = (preload_time - now).total_seconds()
                     if preload_delay > 0:

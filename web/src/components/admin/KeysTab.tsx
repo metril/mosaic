@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiKey } from '@/api/types'
-import { listKeys, revokeKey, rotateKey } from '@/api/keys'
+import { listKeys, revokeKey, rotateKey, revealKey } from '@/api/keys'
 import {
   Button,
   Card,
@@ -14,11 +14,12 @@ import {
   TrashIcon,
   RefreshIcon,
   ExternalIcon,
+  EyeOffIcon,
 } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
-import { KeyModal, RotatedKeyModal } from './KeyModal'
+import { KeyModal, RotatedKeyModal, SecretRevealModal } from './KeyModal'
 import { ShareDisplayModal } from './ShareDisplayModal'
 import styles from '@/pages/Admin.module.css'
 
@@ -29,6 +30,16 @@ export function KeysTab() {
   const [creating, setCreating] = useState(false)
   const [sharing, setSharing] = useState<ApiKey | null>(null)
   const [rotated, setRotated] = useState<{ name: string; secret: string } | null>(null)
+  const [revealed, setRevealed] = useState<{ name: string; secret: string } | null>(null)
+
+  const reveal = useMutation({
+    mutationFn: (k: ApiKey) => revealKey(k.id).then((r) => ({ name: k.name, key: r.key })),
+    onSuccess: (res) => {
+      if (res.key) setRevealed({ name: res.name, secret: res.key })
+      else toast.error('Secret not recoverable — rotate the key')
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Reveal failed'),
+  })
 
   const revoke = useMutation({
     mutationFn: (id: string) => revokeKey(id),
@@ -79,6 +90,14 @@ export function KeysTab() {
               </div>
               <div className={styles.itemActions}>
                 <IconButton
+                  label={k.recoverable ? 'Reveal / copy secret' : 'Secret not recoverable — rotate to enable'}
+                  bordered
+                  disabled={!k.recoverable || reveal.isPending}
+                  onClick={() => reveal.mutate(k)}
+                >
+                  <EyeOffIcon size={15} />
+                </IconButton>
+                <IconButton
                   label="Copy display link"
                   bordered
                   disabled={!k.enabled}
@@ -123,6 +142,14 @@ export function KeysTab() {
       {sharing && <ShareDisplayModal apiKey={sharing} onClose={() => setSharing(null)} />}
       {rotated && (
         <RotatedKeyModal name={rotated.name} secret={rotated.secret} onClose={() => setRotated(null)} />
+      )}
+      {revealed && (
+        <SecretRevealModal
+          title={`API key · ${revealed.name}`}
+          subtitle="Keep this secret safe. Anyone with it can access the authorized displays."
+          secret={revealed.secret}
+          onClose={() => setRevealed(null)}
+        />
       )}
     </>
   )

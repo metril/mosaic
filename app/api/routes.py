@@ -14,7 +14,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Optional, Literal, Dict, Any, List
 from urllib.parse import quote, unquote
-from fastapi import APIRouter, Query, HTTPException, Path as PathParam, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, Query, HTTPException, Path as PathParam, WebSocket, WebSocketDisconnect, Depends, Body
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -637,6 +637,80 @@ async def test_homeassistant_connection(request: Request):
         return JSONResponse(status_code=503, content=result)
 
     return result
+
+
+@router.get("/api/homeassistant/entities", responses={
+    200: {"description": "HA entities in a domain (for picker UIs)"},
+    503: {"description": "Home Assistant not available"},
+})
+async def list_homeassistant_entities(
+    request: Request,
+    domain: str = Query("weather", description="Entity domain to list, e.g. weather, sun"),
+    user: User = Depends(get_current_user),
+):
+    """List Home Assistant entities of a domain, for the settings/weather pickers."""
+    ha_provider = getattr(request.app.state, 'ha_provider', None)
+    if not ha_provider:
+        return JSONResponse(status_code=503, content={"entities": [], "error": "Home Assistant not configured"})
+    try:
+        entities = await ha_provider.get_entities(domain)
+    except Exception as e:
+        return JSONResponse(status_code=503, content={"entities": [], "error": str(e)})
+    return {"entities": entities}
+
+
+@router.get("/api/settings", responses={
+    200: {"description": "Runtime-tunable settings (secrets masked)"},
+    401: {"description": "Authentication required"},
+})
+async def get_settings(request: Request, user: User = Depends(get_current_user)):
+    """Return the managed runtime settings; secrets are masked to has_* booleans."""
+    return JSONResponse(content=request.app.state.settings.to_public_dict())
+
+
+@router.put("/api/settings", responses={
+    200: {"description": "Settings updated"},
+    400: {"description": "Invalid setting"},
+    401: {"description": "Authentication required"},
+    403: {"description": "CSRF token invalid"},
+})
+async def update_settings(
+    request: Request,
+    payload: Dict[str, Any] = Body(...),
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
+):
+    """Partial update of managed settings. ``ha_*`` changes rebuild the HA
+    provider; an immich-timeout change recycles the Immich HTTP client — so the
+    new values take effect without a restart. A blank ``ha_token`` is ignored
+    (keeps the existing secret)."""
+    from app.services.settings_service import SCHEMA
+    from app.services.homeassistant_provider import build_ha_provider
+
+    settings = request.app.state.settings
+    unknown = [k for k in payload if k not in SCHEMA]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown setting(s): {', '.join(unknown)}")
+
+    ha_changed = False
+    immich_timeout_changed = False
+    for key, value in payload.items():
+        if key == "ha_token" and not value:
+            continue  # blank = keep existing secret
+        settings.set(key, value)
+        if key.startswith("ha_"):
+            ha_changed = True
+        if key == "immich_http_timeout":
+            immich_timeout_changed = True
+
+    if ha_changed:
+        request.app.state.ha_provider = build_ha_provider(settings)
+    if immich_timeout_changed:
+        provider = getattr(request.app.state, 'immich_provider', None)
+        if provider:
+            await provider.close()  # next call rebuilds the client with the new timeout
+
+    return JSONResponse(content=settings.to_public_dict())
 
 
 @router.get("/metrics", responses={
@@ -1470,7 +1544,7 @@ async def admin_page(request: Request, user: Optional[User] = Depends(get_option
             "user": user,
             "csrf_token": csrf_token,
             "oidc_enabled": config.enabled,
-            "max_immich_pull_count": MAX_IMMICH_PULL_COUNT,
+            "max_immich_pull_count": request.app.state.settings.get_int("max_immich_pull_count"),
         }
     )
 
@@ -2816,7 +2890,8 @@ async def websocket_display(
 
     # Set base URL from first request
     if not display_manager._base_url:
-        base_url = os.environ.get('BASE_URL', '')
+        settings = getattr(websocket.app.state, 'settings', None)
+        base_url = settings.get_str('base_url') if settings else os.environ.get('BASE_URL', '')
         if not base_url:
             scheme = "https" if websocket.url.scheme == "wss" else "http"
             host = websocket.headers.get("host", "localhost")
@@ -2973,7 +3048,7 @@ class ImmichPullCreateRequest(BaseModel):
     server_url: str = Field(..., description="Immich server URL")
     api_key: Optional[str] = Field(None, description="API key (omit to keep existing when updating)")
     target_folder: str = Field(..., description="Local folder to store images")
-    count: int = Field(50, ge=1, le=MAX_IMMICH_PULL_COUNT, description="Number of images to pull")
+    count: int = Field(50, ge=1, le=1_000_000, description="Number of images to pull (effective cap is the live max_immich_pull_count setting)")
     album_ids: Optional[list[str]] = Field(None, description="Pull from specific albums")
     album_filter_mode: str = Field("all", description="'all' (AND) or 'any' (OR) for albums")
     person_ids: Optional[list[str]] = Field(None, description="Filter by people")
@@ -3051,6 +3126,11 @@ async def create_immich_pull(
     actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     provider = get_immich_provider(request)
     logger.info(f"User {actor} creating/updating Immich pull: {body.name}")
+
+    # Enforce the live max-pull-count setting (the Field bound is just a safety cap)
+    max_pull = request.app.state.settings.get_int("max_immich_pull_count")
+    if body.count > max_pull:
+        raise HTTPException(status_code=400, detail=f"count exceeds the configured maximum ({max_pull})")
 
     # Get existing config to preserve API key if not provided
     api_key = body.api_key
@@ -3579,7 +3659,7 @@ async def list_api_keys(
 @router.post(
     "/api/keys",
     responses={
-        200: {"description": "API key created - full key shown only once"},
+        200: {"description": "API key created - secret recoverable later via /secret"},
         401: {"description": "Authentication required"},
         403: {"description": "CSRF token invalid"},
     }
@@ -3608,7 +3688,7 @@ async def create_api_key(
     return JSONResponse(content={
         "key": full_key,  # Only time the full key is shown
         "api_key": api_key.to_dict(include_hash=False),
-        "warning": "Store this key securely. It will not be shown again.",
+        "warning": "Store this key securely. It is stored encrypted and can be revealed again from the keys list.",
     })
 
 
@@ -3720,7 +3800,7 @@ async def reveal_api_key_secret(
 @router.post(
     "/api/keys/{key_id}/rotate",
     responses={
-        200: {"description": "Key rotated - new secret shown only once"},
+        200: {"description": "Key rotated - new secret (old one revoked)"},
         401: {"description": "Authentication required"},
         403: {"description": "CSRF token invalid"},
         404: {"description": "API key not found"},
@@ -4022,8 +4102,9 @@ async def root(
     # Default mode - serve web interface
     else:
         try:
-            # Get base URL from environment or use request host
-            base_url = os.environ.get('BASE_URL', '')
+            # Get base URL from settings (env-seeded) or use request host
+            settings = getattr(request.app.state, 'settings', None)
+            base_url = settings.get_str('base_url') if settings else os.environ.get('BASE_URL', '')
             if not base_url:
                 # Construct from request
                 base_url = f"{request.url.scheme}://{request.url.netloc}"
