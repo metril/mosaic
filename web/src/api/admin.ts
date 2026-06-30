@@ -26,10 +26,6 @@ export function cloneGroup(id: string, new_group_id: string) {
   })
 }
 
-export function saveConfig() {
-  return api.post<{ saved: number; message: string }>('/api/display/save-config')
-}
-
 /* ---- Playback ------------------------------------------------------------ */
 
 export type PlaybackAction =

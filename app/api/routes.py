@@ -1823,10 +1823,11 @@ async def save_display_config(
     display_manager: DisplayManager = Depends(get_display_manager)
 ):
     """
-    Save current display groups configuration to file.
+    Persist current display groups (now a no-op in practice).
 
-    Saves all display groups and their settings to the TOML config file.
-    Groups will be automatically restored on application restart.
+    Group edits already write through to SQLite synchronously, so this endpoint
+    is redundant; it is retained only for the legacy Jinja admin fallback
+    (templates/admin.html) that is served when the SPA build is absent.
     """
     check_admin_scope(auth, "admin:display:manage")
     actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
