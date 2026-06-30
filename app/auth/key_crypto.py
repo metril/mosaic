@@ -5,12 +5,17 @@ full ``sk_…`` secret so the admin dashboard can rebuild authorized display URL
 and surface a key again after creation. That secret is stored Fernet-encrypted
 in the ``api_keys`` table; this module owns the symmetric key.
 
-The Fernet key is *derived* (HKDF-SHA256) from a stable secret resolved in this
+The Fernet key is *derived* with Argon2id from a stable secret resolved in this
 order:
 
   1. ``API_KEY_ENCRYPTION_SECRET`` env var (explicit operator control)
   2. ``SESSION_SECRET`` env var (already used for session cookies)
   3. a random secret auto-created at ``config/secret.key`` (0600) on first use
+
+Argon2id (memory-hard + side-channel-resistant, PHC winner / RFC 9106) is used
+instead of a plain KDF so that even a low-entropy operator-chosen secret is
+expensive to brute-force. The work is paid once per process — the derived
+Fernet is cached. argon2-cffi is already a dependency (API key hashing).
 
 Because the key is derived, the on-disk ciphertext is only readable by a process
 that can resolve the same secret. Rotating that secret invalidates existing
@@ -26,17 +31,20 @@ import secrets
 from pathlib import Path
 from typing import Optional
 
+from argon2.low_level import Type, hash_secret_raw
 from cryptography.fernet import Fernet, InvalidToken
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from app.utils.logging import logger
 
-# Fixed, non-secret salt/info for the HKDF derivation. These don't need to be
-# secret (HKDF's security comes from the input key material); they only need to
-# be stable so the same secret always derives the same Fernet key.
-_HKDF_SALT = b"screensaver-api-key-encryption-v1"
-_HKDF_INFO = b"api-key-encryption"
+# Fixed, non-secret salt for the Argon2id derivation. A KDF used to derive a
+# *deterministic* key needs a stable salt (so the same secret always yields the
+# same key); a fixed app-constant is the standard approach here. The salt is not
+# secret — Argon2's strength comes from the work factor over the input secret.
+_KDF_SALT = b"screensaver-api-key-encryption-v2"
+# Argon2id parameters (mirror the API key hasher: 64 MiB, 3 passes, 1 lane).
+_KDF_TIME_COST = 3
+_KDF_MEMORY_COST = 65536  # KiB = 64 MiB
+_KDF_PARALLELISM = 1
 
 _SECRET_FILE = Path("config/secret.key")
 
@@ -72,14 +80,16 @@ def _resolve_secret() -> bytes:
 
 
 def _derive_fernet(secret: bytes) -> Fernet:
-    hkdf = HKDF(
-        algorithm=hashes.SHA256(),
-        length=32,
-        salt=_HKDF_SALT,
-        info=_HKDF_INFO,
+    raw = hash_secret_raw(
+        secret=secret,
+        salt=_KDF_SALT,
+        time_cost=_KDF_TIME_COST,
+        memory_cost=_KDF_MEMORY_COST,
+        parallelism=_KDF_PARALLELISM,
+        hash_len=32,
+        type=Type.ID,
     )
-    derived = hkdf.derive(secret)
-    return Fernet(base64.urlsafe_b64encode(derived))
+    return Fernet(base64.urlsafe_b64encode(raw))
 
 
 def _get_fernet() -> Fernet:
