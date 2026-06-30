@@ -48,7 +48,7 @@ _KDF_PARALLELISM = 1
 
 _SECRET_FILE = Path("config/secret.key")
 
-# Cached derived Fernet so we don't re-run HKDF on every encrypt/decrypt.
+# Cached derived Fernet so we don't re-run Argon2id on every encrypt/decrypt.
 _fernet: Optional[Fernet] = None
 
 
