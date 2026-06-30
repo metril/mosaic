@@ -13,6 +13,8 @@ httpx>=0.27.0
 itsdangerous>=2.1.0
 slowapi>=0.1.9
 argon2-cffi>=23.1.0
+# Reversible encryption-at-rest for recoverable API key secrets (Fernet)
+cryptography>=42.0.0
 # Duration parsing
 pytimeparse>=1.1.8
 # Scheduled Immich pulls (cron). Cap APScheduler below 4.x (4.0 is an

@@ -269,6 +269,9 @@ export interface ApiKey {
   last_used: string | null
   scopes: string[]
   enabled: boolean
+  /** Whether the full secret can be recovered (built a display URL). False for
+   *  keys migrated from the legacy hash-only store. */
+  recoverable: boolean
 }
 
 export interface AvailableResources {

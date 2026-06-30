@@ -417,6 +417,48 @@
   margin-top: var(--s1);
 }
 
+/* share display link modal */
+.shareActions {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+.shareToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.shareWarn {
+  margin-top: var(--s2);
+  font-size: var(--text-xs);
+  color: var(--color-warning);
+}
+
+/* folders: "edit as text" escape hatch under the picker */
+.foldersText {
+  margin-top: var(--s2);
+}
+.foldersText > summary {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.foldersText > summary::-webkit-details-marker {
+  display: none;
+}
+.foldersText > summary:hover {
+  color: var(--color-text);
+}
+.foldersText > input {
+  margin-top: var(--s2);
+}
+
 /* system stats */
 .statGrid {
   display: grid;

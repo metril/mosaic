@@ -46,6 +46,8 @@ RUN useradd -m -u 1000 appuser
 COPY --chown=appuser:appuser app/ ./app/
 COPY --chown=appuser:appuser templates/ ./templates/
 COPY --chown=appuser:appuser config/ ./config/
+# One-shot maintenance scripts (API key YAML->SQLite migration, re-encryption)
+COPY --chown=appuser:appuser scripts/ ./scripts/
 
 # Copy the built SPA into the static directory served by FastAPI
 COPY --from=spa-builder --chown=appuser:appuser /app/static/spa/ ./app/static/spa/

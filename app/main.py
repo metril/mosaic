@@ -360,6 +360,12 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"Config flush on shutdown failed: {e}")
 
+        if hasattr(app.state, 'api_key_manager'):
+            try:
+                await app.state.api_key_manager.save_if_dirty()
+            except Exception as e:
+                logger.warning(f"API key flush on shutdown failed: {e}")
+
         if cleanup_task:
             cleanup_task.cancel()
             try:

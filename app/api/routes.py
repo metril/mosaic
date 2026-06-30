@@ -3692,6 +3692,63 @@ async def get_api_key(
     return JSONResponse(content=api_key.to_dict(include_hash=False))
 
 
+@router.get(
+    "/api/keys/{key_id}/secret",
+    responses={
+        200: {"description": "Decrypted full key (admin session only)"},
+        401: {"description": "Authentication required"},
+        404: {"description": "API key not found"},
+    }
+)
+async def reveal_api_key_secret(
+    key_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """Reveal the full ``sk_…`` secret for a key so the dashboard can build a
+    display URL. Admin session only (never API-key auth). Returns ``key: null``
+    for keys whose secret isn't recoverable (e.g. migrated hash-only keys)."""
+    api_key = api_key_manager.get_key(key_id)
+    if not api_key:
+        raise HTTPException(status_code=404, detail=f"API key '{key_id}' not found")
+
+    secret = api_key_manager.reveal_key(key_id)
+    return JSONResponse(content={"key": secret, "recoverable": secret is not None})
+
+
+@router.post(
+    "/api/keys/{key_id}/rotate",
+    responses={
+        200: {"description": "Key rotated - new secret shown only once"},
+        401: {"description": "Authentication required"},
+        403: {"description": "CSRF token invalid"},
+        404: {"description": "API key not found"},
+    }
+)
+async def rotate_api_key(
+    key_id: str,
+    request: Request,
+    user: User = Depends(get_current_user),
+    _csrf: None = Depends(verify_csrf_token),
+    api_key_manager: APIKeyManager = Depends(get_api_key_manager),
+):
+    """Rotate a key's secret in place (id, name, scopes preserved). The old
+    secret stops working immediately; the new secret is shown once here."""
+    result = api_key_manager.rotate_key(key_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"API key '{key_id}' not found")
+
+    full_key, api_key = result
+    await api_key_manager.save_config()
+
+    return JSONResponse(content={
+        "key": full_key,  # Only time the new full key is shown
+        "api_key": api_key.to_dict(include_hash=False),
+        "warning": "Store this key securely. The previous secret no longer works.",
+    })
+
+
 @router.patch(
     "/api/keys/{key_id}",
     responses={

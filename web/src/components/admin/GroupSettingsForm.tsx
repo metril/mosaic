@@ -2,13 +2,21 @@ import type { DisplayGroupSettings } from '@/api/types'
 import {
   FormSection,
   SubHead,
+  Row,
   ToggleRow,
   SelectRow,
   NumberRow,
   TextRow,
   ChipsRow,
+  Input,
 } from '@/components/ui'
 import { POSITION_OPTS, CAPTION_FIELD_OPTS } from '@/lib/settingsDefaults'
+import { FolderCheckTree } from './FolderCheckTree'
+import styles from '@/pages/Admin.module.css'
+
+function parseFolders(s: string | null): Set<string> {
+  return new Set((s ?? '').split(',').map((x) => x.trim()).filter(Boolean))
+}
 
 interface Props {
   value: DisplayGroupSettings
@@ -18,6 +26,15 @@ interface Props {
 export function GroupSettingsForm({ value, onChange }: Props) {
   function set<K extends keyof DisplayGroupSettings>(key: K, v: DisplayGroupSettings[K]) {
     onChange({ ...value, [key]: v })
+  }
+
+  const selectedFolders = parseFolders(value.folders)
+  function toggleFolder(path: string) {
+    const next = new Set(selectedFolders)
+    next.has(path) ? next.delete(path) : next.add(path)
+    // Empty selection clears to the whole library. Use '' (not null) so a PATCH
+    // actually applies it — the update endpoint drops null fields as "no change".
+    set('folders', next.size ? [...next].join(',') : '')
   }
 
   return (
@@ -39,14 +56,25 @@ export function GroupSettingsForm({ value, onChange }: Props) {
           value={value.auto_cycle}
           onChange={(v) => set('auto_cycle', v)}
         />
-        <TextRow
+        <Row
           label="Folders"
-          hint="Comma-separated; blank = whole library"
-          value={value.folders ?? ''}
-          onChange={(v) => set('folders', v || null)}
-          placeholder="earth, space/nebulae"
+          hint={
+            selectedFolders.size
+              ? `${selectedFolders.size} folder${selectedFolders.size === 1 ? '' : 's'} selected`
+              : 'None selected = whole library'
+          }
           stack
-        />
+        >
+          <FolderCheckTree selected={selectedFolders} onToggle={toggleFolder} />
+          <details className={styles.foldersText}>
+            <summary>Edit as text</summary>
+            <Input
+              value={value.folders ?? ''}
+              onChange={(e) => set('folders', e.target.value)}
+              placeholder="earth, space/nebulae"
+            />
+          </details>
+        </Row>
         <ToggleRow
           label="Recursive"
           hint="Include images in subfolders"

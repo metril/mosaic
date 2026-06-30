@@ -8,6 +8,37 @@ import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
 import styles from '@/pages/Admin.module.css'
 
+/** One-time reveal of a freshly minted secret (used after rotation). Mirrors
+ *  the create-flow reveal screen below. */
+export function RotatedKeyModal({ name, secret, onClose }: { name: string; secret: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <Modal
+      title={`Key rotated · ${name}`}
+      subtitle="Copy the new secret now — it will never be shown again. The old secret no longer works."
+      onClose={onClose}
+      width={520}
+      footer={
+        <Button variant="primary" onClick={onClose}>
+          Done
+        </Button>
+      }
+    >
+      <div className={styles.revealKey}>{secret}</div>
+      <Button
+        style={{ marginTop: 'var(--s3)' }}
+        onClick={() => {
+          navigator.clipboard?.writeText(secret)
+          setCopied(true)
+          toast.success('Copied to clipboard')
+        }}
+      >
+        {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />} {copied ? 'Copied' : 'Copy key'}
+      </Button>
+    </Modal>
+  )
+}
+
 const ADMIN_SCOPES = [
   ['admin:display:monitor', 'View display groups'],
   ['admin:display:manage', 'Create / edit groups'],

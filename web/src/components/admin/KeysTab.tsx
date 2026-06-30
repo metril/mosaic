@@ -1,12 +1,25 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiKey } from '@/api/types'
-import { listKeys, revokeKey } from '@/api/keys'
-import { Button, Card, EmptyState, Loading, IconButton, KeyIcon, PlusIcon, EditIcon, TrashIcon } from '@/components/ui'
+import { listKeys, revokeKey, rotateKey } from '@/api/keys'
+import {
+  Button,
+  Card,
+  EmptyState,
+  Loading,
+  IconButton,
+  KeyIcon,
+  PlusIcon,
+  EditIcon,
+  TrashIcon,
+  RefreshIcon,
+  ExternalIcon,
+} from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
-import { KeyModal } from './KeyModal'
+import { KeyModal, RotatedKeyModal } from './KeyModal'
+import { ShareDisplayModal } from './ShareDisplayModal'
 import styles from '@/pages/Admin.module.css'
 
 export function KeysTab() {
@@ -14,6 +27,8 @@ export function KeysTab() {
   const { data: keys, isLoading } = useQuery({ queryKey: ['keys'], queryFn: listKeys })
   const [editing, setEditing] = useState<ApiKey | null>(null)
   const [creating, setCreating] = useState(false)
+  const [sharing, setSharing] = useState<ApiKey | null>(null)
+  const [rotated, setRotated] = useState<{ name: string; secret: string } | null>(null)
 
   const revoke = useMutation({
     mutationFn: (id: string) => revokeKey(id),
@@ -22,6 +37,15 @@ export function KeysTab() {
       toast.success('Key revoked')
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Revoke failed'),
+  })
+
+  const rotate = useMutation({
+    mutationFn: (k: ApiKey) => rotateKey(k.id).then((r) => ({ name: k.name, secret: r.key })),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['keys'] })
+      setRotated(res)
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Rotate failed'),
   })
 
   if (isLoading) return <Loading label="Loading keys…" />
@@ -54,8 +78,30 @@ export function KeysTab() {
                 </div>
               </div>
               <div className={styles.itemActions}>
+                <IconButton
+                  label="Copy display link"
+                  bordered
+                  disabled={!k.enabled}
+                  onClick={() => setSharing(k)}
+                >
+                  <ExternalIcon size={15} />
+                </IconButton>
                 <IconButton label="Edit" bordered onClick={() => setEditing(k)}>
                   <EditIcon size={15} />
+                </IconButton>
+                <IconButton
+                  label="Rotate secret"
+                  bordered
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `Rotate “${k.name}”? A new secret is generated and the current one stops working immediately.`,
+                      )
+                    )
+                      rotate.mutate(k)
+                  }}
+                >
+                  <RefreshIcon size={15} />
                 </IconButton>
                 <IconButton
                   label="Revoke"
@@ -74,6 +120,10 @@ export function KeysTab() {
 
       {creating && <KeyModal apiKey={null} onClose={() => setCreating(false)} />}
       {editing && <KeyModal apiKey={editing} onClose={() => setEditing(null)} />}
+      {sharing && <ShareDisplayModal apiKey={sharing} onClose={() => setSharing(null)} />}
+      {rotated && (
+        <RotatedKeyModal name={rotated.name} secret={rotated.secret} onClose={() => setRotated(null)} />
+      )}
     </>
   )
 }

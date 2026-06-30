@@ -27,6 +27,7 @@ import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
 import { EndpointsPanel } from './EndpointsPanel'
 import { HistoryModal } from './HistoryModal'
+import { ShareDisplayModal } from './ShareDisplayModal'
 import styles from '@/pages/Admin.module.css'
 
 interface Props {
@@ -38,6 +39,7 @@ interface Props {
 export function GroupCard({ group, onEdit, onClone }: Props) {
   const { favSet, hiddenSet, toggleFavorite, toggleHidden } = useCuration()
   const [showHistory, setShowHistory] = useState(false)
+  const [showShare, setShowShare] = useState(false)
 
   const action = useMutation({
     mutationFn: (a: PlaybackAction) => groupAction(group.group_id, a),
@@ -154,16 +156,9 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
       <EndpointsPanel group={group} />
 
       <div className={styles.groupFoot}>
-        <a
-          className={styles.grow}
-          href={`/display?group=${encodeURIComponent(group.group_id)}`}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <Button size="sm" block>
-            <ExternalIcon size={15} /> Open display
-          </Button>
-        </a>
+        <Button className={styles.grow} size="sm" block onClick={() => setShowShare(true)}>
+          <ExternalIcon size={15} /> Copy display link
+        </Button>
         <IconButton
           label="Image history"
           size="sm"
@@ -199,6 +194,8 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
           onClose={() => setShowHistory(false)}
         />
       )}
+
+      {showShare && <ShareDisplayModal group={group} onClose={() => setShowShare(false)} />}
     </Card>
   )
 }

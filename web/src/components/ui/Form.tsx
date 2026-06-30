@@ -50,7 +50,7 @@ export function Row({
           {hint && <div className={styles.rowHint}>{hint}</div>}
         </div>
       )}
-      <div className={cn(styles.rowControl, stack && 'wide')}>{children}</div>
+      <div className={cn(styles.rowControl, stack && styles.wide)}>{children}</div>
     </div>
   )
 }
