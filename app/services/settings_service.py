@@ -151,6 +151,21 @@ class SettingsService:
         else:
             self._write(key, str(value))
 
+    def export_raw(self) -> Dict[str, str]:
+        """Raw stored key→value pairs (ciphertext for secrets) for config backup."""
+        return dict(self._cache)
+
+    def import_raw(self, data: Dict[str, str]) -> None:
+        """Replace all settings with a backup's raw rows, then reload the cache.
+        Only known schema keys are accepted."""
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM settings")
+            conn.executemany(
+                "INSERT INTO settings (key, value) VALUES (?, ?)",
+                [(k, str(v)) for k, v in data.items() if k in SCHEMA],
+            )
+        self._load()
+
     def ha_config(self) -> Dict[str, Any]:
         """Resolved Home Assistant config (token decrypted) for building the provider."""
         return {

@@ -201,6 +201,23 @@ export interface EndpointCaption {
   caption: Record<string, string> | null
 }
 
+/** One record from the in-memory log ring buffer (GET /api/system/logs). */
+export interface LogRecord {
+  seq: number
+  ts: number
+  level: string
+  logger: string
+  message: string
+}
+
+/** Result of restoring a config bundle (POST /api/system/config/import). */
+export interface ConfigImportResult {
+  status: string
+  restored: Record<string, number>
+  secret_fingerprint_match: boolean
+  warning: string | null
+}
+
 export interface DisplayGroup {
   group_id: string
   error: string | null

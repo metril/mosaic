@@ -115,6 +115,46 @@ class CurationService:
         return {"favorite": self.is_favorite(path), "excluded": self.is_excluded(path)}
 
     # ------------------------------------------------------------------ #
+    # backup / restore
+    # ------------------------------------------------------------------ #
+
+    def export(self) -> dict:
+        """Dump both curation tables as row lists for a config backup."""
+        with self._lock, self._connect() as conn:
+            curation = [
+                dict(zip(("path", "immich_asset_id", "immich_pull", "favorite", "excluded", "created_at", "updated_at"), r))
+                for r in conn.execute(
+                    "SELECT path, immich_asset_id, immich_pull, favorite, excluded, created_at, updated_at FROM curation"
+                )
+            ]
+            asset_map = [
+                dict(zip(("path", "asset_id", "pull_name"), r))
+                for r in conn.execute("SELECT path, asset_id, pull_name FROM immich_asset_map")
+            ]
+        return {"curation": curation, "immich_asset_map": asset_map}
+
+    def import_rows(self, data: dict) -> None:
+        """Replace both curation tables from a backup, then refresh caches."""
+        curation = data.get("curation", []) or []
+        asset_map = data.get("immich_asset_map", []) or []
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM curation")
+            conn.execute("DELETE FROM immich_asset_map")
+            conn.executemany(
+                "INSERT INTO curation (path, immich_asset_id, immich_pull, favorite, excluded) VALUES (?, ?, ?, ?, ?)",
+                [
+                    (r.get("path"), r.get("immich_asset_id"), r.get("immich_pull"),
+                     int(r.get("favorite", 0) or 0), int(r.get("excluded", 0) or 0))
+                    for r in curation if r.get("path")
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO immich_asset_map (path, asset_id, pull_name) VALUES (?, ?, ?)",
+                [(r.get("path"), r.get("asset_id"), r.get("pull_name")) for r in asset_map if r.get("path")],
+            )
+        self._refresh_caches()
+
+    # ------------------------------------------------------------------ #
     # mutations
     # ------------------------------------------------------------------ #
 

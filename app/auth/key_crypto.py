@@ -111,6 +111,19 @@ def encrypt_secret(plaintext: str) -> str:
     return _get_fernet().encrypt(plaintext.encode("utf-8")).decode("ascii")
 
 
+def secret_fingerprint() -> str:
+    """Short non-reversible fingerprint of the derivation secret.
+
+    Lets a config backup record *which* secret its ciphertext was encrypted
+    under, so a restore onto a different instance can warn that encrypted values
+    (HA token, Immich key, API-key secrets) won't be decryptable here. It's a
+    salted SHA-256 prefix of the resolved secret — it never exposes the secret.
+    """
+    import hashlib
+    h = hashlib.sha256(b"screensaver-fingerprint-v1:" + _resolve_secret()).hexdigest()
+    return h[:12]
+
+
 def decrypt_secret(token: Optional[str]) -> Optional[str]:
     """Decrypt a stored token back to the secret, or ``None`` if unavailable.
 

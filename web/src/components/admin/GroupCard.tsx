@@ -19,11 +19,13 @@ import {
   TrashIcon,
   ExternalIcon,
   ExpandIcon,
+  MegaphoneIcon,
   HeartIcon,
   EyeOffIcon,
   HistoryIcon,
 } from '@/components/ui'
 import { DisplayPreviewModal } from './DisplayPreviewModal'
+import { AnnounceModal } from './AnnounceModal'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -44,6 +46,7 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
   const [showHistory, setShowHistory] = useState(false)
   const [showShare, setShowShare] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
+  const [showAnnounce, setShowAnnounce] = useState(false)
 
   const action = useMutation({
     mutationFn: (a: PlaybackAction) => groupAction(group.group_id, a),
@@ -175,6 +178,9 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
         >
           <HistoryIcon size={15} />
         </IconButton>
+        <IconButton label="Send announcement" size="sm" bordered onClick={() => setShowAnnounce(true)}>
+          <MegaphoneIcon size={15} />
+        </IconButton>
         <IconButton label="Edit" size="sm" bordered onClick={onEdit}>
           <EditIcon size={15} />
         </IconButton>
@@ -223,6 +229,8 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
           onClose={() => setShowPreview(false)}
         />
       )}
+
+      {showAnnounce && <AnnounceModal groupId={group.group_id} onClose={() => setShowAnnounce(false)} />}
     </Card>
   )
 }

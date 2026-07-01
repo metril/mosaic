@@ -139,6 +139,10 @@ export default function Display() {
         <div className="overlay caption-overlay clock--theme-fade position-bottom-right hidden" id="captionOverlay">
           <div className="caption-text" id="captionText" />
         </div>
+
+        <div className="overlay announcement-overlay position-bottom-left hidden" id="announcementOverlay">
+          <div className="announcement-text" id="announcementText" />
+        </div>
       </div>
 
       <div className="debug-overlay" id="debugOverlay">

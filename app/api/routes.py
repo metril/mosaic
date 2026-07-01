@@ -39,7 +39,7 @@ from app.auth.oidc import get_oidc_config
 from app.auth.api_keys import APIKeyManager, APIKey
 from app.exceptions import PathSecurityError, NoImagesFoundError, error_response
 from app.utils.path_security import resolve_image_path
-from app.utils.logging import logger
+from app.utils.logging import logger, log_buffer
 from app.utils.metrics import metrics
 from app.utils.blur import create_blur_background, should_skip_blur
 from app.utils.lru_cache import BoundedLRU
@@ -1903,6 +1903,56 @@ async def play_display_group(
     return JSONResponse(content={"status": "playing", "group_id": group_id})
 
 
+class AnnounceRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=280, description="Message to show on the displays")
+    position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = 'bottom-left'
+    theme: Literal['fade', 'solid', 'bubble', 'blur'] = 'solid'
+    duration_s: int = Field(15, ge=1, le=3600, description="Seconds to show before auto-clearing")
+
+
+@router.post("/api/display/groups/{group_id}/announce", responses={
+    200: {"description": "Announcement broadcast to the group"},
+    401: {"description": "Not authenticated"},
+    404: {"description": "Group not found"},
+})
+async def announce_display_group(
+    request: Request,
+    group_id: str,
+    body: AnnounceRequest,
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """Show a temporary text message on every screen in a group (auto-clears)."""
+    check_admin_scope(auth, "admin:display:playback")
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    display_manager = get_display_manager(request)
+    notified = await display_manager.announce(
+        group_id, body.text, body.position, body.theme, body.duration_s
+    )
+    if notified < 0:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+    logger.info(f"User {actor} announced to '{group_id}' ({notified} displays): {body.text!r}")
+    return JSONResponse(content={"status": "announced", "group_id": group_id, "notified": notified})
+
+
+@router.delete("/api/display/groups/{group_id}/announce", responses={
+    200: {"description": "Announcement cleared"},
+    404: {"description": "Group not found"},
+})
+async def clear_display_group_announcement(
+    request: Request,
+    group_id: str,
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """Immediately remove any active announcement from a group's screens."""
+    check_admin_scope(auth, "admin:display:playback")
+    display_manager = get_display_manager(request)
+    if not await display_manager.clear_announcement(group_id):
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+    return JSONResponse(content={"status": "cleared", "group_id": group_id})
+
+
 @router.post("/api/display/groups/{group_id}/next", responses={
     200: {"description": "Skipped to next image"},
     401: {"description": "Not authenticated"},
@@ -3534,6 +3584,152 @@ async def refresh_caches(
         "status": "refreshed",
         "folder": scope,
         "groups_refreshed": refreshed,
+    })
+
+
+@router.get("/api/system/logs", responses={
+    200: {"description": "Recent application log records (in-memory ring buffer)"},
+    401: {"description": "Authentication required"},
+})
+async def get_logs(
+    request: Request,
+    level: Optional[str] = Query(None, description="Minimum level: DEBUG|INFO|WARNING|ERROR"),
+    q: Optional[str] = Query(None, description="Case-insensitive substring filter (message or logger)"),
+    limit: int = Query(500, ge=1, le=2000, description="Max records to return (newest kept)"),
+    format: Optional[Literal["json", "text"]] = Query("json"),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+):
+    """The app's recent log records for the admin Logs panel. In-memory only
+    (last ~2000 lines), oldest-first. `format=text` returns a downloadable dump."""
+    check_admin_scope(auth, "admin:display:monitor")
+    records = log_buffer.query(level=level, q=q, limit=limit)
+    if format == "text":
+        lines = [
+            f"{datetime.fromtimestamp(r['ts'], tz=timezone.utc).isoformat()} {r['level']:<7} {r['logger']}: {r['message']}"
+            for r in records
+        ]
+        return Response(
+            content="\n".join(lines) + "\n",
+            media_type="text/plain",
+            headers={"Content-Disposition": 'attachment; filename="screensaver-logs.txt"'},
+        )
+    return JSONResponse(content={"records": records, "count": len(records)})
+
+
+CONFIG_BUNDLE_VERSION = 1
+
+
+@router.get("/api/system/config/export", responses={
+    200: {"description": "Downloadable JSON config bundle"},
+    401: {"description": "Authentication required"},
+})
+async def export_config(
+    request: Request,
+    include_keys: bool = Query(False, description="Include API keys (hash + encrypted secret) in the bundle"),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+):
+    """Download all configuration as one JSON bundle (groups, Immich pulls,
+    settings, curation; API keys optional). Secrets remain encrypted; the
+    secret_fingerprint records which derivation secret they need."""
+    check_admin_scope(auth, "admin:display:manage")
+    from app.auth.key_crypto import secret_fingerprint
+    app = request.app
+    # Flush in-memory state so the bundle reflects the live config, not a stale
+    # store snapshot.
+    app.state.display_manager.save_config()
+    app.state.immich_provider.save_config()
+    bundle: Dict[str, Any] = {
+        "version": CONFIG_BUNDLE_VERSION,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "app_version": app.version,
+        "secret_fingerprint": secret_fingerprint(),
+        "groups": app.state.display_manager._store.load_all(),
+        "immich_pulls": app.state.immich_provider._store.load_all(),
+        "settings": app.state.settings.export_raw(),
+        "curation": app.state.curation_service.export(),
+    }
+    if include_keys and hasattr(app.state, "api_key_manager"):
+        bundle["api_keys"] = app.state.api_key_manager.export_rows()
+
+    payload = json.dumps(bundle, indent=2)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="screensaver-config-{stamp}.json"'},
+    )
+
+
+@router.post("/api/system/config/import", responses={
+    200: {"description": "Config restored"},
+    400: {"description": "Invalid bundle"},
+    401: {"description": "Authentication required"},
+})
+async def import_config(
+    request: Request,
+    bundle: Dict[str, Any] = Body(..., description="A bundle previously produced by the export endpoint"),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token),
+):
+    """Restore configuration from an exported bundle and reload live state (no
+    restart). Validates the whole bundle before writing anything."""
+    check_admin_scope(auth, "admin:display:manage")
+    from app.auth.key_crypto import secret_fingerprint
+
+    # ---- validate before writing anything ----
+    if not isinstance(bundle, dict):
+        raise HTTPException(status_code=400, detail="Bundle must be a JSON object")
+    version = bundle.get("version")
+    if version != CONFIG_BUNDLE_VERSION:
+        raise HTTPException(status_code=400, detail=f"Unsupported bundle version: {version!r}")
+    section_types = {
+        "groups": dict, "immich_pulls": dict, "settings": dict,
+        "curation": dict, "api_keys": list,
+    }
+    for key, typ in section_types.items():
+        if key in bundle and not isinstance(bundle[key], typ):
+            raise HTTPException(status_code=400, detail=f"Section '{key}' has the wrong type")
+
+    app = request.app
+    restored: Dict[str, int] = {}
+
+    if "groups" in bundle:
+        app.state.display_manager._store.replace_all(bundle["groups"])
+        # Authoritative reload (drops removed groups, re-applies changed settings).
+        await app.state.display_manager.reload_from_store()
+        restored["groups"] = len(bundle["groups"])
+    if "immich_pulls" in bundle:
+        app.state.immich_provider._store.replace_all(bundle["immich_pulls"])
+        await app.state.immich_provider.load_config()
+        restored["immich_pulls"] = len(bundle["immich_pulls"])
+    if "settings" in bundle:
+        app.state.settings.import_raw(bundle["settings"])
+        # rebuild anything derived from settings
+        from app.services.homeassistant_provider import build_ha_provider
+        app.state.ha_provider = build_ha_provider(app.state.settings)
+        restored["settings"] = len(bundle["settings"])
+    if "curation" in bundle:
+        app.state.curation_service.import_rows(bundle["curation"])
+        restored["curation"] = len(bundle["curation"].get("curation", []))
+    if "api_keys" in bundle and hasattr(app.state, "api_key_manager"):
+        await app.state.api_key_manager.import_rows(bundle["api_keys"])
+        restored["api_keys"] = len(bundle["api_keys"])
+    # reschedule Immich cron jobs for the restored pulls
+    if hasattr(app.state, "pull_scheduler"):
+        app.state.pull_scheduler.reload_all()
+
+    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
+    logger.info(f"User {actor} imported config bundle: {restored}")
+    secret_match = bundle.get("secret_fingerprint") == secret_fingerprint()
+    return JSONResponse(content={
+        "status": "imported",
+        "restored": restored,
+        "secret_fingerprint_match": secret_match,
+        "warning": None if secret_match else (
+            "This bundle's encrypted secrets (Home Assistant token, Immich keys, API-key secrets) "
+            "were encrypted with a different secret and cannot be decrypted on this instance. "
+            "Re-enter them, or set API_KEY_ENCRYPTION_SECRET to match the source."
+        ),
     })
 
 

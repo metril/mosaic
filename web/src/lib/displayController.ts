@@ -475,6 +475,7 @@ export function mountDisplay(wsUrl: string): () => void {
     switchAnimation: null,
     debugUpdate: null,
     statusHide: null,
+    announcement: null,
   }
 
   let ws: WebSocket | null = null
@@ -680,7 +681,44 @@ export function mountDisplay(wsUrl: string): () => void {
       case 'NO_IMAGES':
         handleNoImages(msg)
         break
+      case 'ANNOUNCEMENT':
+        handleAnnouncement(msg)
+        break
+      case 'CLEAR_ANNOUNCEMENT':
+        clearAnnouncement()
+        break
     }
+  }
+
+  // ---- Announcements (admin-pushed messages) ------------------------------
+  function clearAnnouncement() {
+    if (timers.announcement) {
+      clearTimeout(timers.announcement)
+      timers.announcement = null
+    }
+    const el = $('announcementOverlay')
+    if (el) el.classList.add('hidden')
+  }
+
+  function handleAnnouncement(msg: any) {
+    const el = $('announcementOverlay')
+    const textEl = $('announcementText')
+    if (!el || !textEl) return
+    if (timers.announcement) {
+      clearTimeout(timers.announcement)
+      timers.announcement = null
+    }
+    textEl.textContent = String(msg.text || '')
+    el.className =
+      'overlay announcement-overlay position-' +
+      (msg.position || 'bottom-left') +
+      ' announce--theme-' +
+      (msg.theme || 'solid')
+    // reflow so the entry animation replays on a repeated announcement
+    void el.offsetWidth
+    el.classList.remove('hidden')
+    const durMs = Math.max(1, Number(msg.duration_s) || 15) * 1000
+    timers.announcement = window.setTimeout(clearAnnouncement, durMs)
   }
 
   function applyAllSettings() {

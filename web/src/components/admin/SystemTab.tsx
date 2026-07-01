@@ -1,8 +1,17 @@
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { fetchMetrics, fetchHealth, testHomeAssistant, refreshCaches } from '@/api/system'
-import { Button, Card, Loading, RefreshIcon } from '@/components/ui'
+import {
+  fetchMetrics,
+  fetchHealth,
+  testHomeAssistant,
+  refreshCaches,
+  downloadConfigExport,
+  importConfig,
+} from '@/api/system'
+import { Button, Card, Loading, RefreshIcon, useConfirm } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
+import { LogsPanel } from './LogsPanel'
 import styles from '@/pages/Admin.module.css'
 
 function fmtUptime(s: number) {
@@ -16,8 +25,52 @@ function fmtUptime(s: number) {
 
 export function SystemTab() {
   const qc = useQueryClient()
+  const [confirm, confirmModal] = useConfirm()
+  const [includeKeys, setIncludeKeys] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
   const health = useQuery({ queryKey: ['health'], queryFn: fetchHealth })
   const metrics = useQuery({ queryKey: ['metrics'], queryFn: fetchMetrics, refetchInterval: 10_000 })
+
+  async function onExport() {
+    setExporting(true)
+    try {
+      await downloadConfigExport(includeKeys)
+      toast.success('Config exported')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Export failed')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const importMut = useMutation({
+    mutationFn: (bundle: unknown) => importConfig(bundle),
+    onSuccess: (r) => {
+      const n = Object.values(r.restored).reduce((a, b) => a + b, 0)
+      toast.success(`Restored ${n} item${n === 1 ? '' : 's'}`)
+      if (r.warning) toast.error(r.warning)
+      qc.invalidateQueries()
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Import failed'),
+  })
+
+  async function onImportFile(file: File) {
+    let bundle: unknown
+    try {
+      bundle = JSON.parse(await file.text())
+    } catch {
+      toast.error('Not a valid config JSON file')
+      return
+    }
+    const ok = await confirm({
+      title: 'Import configuration?',
+      message:
+        'This overwrites all current groups, Immich pulls, settings and curation with the contents of the file. This cannot be undone.',
+      confirmLabel: 'Overwrite & import',
+    })
+    if (ok) importMut.mutate(bundle)
+  }
 
   const haTest = useMutation({
     mutationFn: testHomeAssistant,
@@ -85,6 +138,44 @@ export function SystemTab() {
           clears cached thumbnails/pages — use it after changing files on disk directly.
         </div>
       </div>
+
+      <div>
+        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)' }}>Backup &amp; restore</h3>
+        <div style={{ display: 'flex', gap: 'var(--s3)', flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button loading={exporting} onClick={onExport}>
+            Export config
+          </Button>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5em', fontSize: 'var(--text-sm)' }}>
+            <input type="checkbox" checked={includeKeys} onChange={(e) => setIncludeKeys(e.target.checked)} />
+            Include API keys
+          </label>
+          <Button loading={importMut.isPending} onClick={() => fileInput.current?.click()}>
+            Import config…
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = '' // allow re-selecting the same file
+              if (f) onImportFile(f)
+            }}
+          />
+        </div>
+        <div className={styles.scopeNote} style={{ marginTop: 'var(--s2)' }}>
+          Downloads all groups, Immich pulls, settings and curation as one JSON file. Secrets stay
+          encrypted; import overwrites current config and reloads without a restart.
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)' }}>Logs</h3>
+        <LogsPanel />
+      </div>
+
+      {confirmModal}
     </div>
   )
 }

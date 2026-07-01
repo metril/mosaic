@@ -42,6 +42,13 @@ export const ExpandIcon = (p: Props) => (
   </Svg>
 )
 
+export const MegaphoneIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1Z" />
+    <path d="M14 8a4 4 0 0 1 0 8M10 6l9-3v18l-9-3" />
+  </Svg>
+)
+
 export const EyeOffIcon = (p: Props) => (
   <Svg {...p}>
     <path d="M10.6 6.2A9.6 9.6 0 0 1 12 6c5 0 9 4.5 9 6-.3 1-1.4 2.5-3 3.7M6 7.5C3.9 8.8 3 10.6 3 12c0 1.5 4 6 9 6 1.2 0 2.3-.2 3.3-.6M3 3l18 18M9.9 9.9a3 3 0 0 0 4.2 4.2" />

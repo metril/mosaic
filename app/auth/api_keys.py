@@ -427,6 +427,35 @@ class APIKeyManager:
             logger.error(f"Failed to load API keys: {e}")
             return 0
 
+    def export_rows(self) -> List[dict]:
+        """Dump raw api_keys rows (hash + encrypted secret) for config backup."""
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, name, key_hash, key_prefix, lookup_prefix, enc_secret, "
+                "scopes, enabled, created_at, last_used FROM api_keys"
+            ).fetchall()
+        cols = ("id", "name", "key_hash", "key_prefix", "lookup_prefix", "enc_secret",
+                "scopes", "enabled", "created_at", "last_used")
+        return [dict(zip(cols, r)) for r in rows]
+
+    async def import_rows(self, rows: List[dict]) -> None:
+        """Replace all API keys from a backup, then reload the in-memory cache."""
+        with self._lock, self._connect() as conn:
+            conn.execute("DELETE FROM api_keys")
+            conn.executemany(
+                "INSERT INTO api_keys (id, name, key_hash, key_prefix, lookup_prefix, "
+                "enc_secret, scopes, enabled, created_at, last_used) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (r.get("id"), r.get("name"), r.get("key_hash"), r.get("key_prefix"),
+                     r.get("lookup_prefix", ""), r.get("enc_secret"),
+                     r.get("scopes", "[]"), int(r.get("enabled", 1) or 0),
+                     r.get("created_at"), r.get("last_used"))
+                    for r in rows if r.get("id") and r.get("key_hash")
+                ],
+            )
+        await self.load_config()
+
     async def save_config(self) -> None:
         """Flush any pending state. Mutations already write through, so this
         only needs to persist lazily-tracked last_used timestamps. Retained so

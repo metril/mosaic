@@ -109,6 +109,51 @@
   }
 }
 
+/* Announcement (admin-pushed message). Larger and higher-contrast than the
+   caption; uses the display palette so it reads on any photo. */
+.display-root .announcement-overlay {
+  position: absolute;
+  z-index: 1200;
+  max-width: 46vw;
+  padding: 0.55em 0.9em;
+  color: var(--disp-fg);
+  background: rgba(0, 0, 0, 0.62);
+  border-left: 4px solid var(--disp-accent);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  animation: announce-in 0.4s ease-out;
+}
+.display-root .announcement-overlay.announce--theme-bubble {
+  border-radius: 999px;
+  border-left: none;
+  padding: 0.55em 1.2em;
+}
+.display-root .announcement-overlay.announce--theme-fade {
+  background: transparent;
+  border-left: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
+}
+.display-root .announcement-overlay .announcement-text {
+  font-size: 2.1vw;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+@keyframes announce-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .display-root .caption-overlay .caption-text {
   color: #fff;
   font-size: 1.4vw;

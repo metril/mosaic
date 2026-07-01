@@ -926,6 +926,10 @@ class DisplayManager:
             metrics.record_group_created()  # A6
             logger.info(f"Created display group: {group_id}")
 
+        # Persist immediately (write-through) so a new group survives an abrupt
+        # restart — not just a graceful shutdown flush.
+        self.save_config()
+
         # Notify admin clients (outside lock to avoid deadlock)
         await self._notify_admins({
             "type": "GROUP_CREATED",
@@ -961,6 +965,70 @@ class DisplayManager:
     async def get_group(self, group_id: str) -> Optional[DisplayGroup]:
         """Get a display group by ID"""
         return self.groups.get(group_id)
+
+    async def announce(
+        self,
+        group_id: str,
+        text: str,
+        position: str = "bottom-left",
+        theme: str = "solid",
+        duration_s: int = 15,
+    ) -> int:
+        """Push a transient text overlay to every browser in a group. Returns the
+        number of browsers notified (0 if the group is missing/empty)."""
+        group = self.groups.get(group_id)
+        if group is None:
+            return -1
+        await self._broadcast_to_group(group, {
+            "type": "ANNOUNCEMENT",
+            "text": text,
+            "position": position,
+            "theme": theme,
+            "duration_s": duration_s,
+        })
+        return len(group.browsers)
+
+    async def clear_announcement(self, group_id: str) -> bool:
+        """Remove any active announcement overlay from a group's browsers."""
+        group = self.groups.get(group_id)
+        if group is None:
+            return False
+        await self._broadcast_to_group(group, {"type": "CLEAR_ANNOUNCEMENT"})
+        return True
+
+    async def reload_from_store(self) -> int:
+        """Authoritatively rebuild in-memory groups from the store (config import).
+
+        Tears down every current group — cycle tasks, webhook tasks and browser
+        sockets — WITHOUT rewriting the store, then reloads from it. Unlike a
+        plain load_config(), this drops groups no longer present and re-applies
+        changed settings live, so an import truly takes effect without a restart.
+        """
+        async with self._lock:
+            old_groups = list(self.groups.values())
+            for group in old_groups:
+                if group._cycle_task and not group._cycle_task.done():
+                    group._cycle_task.cancel()
+                for task in group._webhook_interval_tasks.values():
+                    task.cancel()
+                group._webhook_interval_tasks.clear()
+            browsers = [b for g in old_groups for b in list(g.browsers.values())]
+            self.groups.clear()
+
+        # Close browser sockets outside the lock (best-effort, bounded).
+        for browser in browsers:
+            try:
+                await asyncio.wait_for(
+                    browser.websocket.send_json({"type": "DISCONNECT", "reason": "Config reloaded"}),
+                    timeout=3,
+                )
+                await asyncio.wait_for(browser.websocket.close(), timeout=3)
+            except Exception:
+                pass
+
+        loaded = await self.load_config()
+        await self._notify_admins({"type": "INITIAL_STATE", "groups": [g.to_dict() for g in self.groups.values()]})
+        return loaded
 
     async def delete_group(self, group_id: str) -> bool:
         """Delete a display group and disconnect all browsers"""
