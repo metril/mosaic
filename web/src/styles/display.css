@@ -215,6 +215,31 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Scroll (marquee) mode: a single line that tickers across a wide band instead
+   of wrapping. The overlay becomes a fixed-width viewport with the text sliding
+   through it; speed comes from --marquee-duration (set by the controller). */
+.display-root .announcement-overlay.announce--scroll {
+  width: 92vw;
+  max-width: 92vw;
+  max-height: none;
+  overflow: hidden;
+}
+.display-root .announcement-overlay.announce--scroll .announcement-text {
+  display: inline-block;
+  white-space: nowrap;
+  word-break: normal;
+  padding-left: 100%;
+  animation: announce-marquee var(--marquee-duration, 15s) linear infinite;
+}
+@keyframes announce-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
 /* Opacity-only fade — the entry must NOT animate `transform`, because the
    centre/edge-centre positions use `transform: translate(…)` to place the box
    and an animated transform would clobber that centering. */

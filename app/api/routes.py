@@ -1910,9 +1910,10 @@ class AnnounceRequest(BaseModel):
         'center',
         'bottom-left', 'bottom-center', 'bottom-right',
     ] = 'bottom-left'
-    theme: Literal['fade', 'solid', 'bubble', 'blur'] = 'solid'
+    theme: Literal['fade', 'solid', 'bubble', 'blur'] = 'bubble'
     size: Literal['s', 'm', 'l', 'xl'] = 'm'
     color: Literal['default', 'blue', 'green', 'amber', 'red', 'pink'] = 'default'
+    scroll: bool = Field(False, description="Scroll the text as a single-line marquee instead of wrapping")
     duration_s: int = Field(15, ge=1, le=3600, description="Seconds to show before auto-clearing")
 
 
@@ -1934,7 +1935,7 @@ async def announce_display_group(
     display_manager = get_display_manager(request)
     notified = await display_manager.announce(
         group_id, body.text, body.position, body.theme, body.duration_s,
-        size=body.size, color=body.color,
+        size=body.size, color=body.color, scroll=body.scroll,
     )
     if notified < 0:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")

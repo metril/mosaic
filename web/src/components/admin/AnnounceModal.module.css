@@ -97,6 +97,27 @@
   color: #f9a8d4;
 }
 
+/* Scroll (marquee) preview — single-line ticker across a wide band. */
+.scroll {
+  width: 90%;
+  max-width: 90%;
+  overflow: hidden;
+}
+.scroll .marquee {
+  display: inline-block;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: previewMarquee 12s linear infinite;
+}
+@keyframes previewMarquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
 /* Positions */
 .posTopLeft {
   top: 6%;

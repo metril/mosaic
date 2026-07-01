@@ -58,6 +58,7 @@ export interface AnnounceBody {
   theme: AnnounceTheme
   size: AnnounceSize
   color: AnnounceColor
+  scroll: boolean
   duration_s: number
 }
 export function announceGroup(id: string, body: AnnounceBody) {

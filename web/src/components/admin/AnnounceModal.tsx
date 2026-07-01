@@ -8,7 +8,7 @@ import {
   type AnnounceSize,
   type AnnounceColor,
 } from '@/api/admin'
-import { Modal, Button, Input, Select, Label } from '@/components/ui'
+import { Modal, Button, Input, Select, Label, Toggle } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -49,13 +49,14 @@ const THEME_CLASS: Record<AnnounceTheme, string | undefined> = {
 export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: () => void }) {
   const [text, setText] = useState('')
   const [position, setPosition] = useState<AnnouncePosition>('center')
-  const [theme, setTheme] = useState<AnnounceTheme>('solid')
+  const [theme, setTheme] = useState<AnnounceTheme>('bubble')
   const [size, setSize] = useState<AnnounceSize>('l')
   const [color, setColor] = useState<AnnounceColor>('default')
+  const [scroll, setScroll] = useState(false)
   const [duration, setDuration] = useState(15)
 
   const send = useMutation({
-    mutationFn: () => announceGroup(groupId, { text, position, theme, size, color, duration_s: duration }),
+    mutationFn: () => announceGroup(groupId, { text, position, theme, size, color, scroll, duration_s: duration }),
     onSuccess: (r) => {
       toast.success(
         r.notified > 0
@@ -105,9 +106,18 @@ export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: 
                 SIZE_CLASS[size],
                 COLOR_CLASS[color],
                 THEME_CLASS[theme],
+                scroll && preview.scroll,
               )}
             >
-              {text.trim() ? text : <span className={preview.empty}>Your message…</span>}
+              {text.trim() ? (
+                scroll ? (
+                  <span className={preview.marquee}>{text}</span>
+                ) : (
+                  text
+                )
+              ) : (
+                <span className={preview.empty}>Your message…</span>
+              )}
             </div>
           </div>
 
@@ -164,6 +174,11 @@ export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: 
               </Select>
             </div>
           </div>
+
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6em', fontSize: 'var(--text-sm)' }}>
+            <Toggle checked={scroll} onChange={setScroll} label="Scroll text" />
+            Scroll text (single-line ticker instead of wrapping)
+          </label>
 
           <Label htmlFor="announce-duration">Duration (seconds)</Label>
           <Input

@@ -971,10 +971,11 @@ class DisplayManager:
         group_id: str,
         text: str,
         position: str = "bottom-left",
-        theme: str = "solid",
+        theme: str = "bubble",
         duration_s: int = 15,
         size: str = "m",
         color: str = "default",
+        scroll: bool = False,
     ) -> int:
         """Push a transient text overlay to every browser in a group. Returns the
         number of browsers notified (0 if the group is missing/empty)."""
@@ -988,6 +989,7 @@ class DisplayManager:
             "theme": theme,
             "size": size,
             "color": color,
+            "scroll": scroll,
             "duration_s": duration_s,
         })
         return len(group.browsers)

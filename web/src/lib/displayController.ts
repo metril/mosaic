@@ -712,16 +712,27 @@ export function mountDisplay(wsUrl: string): () => void {
       clearTimeout(timers.announcement)
       timers.announcement = null
     }
-    textEl.textContent = String(msg.text || '')
+    const text = String(msg.text || '')
+    textEl.textContent = text
+    const scroll = !!msg.scroll
     el.className =
       'overlay announcement-overlay position-' +
       (msg.position || 'bottom-left') +
       ' announce--theme-' +
-      (msg.theme || 'solid') +
+      (msg.theme || 'bubble') +
       ' announce--size-' +
       (msg.size || 'm') +
       ' announce--color-' +
-      (msg.color || 'default')
+      (msg.color || 'default') +
+      (scroll ? ' announce--scroll' : '')
+    // Marquee speed scales with length so long and short messages read at a
+    // similar pace; the loop time is clamped to a sensible range.
+    if (scroll) {
+      const secs = Math.min(40, Math.max(8, text.length * 0.28))
+      el.style.setProperty('--marquee-duration', secs + 's')
+    } else {
+      el.style.removeProperty('--marquee-duration')
+    }
     // reflow so the entry animation replays on a repeated announcement
     void el.offsetWidth
     el.classList.remove('hidden')
