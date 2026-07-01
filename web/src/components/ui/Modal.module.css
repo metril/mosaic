@@ -6,8 +6,12 @@
   place-items: start center;
   padding: var(--s7) var(--s4);
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
+  /* Solid scrim rather than backdrop-filter: a full-screen blur forces the
+     compositor to re-sample the entire page behind the modal on every repaint,
+     which makes typing in any modal (worst: the announcement modal with its
+     live preview) drop to ~27fps. A darker solid scrim gives the same
+     separation for a fraction of the cost. */
+  background: rgba(0, 0, 0, 0.66);
   animation: fade-in var(--dur-2) var(--ease);
 }
 
