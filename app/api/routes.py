@@ -12,6 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from email.utils import formatdate
 from io import BytesIO
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional, Literal, Dict, Any, List
 from urllib.parse import quote, unquote
@@ -136,6 +137,34 @@ processed_image_cache = BoundedLRU(PROCESSED_IMAGE_CACHE_BYTES)
 
 def _processed_cache_key(image_path: str, mtime: float, *params: Any) -> str:
     return image_path + "\x00" + repr(mtime) + "\x00" + "\x00".join(repr(p) for p in params)
+
+
+# Per-(path, mtime) memo of whether a source file carries an EXIF orientation
+# that requires transposing pixels. Lets /api/image stream original bytes for
+# the (overwhelmingly common) already-upright case without opening the file on
+# every request.
+_orientation_cache: "OrderedDict[tuple, bool]" = OrderedDict()
+_ORIENTATION_CACHE_MAX = 8192
+
+
+def _needs_exif_transpose(path: Path, mtime: float) -> bool:
+    key = (str(path), mtime)
+    cached = _orientation_cache.get(key)
+    if cached is not None:
+        _orientation_cache.move_to_end(key)
+        return cached
+    try:
+        from PIL import Image as _PILImage
+        with _PILImage.open(path) as img:
+            orientation = img.getexif().get(0x0112, 1)
+        needs = orientation not in (None, 0, 1)
+    except Exception:
+        # If we can't read the header, fall back to the full processing path.
+        needs = True
+    _orientation_cache[key] = needs
+    while len(_orientation_cache) > _ORIENTATION_CACHE_MAX:
+        _orientation_cache.popitem(last=False)
+    return needs
 
 
 def _etag_matches(if_none_match: Optional[str], etag: str) -> bool:
@@ -1166,10 +1195,46 @@ async def serve_processed_image(
 
         # mtime keys the server-side cache and feeds Last-Modified.
         mtime = full_path.stat().st_mtime
+
+        # Fast path: nothing to transform and the pixels are already upright —
+        # stream the original bytes and skip the decode/re-encode entirely (no
+        # CPU cost, no generational quality loss).
+        source_format = full_path.suffix[1:].lower()
+        wants_transform = bool(
+            width or height or eink or (format and format != source_format)
+        )
+        if not wants_transform and source_format in ("jpeg", "jpg", "png", "webp", "gif", "bmp"):
+            needs_transpose = await asyncio.get_running_loop().run_in_executor(
+                image_executor, _needs_exif_transpose, full_path, mtime
+            )
+            if not needs_transpose:
+                media_type = "image/jpeg" if source_format == "jpg" else f"image/{source_format}"
+                etag = hashlib.md5(f"{image_path}\x00{mtime!r}\x00original".encode()).hexdigest()
+                if _etag_matches(request.headers.get("If-None-Match"), etag):
+                    return Response(status_code=304)
+                headers = {
+                    "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
+                    "Content-Disposition": f'inline; filename="{_ascii_filename(full_path.name)}"',
+                    "Content-Location": f"/api/image/{quote(image_path, safe='/')}",
+                    "ETag": f'"{etag}"',
+                    "Last-Modified": formatdate(mtime, usegmt=True),
+                    "Vary": "Accept",
+                }
+                if request.method == "HEAD":
+                    headers["Content-Length"] = str(full_path.stat().st_size)
+                    return Response(status_code=200, headers=headers, media_type=media_type)
+                return FileResponse(full_path, media_type=media_type, headers=headers)
+
         cache_key = _processed_cache_key(
             image_path, mtime, width, height, preserve_aspect, mode, pad_color,
             eink, format, saturation, contrast, brightness, sharpen,
         )
+        # The output is deterministic in the cache key, so the ETag can be
+        # derived from it — conditional requests then 304 without ever
+        # decoding the image, even on a processed-cache miss.
+        etag = hashlib.md5(cache_key.encode()).hexdigest()
+        if _etag_matches(request.headers.get("If-None-Match"), etag):
+            return Response(status_code=304)
 
         # Process image in thread pool (CPU-intensive operations)
         def process():
@@ -1215,17 +1280,16 @@ async def serve_processed_image(
 
             content_type = f"image/{output_format}"
             filename_out = f"{full_path.stem}.{output_format}"
-            etag = hashlib.md5(content).hexdigest()
-            return content, content_type, filename_out, etag
+            return content, content_type, filename_out
 
         cached = processed_image_cache.get(cache_key)
         if cached is not None:
-            content, content_type, filename_out, etag = cached
+            content, content_type, filename_out = cached
         else:
-            content, content_type, filename_out, etag = await asyncio.get_running_loop().run_in_executor(
+            content, content_type, filename_out = await asyncio.get_running_loop().run_in_executor(
                 image_executor, process
             )
-            processed_image_cache.put(cache_key, (content, content_type, filename_out, etag), len(content))
+            processed_image_cache.put(cache_key, (content, content_type, filename_out), len(content))
 
         content_length = len(content)
 
@@ -1237,11 +1301,6 @@ async def serve_processed_image(
 
         # Format Last-Modified as RFC 7231 HTTP-date
         last_modified = formatdate(mtime, usegmt=True)
-
-        # Check for conditional request (304 Not Modified)
-        if_none_match = request.headers.get("If-None-Match")
-        if _etag_matches(if_none_match, etag):
-            return Response(status_code=304)
 
         headers = {
             "Content-Length": str(content_length),
@@ -2433,7 +2492,7 @@ async def get_endpoint_caption(
 
     caption = None
     if endpoint.current_image:
-        caption = display_manager.build_caption(endpoint.current_image, group.settings)
+        caption = await display_manager.build_caption(endpoint.current_image, group.settings)
     return JSONResponse(content={
         "endpoint_id": endpoint.endpoint_id,
         "current_image": endpoint.current_image,
@@ -3153,7 +3212,7 @@ async def websocket_display(
                 "image_url": image_url,
                 "blur_url": blur_url,
                 "image_id": current_image,
-                "caption": display_manager.build_caption(current_image, ep_settings),
+                "caption": await display_manager.build_caption(current_image, ep_settings),
                 "cycle": group.current_cycle
             })
         else:

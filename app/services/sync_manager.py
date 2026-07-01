@@ -12,7 +12,7 @@ import os
 import random
 import time
 import uuid
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from enum import Enum
@@ -344,6 +344,10 @@ class ImagePool:
         self._all_paths_cache: Optional[List[str]] = None  # Cached string paths (#26)
         self._shown_images: Set[str] = set()  # Images shown this complete cycle
         self._assigned_images: Dict[str, str] = {}  # browser_id -> image path
+        # Pre-shuffled queue of not-yet-shown paths for the current cycle, so
+        # each assignment pops in ~O(browsers) instead of rebuilding an O(N)
+        # candidate list per browser while the group lock is held.
+        self._cycle_queue: "deque[str]" = deque()
         self._lock = asyncio.Lock()  # Lock for atomic assignment (#1)
         self.error: Optional[str] = None  # Error message if folders invalid
         self._refresh_images()
@@ -404,8 +408,10 @@ class ImagePool:
             else:
                 self.error = "No images found in configured folders"
 
-        # Invalidate cache when images change (#26)
+        # Invalidate caches when images change (#26); the cycle queue refills
+        # from the fresh path list on the next assignment.
         self._all_paths_cache = None
+        self._cycle_queue.clear()
         logger.info(f"ImagePool refreshed: {len(self._all_images)} images available")
 
     def get_all_image_paths(self) -> List[str]:
@@ -450,31 +456,58 @@ class ImagePool:
         if browser_id in self._assigned_images:
             currently_assigned.discard(self._assigned_images[browser_id])
 
-        # Get available images (not assigned and not shown this cycle)
-        available = [
-            img for img in all_paths
-            if img not in currently_assigned and img not in self._shown_images
-        ]
+        # Refill the queue whenever it runs dry (startup, folder refresh, or
+        # cycle exhaustion). The refill excludes already-shown paths, so an
+        # empty refill means the cycle is genuinely complete.
+        if not self._cycle_queue:
+            self._refill_cycle_queue(all_paths)
 
-        # If no available images, reset the cycle (but keep currently assigned)
-        if not available:
+        selected = self._pop_cycle_candidate(currently_assigned)
+
+        # Queue exhausted: everything has been shown — reset the cycle (but
+        # keep currently assigned so on-screen images aren't handed out twice).
+        if selected is None:
             logger.info("All images shown, resetting cycle")
             self._shown_images = currently_assigned.copy()
+            self._refill_cycle_queue(all_paths)
+            selected = self._pop_cycle_candidate(currently_assigned)
+
+        # Fewer images than browsers: allow any unassigned, else reuse any.
+        if selected is None:
             available = [img for img in all_paths if img not in currently_assigned]
+            if not available:
+                logger.warning("More browsers than images, reusing images")
+                available = all_paths
+            selected = random.choice(available)
 
-        # If still no available (fewer images than browsers), allow any unassigned
-        if not available:
-            available = [img for img in all_paths if img not in currently_assigned]
-
-        # If still nothing available, return any image (more browsers than images)
-        if not available:
-            logger.warning(f"More browsers than images, reusing images")
-            available = all_paths
-
-        # Select random image from available
-        selected = random.choice(available)
         self._assigned_images[browser_id] = selected
         self._shown_images.add(selected)
+        return selected
+
+    def _refill_cycle_queue(self, all_paths: List[str]) -> None:
+        """Rebuild the shuffled queue of paths not yet shown this cycle."""
+        fresh = [p for p in all_paths if p not in self._shown_images]
+        random.shuffle(fresh)
+        self._cycle_queue = deque(fresh)
+
+    def _pop_cycle_candidate(self, currently_assigned: Set[str]) -> Optional[str]:
+        """Pop the next unshown path that isn't on another browser right now.
+
+        Paths skipped because they're currently assigned go back on the front
+        of the queue (still unshown, eligible next time); at most one entry per
+        connected browser is skipped, so this is ~O(browsers) per call."""
+        skipped: List[str] = []
+        selected: Optional[str] = None
+        while self._cycle_queue:
+            cand = self._cycle_queue.popleft()
+            if cand in self._shown_images:
+                continue  # stale entry (e.g. re-shown after a reset)
+            if cand in currently_assigned:
+                skipped.append(cand)
+                continue
+            selected = cand
+            break
+        self._cycle_queue.extendleft(skipped)
         return selected
 
     def release_image(self, browser_id: str) -> None:
@@ -750,12 +783,16 @@ class DisplayManager:
                 return
             connections = list(self.admin_connections)
 
-        dead_connections = []
-        for ws in connections:
+        # Send in parallel — a slow admin socket must not delay the others.
+        async def _send(ws: WebSocket) -> Optional[WebSocket]:
             try:
                 await asyncio.wait_for(ws.send_json(message), timeout=WEBSOCKET_SEND_TIMEOUT)
+                return None
             except Exception:
-                dead_connections.append(ws)
+                return ws
+
+        results = await asyncio.gather(*(_send(ws) for ws in connections))
+        dead_connections = [ws for ws in results if ws is not None]
 
         # Clean up dead connections
         if dead_connections:
@@ -1472,11 +1509,14 @@ class DisplayManager:
         return {k: v for k, v in (override or {}).items()
                 if k in self.ENDPOINT_OVERRIDE_KEYS and v is not None}
 
-    def build_caption(self, image_path: str, settings: DisplayGroupSettings) -> Optional[Dict[str, Any]]:
+    async def build_caption(self, image_path: str, settings: DisplayGroupSettings) -> Optional[Dict[str, Any]]:
         """Build a caption dict for an image based on settings (F4).
 
         filename/folder are derived from the path; date_taken/location come from
-        EXIF (read once per path and cached). Returns None when captions are off
+        EXIF (read once per path and cached). The EXIF read is a blocking PIL
+        file open, so cache misses run in a thread pool — this is called from
+        the cycle loop and the WS WELCOME path, where stalling the event loop
+        serializes every other connection. Returns None when captions are off
         or no requested field has a value.
         """
         if not getattr(settings, "show_caption", False):
@@ -1489,7 +1529,15 @@ class DisplayManager:
             parent = str(Path(image_path).parent)
             out["folder"] = "" if parent == "." else parent
         if "date_taken" in fields or "location" in fields:
-            meta = self._caption_exif(image_path)
+            if not hasattr(self, "_caption_cache"):
+                self._caption_cache = OrderedDict()
+            meta = self._caption_cache.get(image_path)
+            if meta is not None:
+                self._caption_cache.move_to_end(image_path)
+            else:
+                meta = await asyncio.get_running_loop().run_in_executor(
+                    None, self._caption_exif, image_path
+                )
             if "date_taken" in fields and meta.get("date_taken"):
                 out["date_taken"] = meta["date_taken"]
             if "location" in fields and meta.get("location"):
@@ -1746,11 +1794,14 @@ class DisplayManager:
                     next_switch = _next_cron_time(duration)
                     group.next_switch_time = next_switch
 
-                    # Notify admin clients of new countdown time
-                    await self._notify_admins({
-                        "type": "GROUP_UPDATED",
-                        "group": group.to_dict()
-                    })
+                    # Notify admin clients of new countdown time. Building the
+                    # full group dict every cycle is wasted work when nobody is
+                    # watching, so skip it while there are no admin sockets.
+                    if self.admin_connections:
+                        await self._notify_admins({
+                            "type": "GROUP_UPDATED",
+                            "group": group.to_dict()
+                        })
 
                     # Wait until preload time (PRELOAD_LEAD_TIME_SECONDS before switch)
                     preload_lead = (
@@ -1791,7 +1842,7 @@ class DisplayManager:
                                         "image_url": image_url,
                                         "blur_url": blur_url,
                                         "image_id": next_image,
-                                        "caption": self.build_caption(next_image, group.settings),
+                                        "caption": await self.build_caption(next_image, group.settings),
                                         "switch_at": switch_at
                                     }),
                                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2245,7 +2296,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
-                        "caption": self.build_caption(image_path, group.settings),
+                        "caption": await self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2318,7 +2369,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
-                        "caption": self.build_caption(image_path, group.settings),
+                        "caption": await self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2421,7 +2472,7 @@ class DisplayManager:
                     "image_url": image_url,
                     "blur_url": blur_url,
                     "image_id": image_path,
-                    "caption": self.build_caption(image_path, group.settings),
+                    "caption": await self.build_caption(image_path, group.settings),
                     "cycle": group.current_cycle
                 }),
                 timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2512,7 +2563,7 @@ class DisplayManager:
         # live display actually changes (not just the server-side state).
         image_url = self.build_image_url(image_path, group.settings)
         blur_url = await self.build_blur_url(image_path, group.settings)
-        caption = self.build_caption(image_path, group.settings)
+        caption = await self.build_caption(image_path, group.settings)
         targets = [b for b in group.browsers.values() if b.endpoint_id == endpoint_id]
         for browser in targets:
             try:
@@ -2596,7 +2647,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
-                        "caption": self.build_caption(image_path, group.settings),
+                        "caption": await self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2639,7 +2690,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
-                        "caption": self.build_caption(image_path, group.settings),
+                        "caption": await self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2718,7 +2769,7 @@ class DisplayManager:
                         "image_url": image_url,
                         "blur_url": blur_url,
                         "image_id": image_path,
-                        "caption": self.build_caption(image_path, group.settings),
+                        "caption": await self.build_caption(image_path, group.settings),
                         "cycle": group.current_cycle
                     }),
                     timeout=WEBSOCKET_SEND_TIMEOUT
@@ -2771,7 +2822,7 @@ class DisplayManager:
                     "image_url": image_url,
                     "blur_url": blur_url,
                     "image_id": new_image,
-                    "caption": self.build_caption(new_image, group.settings),
+                    "caption": await self.build_caption(new_image, group.settings),
                     "cycle": group.current_cycle
                 }),
                 timeout=WEBSOCKET_SEND_TIMEOUT

@@ -221,16 +221,16 @@ class ThumbnailCache:
         Called by file watcher after folder changes. Runs in background.
         Returns number of thumbnails generated.
         """
-        images = self._find_folder_images(folder)
-        if not images:
-            return 0
-
-        # Filter to only missing/stale thumbnails
-        to_generate = [img for img in images if self.get(img) is None]
+        loop = asyncio.get_running_loop()
+        # The directory walk and per-file staleness stats are blocking I/O —
+        # keep them off the event loop (this runs on every watcher event).
+        to_generate = await loop.run_in_executor(
+            None,
+            lambda: [img for img in self._find_folder_images(folder) if self.get(img) is None],
+        )
         if not to_generate:
             return 0
 
-        loop = asyncio.get_running_loop()
         tasks = [self._generate_one(img, loop) for img in to_generate]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -247,23 +247,26 @@ class ThumbnailCache:
         """
         start_time = time.monotonic()
         logger.info("Starting thumbnail pre-generation...")
+        loop = asyncio.get_running_loop()
 
-        # Find all images
-        all_images = self._find_all_images()
+        # Find all images — a full library walk is blocking I/O, so run it in
+        # a thread (startup requests are already being served at this point).
+        all_images = await loop.run_in_executor(None, self._find_all_images)
         total = len(all_images)
         if total == 0:
             logger.info("No images found for thumbnail pre-generation")
             return
 
-        # Filter to missing/stale only
-        to_generate = [img for img in all_images if self.get(img) is None]
+        # Filter to missing/stale only (per-file stats, also off-loop)
+        to_generate = await loop.run_in_executor(
+            None, lambda: [img for img in all_images if self.get(img) is None]
+        )
         logger.info(
             f"Found {total} images, {len(to_generate)} need thumbnail generation "
             f"({total - len(to_generate)} already cached)"
         )
 
         if to_generate:
-            loop = asyncio.get_running_loop()
             generated = 0
             failed = 0
 
@@ -290,8 +293,9 @@ class ThumbnailCache:
                 f"{elapsed:.1f}s elapsed"
             )
 
-        # Purge orphaned cache entries (thumbnails for deleted source images)
-        purged = self._purge_orphans()
+        # Purge orphaned cache entries (thumbnails for deleted source images).
+        # Two full rglob passes — also blocking, also off-loop.
+        purged = await loop.run_in_executor(None, self._purge_orphans)
         if purged > 0:
             logger.info(f"Purged {purged} orphaned thumbnail cache entries")
 
