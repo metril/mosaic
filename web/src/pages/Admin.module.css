@@ -406,6 +406,23 @@
   gap: var(--s3);
 }
 
+/* Settings form sections: one column when narrow, two side-by-side on wide
+   screens so the form uses the panel width instead of a cramped ribbon. The
+   collapsible sections align to the top so uneven heights don't leave gaps. */
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  gap: var(--s3) var(--s5);
+  align-items: start;
+}
+
+/* Section heading inside a System-tab card. */
+.sectionTitle {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin-bottom: var(--s3);
+}
+
 .revealKey {
   font-family: var(--font-mono);
   font-size: var(--text-sm);

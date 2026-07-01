@@ -338,6 +338,10 @@ export function mountDisplay(wsUrl: string): () => void {
     shiftCycle() {
       const self = this
       document.querySelectorAll<HTMLElement>('.overlay').forEach((el) => {
+        // Announcements are transient (no burn-in risk) and their centre
+        // positions rely on a translate(-50%,…) transform, which this shifter
+        // would clobber — so leave them alone.
+        if (el.classList.contains('announcement-overlay')) return
         const randX = Math.floor(Math.random() * (self.shiftAmount + 1))
         const randY = Math.floor(Math.random() * (self.shiftAmount + 1))
         let shiftX = 0,
@@ -713,7 +717,11 @@ export function mountDisplay(wsUrl: string): () => void {
       'overlay announcement-overlay position-' +
       (msg.position || 'bottom-left') +
       ' announce--theme-' +
-      (msg.theme || 'solid')
+      (msg.theme || 'solid') +
+      ' announce--size-' +
+      (msg.size || 'm') +
+      ' announce--color-' +
+      (msg.color || 'default')
     // reflow so the entry animation replays on a repeated announcement
     void el.offsetWidth
     el.classList.remove('hidden')

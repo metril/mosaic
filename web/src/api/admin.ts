@@ -41,12 +41,23 @@ export function cloneGroup(id: string, new_group_id: string) {
 
 /* ---- Announcements ------------------------------------------------------- */
 
-export type AnnouncePosition = 'bottom-left' | 'bottom-right' | 'top-left' | 'top-right'
+export type AnnouncePosition =
+  | 'top-left'
+  | 'top-center'
+  | 'top-right'
+  | 'center'
+  | 'bottom-left'
+  | 'bottom-center'
+  | 'bottom-right'
 export type AnnounceTheme = 'fade' | 'solid' | 'bubble' | 'blur'
+export type AnnounceSize = 's' | 'm' | 'l' | 'xl'
+export type AnnounceColor = 'default' | 'blue' | 'green' | 'amber' | 'red' | 'pink'
 export interface AnnounceBody {
   text: string
   position: AnnouncePosition
   theme: AnnounceTheme
+  size: AnnounceSize
+  color: AnnounceColor
   duration_s: number
 }
 export function announceGroup(id: string, body: AnnounceBody) {

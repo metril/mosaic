@@ -1904,9 +1904,15 @@ async def play_display_group(
 
 
 class AnnounceRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=280, description="Message to show on the displays")
-    position: Literal['bottom-left', 'bottom-right', 'top-left', 'top-right'] = 'bottom-left'
+    text: str = Field(..., min_length=1, max_length=500, description="Message to show on the displays")
+    position: Literal[
+        'top-left', 'top-center', 'top-right',
+        'center',
+        'bottom-left', 'bottom-center', 'bottom-right',
+    ] = 'bottom-left'
     theme: Literal['fade', 'solid', 'bubble', 'blur'] = 'solid'
+    size: Literal['s', 'm', 'l', 'xl'] = 'm'
+    color: Literal['default', 'blue', 'green', 'amber', 'red', 'pink'] = 'default'
     duration_s: int = Field(15, ge=1, le=3600, description="Seconds to show before auto-clearing")
 
 
@@ -1927,7 +1933,8 @@ async def announce_display_group(
     actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
     display_manager = get_display_manager(request)
     notified = await display_manager.announce(
-        group_id, body.text, body.position, body.theme, body.duration_s
+        group_id, body.text, body.position, body.theme, body.duration_s,
+        size=body.size, color=body.color,
     )
     if notified < 0:
         raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchLogs, logsDownloadUrl } from '@/api/system'
-import { SearchInput, Button, Toggle } from '@/components/ui'
+import { SearchInput, Button, Toggle, DownloadIcon } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import styles from './LogsPanel.module.css'
 
@@ -52,8 +52,10 @@ export function LogsPanel() {
           Live tail
         </label>
         <div className={styles.spacer} />
-        <a href={logsDownloadUrl()} download>
-          <Button variant="ghost" size="sm">Download</Button>
+        <a href={logsDownloadUrl()} download style={{ textDecoration: 'none' }}>
+          <Button variant="secondary" size="sm">
+            <DownloadIcon size={15} /> Download
+          </Button>
         </a>
       </div>
 

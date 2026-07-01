@@ -45,7 +45,8 @@ export function SettingsTab() {
   }
 
   return (
-    <div style={{ maxWidth: 680 }}>
+    <div>
+      <div className={styles.settingsGrid}>
       <FormSection title="Integrations" defaultOpen>
         <ToggleRow
           label="Home Assistant"
@@ -175,6 +176,7 @@ export function SettingsTab() {
           stack
         />
       </FormSection>
+      </div>
 
       <div style={{ marginTop: 'var(--s5)', display: 'flex', justifyContent: 'flex-end' }}>
         <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>

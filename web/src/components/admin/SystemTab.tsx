@@ -8,7 +8,7 @@ import {
   downloadConfigExport,
   importConfig,
 } from '@/api/system'
-import { Button, Card, Loading, RefreshIcon, useConfirm } from '@/components/ui'
+import { Button, Card, Loading, Toggle, RefreshIcon, useConfirm } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { LogsPanel } from './LogsPanel'
@@ -104,9 +104,9 @@ export function SystemTab() {
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s5)' }}>
-      <div>
-        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)' }}>Status</h3>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s4)' }}>
+      <Card pad>
+        <h3 className={styles.sectionTitle}>Status</h3>
         <div className={styles.statGrid}>
           {stats.map((s) => (
             <Card key={s.label} className={styles.stat}>
@@ -115,13 +115,13 @@ export function SystemTab() {
             </Card>
           ))}
         </div>
-        <div className={styles.scopeNote} style={{ marginTop: 'var(--s2)' }}>
+        <div className={styles.scopeNote} style={{ marginTop: 'var(--s3)' }}>
           Image directory: <span className={styles.mono}>{health.data?.image_directory}</span>
         </div>
-      </div>
+      </Card>
 
-      <div>
-        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)' }}>Actions</h3>
+      <Card pad>
+        <h3 className={styles.sectionTitle}>Actions</h3>
         <div style={{ display: 'flex', gap: 'var(--s3)', flexWrap: 'wrap' }}>
           <Button loading={haTest.isPending} onClick={() => haTest.mutate()}>
             Test Home Assistant
@@ -133,20 +133,20 @@ export function SystemTab() {
             <Button variant="ghost">API docs ↗</Button>
           </a>
         </div>
-        <div className={styles.scopeNote} style={{ marginTop: 'var(--s2)' }}>
+        <div className={styles.scopeNote} style={{ marginTop: 'var(--s3)' }}>
           Groups, endpoints and pulls save automatically. “Refresh caches” re-scans images and
           clears cached thumbnails/pages — use it after changing files on disk directly.
         </div>
-      </div>
+      </Card>
 
-      <div>
-        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)' }}>Backup &amp; restore</h3>
+      <Card pad>
+        <h3 className={styles.sectionTitle}>Backup &amp; restore</h3>
         <div style={{ display: 'flex', gap: 'var(--s3)', flexWrap: 'wrap', alignItems: 'center' }}>
           <Button loading={exporting} onClick={onExport}>
             Export config
           </Button>
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5em', fontSize: 'var(--text-sm)' }}>
-            <input type="checkbox" checked={includeKeys} onChange={(e) => setIncludeKeys(e.target.checked)} />
+            <Toggle checked={includeKeys} onChange={setIncludeKeys} label="Include API keys" />
             Include API keys
           </label>
           <Button loading={importMut.isPending} onClick={() => fileInput.current?.click()}>
@@ -164,16 +164,16 @@ export function SystemTab() {
             }}
           />
         </div>
-        <div className={styles.scopeNote} style={{ marginTop: 'var(--s2)' }}>
+        <div className={styles.scopeNote} style={{ marginTop: 'var(--s3)' }}>
           Downloads all groups, Immich pulls, settings and curation as one JSON file. Secrets stay
           encrypted; import overwrites current config and reloads without a restart.
         </div>
-      </div>
+      </Card>
 
-      <div>
-        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)' }}>Logs</h3>
+      <Card pad>
+        <h3 className={styles.sectionTitle}>Logs</h3>
         <LogsPanel />
-      </div>
+      </Card>
 
       {confirmModal}
     </div>

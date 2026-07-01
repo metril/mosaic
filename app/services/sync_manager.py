@@ -973,6 +973,8 @@ class DisplayManager:
         position: str = "bottom-left",
         theme: str = "solid",
         duration_s: int = 15,
+        size: str = "m",
+        color: str = "default",
     ) -> int:
         """Push a transient text overlay to every browser in a group. Returns the
         number of browsers notified (0 if the group is missing/empty)."""
@@ -984,6 +986,8 @@ class DisplayManager:
             "text": text,
             "position": position,
             "theme": theme,
+            "size": size,
+            "color": color,
             "duration_s": duration_s,
         })
         return len(group.browsers)

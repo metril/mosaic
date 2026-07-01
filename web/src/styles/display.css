@@ -110,15 +110,23 @@
 }
 
 /* Announcement (admin-pushed message). Larger and higher-contrast than the
-   caption; uses the display palette so it reads on any photo. */
+   caption; uses the display palette so it reads on any photo. The accent colour
+   (--announce-accent) and text size (--announce-size) are driven by the
+   announce--color-* / announce--size-* classes the controller applies, so the
+   admin has real control over size and colour. */
 .display-root .announcement-overlay {
+  --announce-accent: var(--disp-accent);
+  --announce-size: 2.1vw;
   position: absolute;
   z-index: 1200;
   max-width: 46vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-sizing: border-box;
   padding: 0.55em 0.9em;
   color: var(--disp-fg);
   background: rgba(0, 0, 0, 0.62);
-  border-left: 4px solid var(--disp-accent);
+  border-left: 4px solid var(--announce-accent);
   border-radius: 10px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(6px);
@@ -136,21 +144,84 @@
   backdrop-filter: none;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
 }
+/* Colour presets: tint the text and the accent bar. `default` keeps the
+   original neutral look. */
+.display-root .announcement-overlay.announce--color-blue {
+  --announce-accent: #60a5fa;
+  color: #dbeafe;
+}
+.display-root .announcement-overlay.announce--color-green {
+  --announce-accent: #34c27e;
+  color: #dcfce7;
+}
+.display-root .announcement-overlay.announce--color-amber {
+  --announce-accent: #e0a23a;
+  color: #fef3c7;
+}
+.display-root .announcement-overlay.announce--color-red {
+  --announce-accent: #ef5350;
+  color: #fee2e2;
+}
+.display-root .announcement-overlay.announce--color-pink {
+  --announce-accent: #ec4899;
+  color: #fce7f3;
+}
+/* Size presets drive the text scale (viewport-relative so it reads across the
+   room on a TV). */
+.display-root .announcement-overlay.announce--size-s {
+  --announce-size: 1.4vw;
+}
+.display-root .announcement-overlay.announce--size-m {
+  --announce-size: 2.1vw;
+}
+.display-root .announcement-overlay.announce--size-l {
+  --announce-size: 3vw;
+}
+.display-root .announcement-overlay.announce--size-xl {
+  --announce-size: 4.2vw;
+}
+/* Centre + edge-centre positions (scoped to the announcement so the shared
+   clock/weather position-* classes are untouched). */
+.display-root .announcement-overlay.position-top-center,
+.display-root .announcement-overlay.position-bottom-center {
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+.display-root .announcement-overlay.position-top-center {
+  top: 0;
+}
+.display-root .announcement-overlay.position-bottom-center {
+  bottom: 0;
+}
+.display-root .announcement-overlay.position-center {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+/* Centre placements get more room since they're not hugging a corner. */
+.display-root .announcement-overlay.position-top-center,
+.display-root .announcement-overlay.position-bottom-center,
+.display-root .announcement-overlay.position-center {
+  max-width: 72vw;
+}
 .display-root .announcement-overlay .announcement-text {
-  font-size: 2.1vw;
+  font-size: var(--announce-size);
   font-weight: 600;
   line-height: 1.3;
   white-space: pre-wrap;
   word-break: break-word;
 }
+/* Opacity-only fade — the entry must NOT animate `transform`, because the
+   centre/edge-centre positions use `transform: translate(…)` to place the box
+   and an animated transform would clobber that centering. */
 @keyframes announce-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 

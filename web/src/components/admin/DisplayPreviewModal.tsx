@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { DisplayGroupSettings } from '@/api/types'
 import { fetchEndpointCaption } from '@/api/admin'
+import { thumbUrl } from '@/api/browse'
 import { Modal } from '@/components/ui'
 import { useNow } from '@/hooks/useNow'
 import { cn } from '@/lib/cn'
@@ -9,10 +10,6 @@ import styles from './DisplayPreviewModal.module.css'
 type Position = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 const CAPTION_ORDER = ['filename', 'date_taken', 'folder', 'location']
-
-function imageUrl(path: string) {
-  return `/api/image/${path.split('/').map(encodeURIComponent).join('/')}`
-}
 
 function posClass(p: Position) {
   return p === 'top-left'
@@ -106,8 +103,10 @@ export function DisplayPreviewModal({
         {currentImage ? (
           <img
             className={styles.img}
-            src={imageUrl(currentImage)}
+            src={thumbUrl(currentImage)}
             alt=""
+            decoding="async"
+            loading="eager"
             style={{ objectFit: s.image_fit === 'cover' ? 'cover' : 'contain' }}
           />
         ) : (

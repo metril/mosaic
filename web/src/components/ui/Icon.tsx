@@ -253,6 +253,12 @@ export const ServerIcon = (p: Props) => (
   </Svg>
 )
 
+export const DownloadIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
+  </Svg>
+)
+
 export const HistoryIcon = (p: Props) => (
   <Svg {...p}>
     <path d="M3 3v5h5" />
