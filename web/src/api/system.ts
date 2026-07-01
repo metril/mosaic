@@ -17,6 +17,12 @@ export function fetchSettings() {
 export function updateSettings(patch: Record<string, unknown>) {
   return api.put<AppSettings>('/api/settings', patch)
 }
+export function refreshCaches(folder?: string) {
+  const suffix = folder ? `?folder=${encodeURIComponent(folder)}` : ''
+  return api.post<{ status: string; folder: string | null; groups_refreshed: Record<string, number> }>(
+    `/api/system/refresh${suffix}`,
+  )
+}
 export function fetchHaEntities(domain: string) {
   return api
     .get<{ entities: HaEntity[]; error?: string }>(`/api/homeassistant/entities?domain=${encodeURIComponent(domain)}`)

@@ -150,8 +150,13 @@ export function mountDisplay(wsUrl: string): () => void {
     async update() {
       try {
         const response = await fetch('/api/weather?entity_id=' + encodeURIComponent(this.settings.weather_ha_entity))
-        if (!response.ok) return
+        if (!response.ok) {
+          // Flag the overlay as showing stale data rather than silently freezing.
+          this.overlay.classList.add('overlay--stale')
+          return
+        }
         const data = await response.json()
+        this.overlay.classList.remove('overlay--stale')
         let forecastData: any = null
         if (this.settings.weather_show_forecast) {
           try {
@@ -173,6 +178,7 @@ export function mountDisplay(wsUrl: string): () => void {
         this.render(data, forecastData)
       } catch (e) {
         console.error('Failed to fetch weather:', e)
+        this.overlay.classList.add('overlay--stale')
       }
     }
     render(data: any, forecastData: any) {
@@ -484,6 +490,36 @@ export function mountDisplay(wsUrl: string): () => void {
   let preloadComplete = false
   let switchPending = false
 
+  // Bandwidth-aware preload: a rolling estimate of delivered image throughput
+  // (KB/s) from the Resource Timing API. On a slow link we request a smaller
+  // variant so preloads land in time and the display doesn't stall. Infinity =
+  // unknown/fast (no downgrade).
+  let effKbps = Infinity
+  const SLOW_KBPS = 700 // ≈5.5 Mbps; below this, cap the preload width
+  const DOWNGRADE_WIDTH = 1280
+  function recordThroughput(el: HTMLImageElement) {
+    try {
+      const src = el.currentSrc || el.src
+      const entries = performance.getEntriesByName(src) as PerformanceResourceTiming[]
+      const e = entries[entries.length - 1]
+      if (!e) return
+      const bytes = e.encodedBodySize || e.transferSize || 0
+      const ms = e.responseEnd - e.requestStart
+      if (bytes > 20000 && ms > 0) {
+        const kbps = bytes / 1024 / (ms / 1000)
+        effKbps = effKbps === Infinity ? kbps : effKbps * 0.6 + kbps * 0.4
+      }
+    } catch {
+      /* Resource Timing unavailable (e.g. cross-origin) — leave estimate as-is. */
+    }
+  }
+  function maybeDowngrade(url: string): string {
+    // Only when we've measured a slow link and the server URL hasn't already
+    // pinned a width (so we never upscale or fight an explicit size).
+    if (effKbps >= SLOW_KBPS || /[?&]width=/.test(url)) return url
+    return url + (url.includes('?') ? '&' : '?') + 'width=' + DOWNGRADE_WIDTH
+  }
+
   const statusIndicator = $('statusIndicator')!
   let currentImage = $('currentImage') as HTMLImageElement
   let preloadImage = $('preloadImage') as HTMLImageElement
@@ -523,10 +559,27 @@ export function mountDisplay(wsUrl: string): () => void {
     statusIndicator.className = 'status-indicator ' + status
     updateDebug('Status', status)
     if (status === 'connected') {
+      showOfflineNotice(false)
       timers.statusHide = window.setTimeout(() => {
         statusIndicator.classList.add('hidden')
         timers.statusHide = null
       }, 3000)
+    }
+  }
+
+  /** Show/hide an unobtrusive on-screen notice when the display has been
+   *  offline long enough that the operator should notice (silent WS drops on a
+   *  wall-mounted TV are otherwise invisible). */
+  function showOfflineNotice(show: boolean) {
+    const existing = document.getElementById('display-offline')
+    if (show) {
+      if (existing) return
+      const el = document.createElement('div')
+      el.id = 'display-offline'
+      el.textContent = 'Reconnecting… display offline'
+      document.body.appendChild(el)
+    } else {
+      existing?.remove()
     }
   }
 
@@ -582,6 +635,8 @@ export function mountDisplay(wsUrl: string): () => void {
   function scheduleReconnect() {
     if (timers.reconnect) clearTimeout(timers.reconnect)
     reconnectAttempts++
+    // Surface a persistent notice once reconnects have been failing for a while.
+    if (reconnectAttempts >= 3) showOfflineNotice(true)
     const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_DELAY)
     timers.reconnect = window.setTimeout(connect, delay)
   }
@@ -727,7 +782,7 @@ export function mountDisplay(wsUrl: string): () => void {
     pendingCaption = msg.caption || null
     loadImage(
       preloadImage,
-      msg.image_url,
+      maybeDowngrade(msg.image_url),
       () => {
         preloadComplete = true
         sendPreloadReady()
@@ -785,8 +840,13 @@ export function mountDisplay(wsUrl: string): () => void {
     imgEl.style.setProperty('--kb-x', (dx * pan).toFixed(2) + '%')
     imgEl.style.setProperty('--kb-y', (dy * pan).toFixed(2) + '%')
     const dur = Math.max(5, parseInt(currentSettings.ken_burns_duration) || 20)
+    // Finish the pan/zoom within ~80% of the actual time on screen, then hold
+    // (ease-out + forwards) so each image "breathes" instead of cutting mid-move
+    // when the cycle is shorter than the configured duration.
+    const remaining = nextSwitchTime ? (nextSwitchTime - Date.now()) / 1000 : dur
+    const effDur = remaining > 1 ? Math.max(5, Math.min(dur, remaining * 0.8)) : dur
     void imgEl.offsetWidth
-    imgEl.style.animation = `kenburns ${dur}s ease-out forwards`
+    imgEl.style.animation = `kenburns ${effDur.toFixed(1)}s ease-out forwards`
   }
 
   function clearKenBurns(imgEl: HTMLElement) {
@@ -909,6 +969,7 @@ export function mountDisplay(wsUrl: string): () => void {
     imgElement.onerror = null
     let retryCount = 0
     imgElement.onload = () => {
+      recordThroughput(imgElement)
       if (onSuccess) onSuccess()
     }
     imgElement.onerror = () => {
@@ -976,5 +1037,6 @@ export function mountDisplay(wsUrl: string): () => void {
     document.getElementById('nightOverlay')?.remove()
     clearNoImagesError()
     document.getElementById('display-fatal')?.remove()
+    document.getElementById('display-offline')?.remove()
   }
 }

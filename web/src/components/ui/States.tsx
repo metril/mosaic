@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react'
 import styles from './States.module.css'
 
-export function Spinner() {
-  return <span className={styles.spinner} role="status" aria-label="Loading" />
+export function Spinner({ size }: { size?: number } = {}) {
+  const style = size ? { width: size, height: size, borderWidth: Math.max(2, Math.round(size / 9)) } : undefined
+  return <span className={styles.spinner} style={style} role="status" aria-label="Loading" />
 }
 
 export function Loading({ label = 'Loading…' }: { label?: string }) {

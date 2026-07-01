@@ -3,8 +3,28 @@ import { cn } from '@/lib/cn'
 import { SearchIcon } from './Icon'
 import styles from './Field.module.css'
 
-export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(styles.control, className)} {...rest} />
+export function Input({
+  className,
+  invalid,
+  ...rest
+}: InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean }) {
+  return (
+    <input
+      className={cn(styles.control, invalid && styles.invalid, className)}
+      aria-invalid={invalid || undefined}
+      {...rest}
+    />
+  )
+}
+
+/** Inline field validation message (danger-styled, with a leading marker). */
+export function FieldError({ children }: { children: ReactNode }) {
+  return (
+    <div className={styles.fieldError} role="alert">
+      <span aria-hidden="true">⚠</span>
+      {children}
+    </div>
+  )
 }
 
 export function SearchInput({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {

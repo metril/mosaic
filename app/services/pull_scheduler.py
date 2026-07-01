@@ -65,8 +65,8 @@ class PullScheduler:
     def shutdown(self) -> None:
         try:
             self._scheduler.shutdown(wait=False)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Pull scheduler shutdown (already stopped?): {e}")
 
     # ---------------------------------------------------------------- #
     # job management

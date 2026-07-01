@@ -16,7 +16,11 @@ from app.exceptions import PathSecurityError, PathTraversalError, InvalidPathErr
 # Security constants (configurable via environment variables)
 MAX_PATH_DEPTH = int(os.environ.get('MAX_PATH_DEPTH', '10'))
 MAX_PATH_LENGTH = int(os.environ.get('MAX_PATH_LENGTH', '255'))
-ALLOWED_PATH_PATTERN = re.compile(r'^[a-zA-Z0-9_\-/]*$')  # Whitelist: alphanumeric, dash, underscore, slash
+# Whitelist: Unicode letters/digits/underscore (\w), plus space, dash, dot and
+# slash — so real-world folders like "Summer 2024" or "Été" are accepted. This
+# is only defense-in-depth; the structural checks below (.., absolute, null byte,
+# leading-dot, symlink, relative_to containment) are the real security boundary.
+ALLOWED_PATH_PATTERN = re.compile(r'^[\w \-/.]*$', re.UNICODE)
 
 
 def validate_folder_path(folder_path: str, base_dir: Path) -> Path:
@@ -70,7 +74,7 @@ def validate_folder_path(folder_path: str, base_dir: Path) -> Path:
 
     # Validate character whitelist
     if not ALLOWED_PATH_PATTERN.match(folder_path):
-        raise InvalidPathError("Path contains invalid characters (only alphanumeric, dash, underscore, and slash allowed)")
+        raise InvalidPathError("Path contains invalid characters (letters, digits, space, dash, underscore, dot and slash allowed)")
 
     # Check for hidden folders (starting with .)
     path_parts = folder_path.split('/')

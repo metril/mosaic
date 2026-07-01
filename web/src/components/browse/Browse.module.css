@@ -27,6 +27,13 @@
   font-size: var(--text-sm);
   color: var(--color-text-muted);
 }
+.searching {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
 .toolbar {
   margin-left: auto;
   display: flex;
@@ -180,6 +187,54 @@
   gap: var(--s4);
 }
 
+/* Skeleton grid shown during the initial library load (steadier than a lone
+   centered spinner; matches the real grid's shape so there's no layout jump). */
+.skelGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--s4);
+}
+.skelCard {
+  border-radius: var(--r);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.skelThumb {
+  aspect-ratio: 1 / 1;
+}
+.skelLine {
+  height: 10px;
+  margin: var(--s3);
+  width: 70%;
+  border-radius: 4px;
+}
+.skelThumb,
+.skelLine {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-hi) 25%,
+    var(--color-surface-press) 37%,
+    var(--color-surface-hi) 63%
+  );
+  background-size: 400% 100%;
+  animation: skel-shimmer 1.4s ease infinite;
+}
+@keyframes skel-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skelThumb,
+  .skelLine {
+    animation: none;
+  }
+}
+
 /* ---- Card ---------------------------------------------------------------- */
 .card {
   position: relative;
@@ -233,9 +288,15 @@
   transition: all var(--dur-2) var(--ease);
 }
 .card:hover .actions,
-.card:focus-within .actions {
+.card:focus-within .actions,
+.cardRevealed .actions {
   opacity: 1;
   transform: none;
+}
+/* Subtle ring so a touch-revealed card reads as "active". */
+.cardRevealed {
+  border-color: var(--color-border-hi);
+  box-shadow: var(--shadow);
 }
 .curBtn {
   display: grid;
@@ -429,5 +490,15 @@
   }
   .lbNext {
     right: var(--s2);
+  }
+}
+
+/* Very narrow phones: tighten padding (grid columns are handled in VirtualGrid). */
+@media (max-width: 430px) {
+  .main {
+    padding: var(--s4) var(--s3);
+  }
+  .head {
+    padding: var(--s3) var(--s3);
   }
 }

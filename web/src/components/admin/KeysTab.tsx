@@ -15,6 +15,7 @@ import {
   RefreshIcon,
   ExternalIcon,
   EyeOffIcon,
+  useConfirm,
 } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
@@ -25,6 +26,7 @@ import styles from '@/pages/Admin.module.css'
 
 export function KeysTab() {
   const qc = useQueryClient()
+  const [confirm, confirmModal] = useConfirm()
   const { data: keys, isLoading } = useQuery({ queryKey: ['keys'], queryFn: listKeys })
   const [editing, setEditing] = useState<ApiKey | null>(null)
   const [creating, setCreating] = useState(false)
@@ -111,11 +113,14 @@ export function KeysTab() {
                 <IconButton
                   label="Rotate secret"
                   bordered
-                  onClick={() => {
+                  onClick={async () => {
                     if (
-                      confirm(
-                        `Rotate “${k.name}”? A new secret is generated and the current one stops working immediately.`,
-                      )
+                      await confirm({
+                        title: `Rotate “${k.name}”?`,
+                        message: 'A new secret is generated and the current one stops working immediately. Update anything using the old key.',
+                        confirmLabel: 'Rotate secret',
+                        danger: false,
+                      })
                     )
                       rotate.mutate(k)
                   }}
@@ -125,8 +130,15 @@ export function KeysTab() {
                 <IconButton
                   label="Revoke"
                   bordered
-                  onClick={() => {
-                    if (confirm(`Revoke “${k.name}”? It will stop working immediately.`)) revoke.mutate(k.id)
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Revoke “${k.name}”?`,
+                        message: 'The key is deleted and stops working immediately. This cannot be undone.',
+                        confirmLabel: 'Revoke key',
+                      })
+                    )
+                      revoke.mutate(k.id)
                   }}
                 >
                   <TrashIcon size={15} />
@@ -151,6 +163,7 @@ export function KeysTab() {
           onClose={() => setRevealed(null)}
         />
       )}
+      {confirmModal}
     </>
   )
 }

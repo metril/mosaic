@@ -9,7 +9,7 @@ import os
 import random
 import re
 import shutil
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -53,6 +53,10 @@ class ImmichPullConfig:
     is_favorite: Optional[bool] = None           # Only favorites
     taken_after: Optional[str] = None            # ISO date string (YYYY-MM-DD)
     taken_before: Optional[str] = None           # ISO date string (YYYY-MM-DD)
+    # Transient (per-run) filter used by delta pulls: full ISO-8601 timestamp;
+    # only assets updated on the server after this are fetched. Never set on the
+    # stored config — it's injected into a per-run copy (see pull_images).
+    updated_after: Optional[str] = None
     media_type: str = "IMAGE"                    # IMAGE or VIDEO
 
     # Behavior
@@ -86,8 +90,8 @@ class ImmichPullConfig:
         # Filter to valid fields
         valid_keys = {"name", "server_url", "api_key", "target_folder", "count",
                       "album_ids", "album_filter_mode", "person_ids", "person_filter_mode",
-                      "is_favorite", "taken_after", "taken_before", "media_type",
-                      "replace_existing",
+                      "is_favorite", "taken_after", "taken_before", "updated_after",
+                      "media_type", "replace_existing",
                       # F1 scheduling
                       "cron_expression", "cron_timezone", "last_run",
                       # F6 curation interaction
@@ -385,6 +389,8 @@ class ImmichProvider:
             filter_body["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
         if config.taken_before:
             filter_body["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
+        if config.updated_after:
+            filter_body["updatedAfter"] = config.updated_after
         if config.person_ids:
             filter_body["personIds"] = config.person_ids
 
@@ -488,6 +494,8 @@ class ImmichProvider:
             base_filter["takenAfter"] = f"{config.taken_after}T00:00:00.000Z"
         if config.taken_before:
             base_filter["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
+        if config.updated_after:
+            base_filter["updatedAfter"] = config.updated_after
 
         # Add AND-mode filters (single value or "all" mode with multiple)
         if config.album_ids and not need_album_or:
@@ -693,20 +701,42 @@ class ImmichProvider:
                 logger.warning(f"Failed to preserve favorite {rel}: {e}")
         return preserved
 
-    async def pull_images(self, pull_name: str) -> PullResult:
-        """Execute a pull operation - search, download, store locally"""
+    async def pull_images(self, pull_name: str, delta: bool = False) -> PullResult:
+        """Execute a pull operation - search, download, store locally.
+
+        When ``delta`` is True, run incrementally against a per-run copy of the
+        config: append into the folder (``replace_existing=False``) and only
+        fetch assets updated after the stored ``last_run``. The persisted config
+        is never mutated except to advance ``last_run`` on success.
+        """
         config = self.pulls.get(pull_name)
         if not config:
             result = PullResult(pull_name=pull_name, status=PullStatus.FAILED, phase="failed")
             result.errors.append(f"Pull config not found: {pull_name}")
             return result
 
+        run_started_at = datetime.now(timezone.utc)
+
+        # Delta run: a per-run config copy that appends and filters to assets
+        # updated since the last pull. A missing last_run falls back to a plain
+        # append (fetches the current window, then stamps the baseline).
+        if delta:
+            config = replace(
+                config,
+                replace_existing=False,
+                updated_after=config.last_run or None,
+            )
+            if config.updated_after:
+                logger.info(f"Delta pull {pull_name}: fetching assets updated after {config.updated_after}")
+            else:
+                logger.info(f"Delta pull {pull_name}: no prior last_run, appending current window")
+
         # Initialize result
         result = PullResult(
             pull_name=pull_name,
             status=PullStatus.RUNNING,
             phase="searching",
-            started_at=datetime.now(timezone.utc),
+            started_at=run_started_at,
         )
         self._pull_results[pull_name] = result
 
@@ -804,6 +834,16 @@ class ImmichProvider:
             result.completed_at = datetime.now(timezone.utc)
             logger.info(f"Pull completed: {pull_name} - {result.downloaded}/{result.total} images")
 
+            # Advance the baseline for the next delta pull to this run's START
+            # time (not completion) so assets added mid-pull aren't missed.
+            stored = self.pulls.get(pull_name)
+            if stored is not None:
+                stored.last_run = run_started_at.isoformat()
+                try:
+                    self.save_config()
+                except Exception as exc:
+                    logger.warning(f"Failed to persist last_run for pull {pull_name!r}: {exc}")
+
         except asyncio.CancelledError:
             result.status = PullStatus.CANCELLED
             result.phase = "cancelled"
@@ -836,10 +876,12 @@ class ImmichProvider:
         self._pull_results[pull_name] = result
         return result
 
-    async def start_pull(self, pull_name: str) -> PullResult:
+    async def start_pull(self, pull_name: str, delta: bool = False) -> PullResult:
         """Start a pull operation in the background.
 
-        Returns immediately with initial status.
+        Returns immediately with initial status. When ``delta`` is True the pull
+        runs incrementally: it appends (never wipes the folder) and only fetches
+        assets updated on the server since the pull's ``last_run``.
         """
         # Check if already running
         if pull_name in self._running_tasks:
@@ -851,7 +893,7 @@ class ImmichProvider:
                 return PullResult(pull_name=pull_name, status=PullStatus.RUNNING)
 
         # Start new task
-        task = asyncio.create_task(self.pull_images(pull_name))
+        task = asyncio.create_task(self.pull_images(pull_name, delta=delta))
         self._running_tasks[pull_name] = task
 
         # Return initial status

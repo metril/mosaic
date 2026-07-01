@@ -238,6 +238,12 @@
 .endpointsSummary::-webkit-details-marker {
   display: none;
 }
+.epSummaryMeta {
+  margin-left: auto;
+  font-weight: 500;
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle, var(--color-text-muted));
+}
 .endpointRow {
   display: flex;
   align-items: center;
@@ -481,6 +487,10 @@
 
 @media (max-width: 600px) {
   .grid2 {
+    grid-template-columns: 1fr;
+  }
+  /* 340px min-width cards overflow a ~320px phone; go single-column. */
+  .groupGrid {
     grid-template-columns: 1fr;
   }
 }

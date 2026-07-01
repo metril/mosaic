@@ -193,7 +193,11 @@ async def get_image_auth(
     if authorization and authorization.startswith("Bearer "):
         key = authorization[7:]
         if hasattr(request.app.state, 'api_key_manager'):
-            api_key = request.app.state.api_key_manager.verify_key(key)
+            # Argon2id verification is CPU-heavy (~tens of ms); run it off the
+            # event loop so concurrent requests aren't serialized behind it.
+            api_key = await asyncio.get_running_loop().run_in_executor(
+                None, request.app.state.api_key_manager.verify_key, key
+            )
             if api_key:
                 if not _has_valid_scopes(api_key.scopes):
                     raise HTTPException(status_code=403, detail="API key has no access configured")
@@ -205,7 +209,9 @@ async def get_image_auth(
     key_param = request.query_params.get("key")
     if key_param and key_param.startswith("sk_"):
         if hasattr(request.app.state, 'api_key_manager'):
-            api_key = request.app.state.api_key_manager.verify_key(key_param)
+            api_key = await asyncio.get_running_loop().run_in_executor(
+                None, request.app.state.api_key_manager.verify_key, key_param
+            )
             if api_key:
                 if not _has_valid_scopes(api_key.scopes):
                     raise HTTPException(status_code=403, detail="API key has no access configured")
@@ -2734,7 +2740,7 @@ async def display_page(
     )
 
 
-def _ws_admin_authorized(websocket: WebSocket) -> bool:
+async def _ws_admin_authorized(websocket: WebSocket) -> bool:
     """Authorize an admin WebSocket via session user OR an admin API key.
 
     Mirrors the dual auth (session + API key) used by every other admin
@@ -2767,7 +2773,9 @@ def _ws_admin_authorized(websocket: WebSocket) -> bool:
             return _key_has_admin_monitor(api_key.scopes)
         return False
 
-    api_key = manager.verify_key(key)
+    api_key = await asyncio.get_running_loop().run_in_executor(
+        None, manager.verify_key, key
+    )
     if not api_key or not api_key.enabled:
         return False
     return _key_has_admin_monitor(api_key.scopes)
@@ -2805,7 +2813,7 @@ async def websocket_admin(websocket: WebSocket):
 
     # Authentication check
     if oidc_config.enabled:
-        if not _ws_admin_authorized(websocket):
+        if not await _ws_admin_authorized(websocket):
             await websocket.close(code=4001, reason="Not authenticated")
             return
 
@@ -3258,14 +3266,16 @@ async def save_immich_config(
 async def trigger_immich_pull(
     request: Request,
     pull_name: str,
+    delta: bool = Query(False, description="Incremental pull: append only assets updated on the server since the last run (no folder wipe)"),
     auth: Union[APIKey, User] = Depends(get_admin_auth),
     _csrf: None = Depends(verify_csrf_token)
 ):
     """
     Trigger an Immich pull operation.
 
-    Starts the pull in the background and returns immediately.
-    Use GET /api/immich/pull/{pull_name}/status to check progress.
+    Starts the pull in the background and returns immediately. Pass ``delta=true``
+    for an incremental pull (append-only, fetches just assets updated since the
+    pull's last run). Use GET /api/immich/pull/{pull_name}/status to check progress.
     """
     check_admin_scope(auth, "admin:immich:trigger")
     actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
@@ -3274,12 +3284,13 @@ async def trigger_immich_pull(
     if not provider.get_pull(pull_name):
         raise HTTPException(status_code=404, detail=f"Pull '{pull_name}' not found")
 
-    logger.info(f"User {actor} triggering Immich pull: {pull_name}")
-    result = await provider.start_pull(pull_name)
+    logger.info(f"User {actor} triggering Immich {'delta' if delta else 'full'} pull: {pull_name}")
+    result = await provider.start_pull(pull_name, delta=delta)
 
     return JSONResponse(content={
         "status": "started",
         "pull_name": pull_name,
+        "delta": delta,
         "result": result.to_dict(),
     })
 
@@ -3348,6 +3359,62 @@ async def cancel_immich_pull(
         "status": "cancelled",
         "pull_name": pull_name,
         "result": result.to_dict(),
+    })
+
+
+@router.post(
+    "/api/system/refresh",
+    responses={
+        200: {"description": "Caches invalidated and display groups refreshed"},
+        401: {"description": "Authentication required"},
+    }
+)
+async def refresh_caches(
+    request: Request,
+    folder: Optional[str] = Query(None, description="Limit the refresh to one library folder (relative path); omit to refresh everything"),
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+    _csrf: None = Depends(verify_csrf_token)
+):
+    """Invalidate stale caches and refresh display groups without a restart.
+
+    Clears the processed-image and browse-index caches, the caption/blur caches
+    and (for a scoped folder) the thumbnail cache, then re-scans affected display
+    groups' image pools. Useful after files change on disk out-of-band, or to
+    recover from a stale cache. Reuses the same invalidation path the file
+    watcher runs on a folder change.
+    """
+    check_admin_scope(auth, "admin:display:manage")
+    dm = request.app.state.display_manager
+    tc = getattr(request.app.state, "thumbnail_cache", None)
+
+    if folder:
+        rel = folder.strip("/")
+        processed_image_cache.clear_prefix(rel)
+        if tc:
+            tc.invalidate_folder(rel)
+            asyncio.create_task(tc.pre_generate_folder(rel))
+        invalidate_browse_cache()
+        dm.clear_caption_cache()
+        refreshed = await dm.refresh_groups_by_folder(rel)
+        scope = rel
+    else:
+        # Global refresh: drop all processed/browse/caption caches. Thumbnails
+        # are mtime-keyed (self-refreshing) so we don't force a full rebuild.
+        processed_image_cache.clear()
+        invalidate_browse_cache()
+        dm.clear_caption_cache()
+        refreshed = {}
+        for group_id in list(dm.groups.keys()):
+            count = await dm.refresh_group_images(group_id)
+            if count is not None:
+                refreshed[group_id] = count
+        scope = None
+
+    logger.info(f"Cache refresh ({scope or 'all'}) refreshed groups: {list(refreshed.keys())}")
+    return JSONResponse(content={
+        "status": "refreshed",
+        "folder": scope,
+        "groups_refreshed": refreshed,
     })
 
 

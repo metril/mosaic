@@ -22,6 +22,22 @@
   border-color: var(--accent-line);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
+.control.invalid {
+  border-color: var(--color-danger);
+}
+.control.invalid:focus {
+  box-shadow: 0 0 0 3px var(--color-danger-soft, rgba(239, 83, 80, 0.22));
+}
+
+/* Inline validation message under a field. */
+.fieldError {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+  margin-top: var(--s2);
+}
 
 select.control {
   appearance: none;

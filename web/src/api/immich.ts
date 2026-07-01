@@ -40,9 +40,10 @@ export function deletePull(name: string) {
   return api.del<{ message: string }>(`/api/immich/pulls/${encodeURIComponent(name)}`)
 }
 
-export function triggerPull(name: string) {
-  return api.post<{ status: string; result: PullResult }>(
-    `/api/immich/pull/${encodeURIComponent(name)}`,
+export function triggerPull(name: string, delta = false) {
+  const suffix = delta ? '?delta=true' : ''
+  return api.post<{ status: string; delta?: boolean; result: PullResult }>(
+    `/api/immich/pull/${encodeURIComponent(name)}${suffix}`,
   )
 }
 

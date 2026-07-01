@@ -12,9 +12,11 @@ interface Props {
   footer?: ReactNode
   footerSpread?: boolean
   width?: number
+  /** Use "alertdialog" for confirmations that interrupt to demand a response. */
+  role?: 'dialog' | 'alertdialog'
 }
 
-export function Modal({ title, subtitle, onClose, children, footer, footerSpread, width }: Props) {
+export function Modal({ title, subtitle, onClose, children, footer, footerSpread, width, role = 'dialog' }: Props) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -32,7 +34,7 @@ export function Modal({ title, subtitle, onClose, children, footer, footerSpread
       <div
         className={styles.modal}
         style={width ? ({ ['--mw' as string]: `${width}px` }) : undefined}
-        role="dialog"
+        role={role}
         aria-modal="true"
         aria-label={title}
         onMouseDown={(e) => e.stopPropagation()}

@@ -4,7 +4,7 @@ import { fetchFolders, fetchFiles } from '@/api/browse'
 import type { FileFilter } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
 import { cn } from '@/lib/cn'
-import { Loading, EmptyState, SearchInput, ImageIcon, HeartIcon, EyeOffIcon } from '@/components/ui'
+import { Loading, EmptyState, SearchInput, Spinner, ImageIcon, HeartIcon, EyeOffIcon } from '@/components/ui'
 import { FolderTree } from '@/components/browse/FolderTree'
 import { VirtualGrid } from '@/components/browse/VirtualGrid'
 import { Lightbox } from '@/components/browse/Lightbox'
@@ -53,8 +53,14 @@ export default function Browse() {
 
   // Switching scope should start the grid at the top.
   useEffect(() => {
-    window.scrollTo({ top: 0 })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [selected, debouncedQ, filter])
+
+  // True while the user is mid-type (debounce pending) or a scope refetch is in
+  // flight — drives a "Searching…" hint so results never look silently stale.
+  const searching =
+    query.trim() !== debouncedQ ||
+    (filesQuery.isFetching && !filesQuery.isFetchingNextPage && !filesQuery.isPending)
 
   function toggleExpand(path: string) {
     setExpanded((prev) => {
@@ -96,6 +102,11 @@ export default function Browse() {
           <span className={styles.stats}>
             {totalFolders} folders · {totalFiles} photos
           </span>
+          {searching && (
+            <span className={styles.searching}>
+              <Spinner size={13} /> Searching…
+            </span>
+          )}
         </div>
 
         <div className={styles.toolbar}>
@@ -162,7 +173,14 @@ export default function Browse() {
           </div>
 
           {filesQuery.isPending ? (
-            <Loading label="Loading photos…" />
+            <div className={styles.skelGrid} aria-label="Loading photos" aria-busy="true">
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div key={i} className={styles.skelCard}>
+                  <div className={styles.skelThumb} />
+                  <div className={styles.skelLine} />
+                </div>
+              ))}
+            </div>
           ) : files.length === 0 ? (
             <EmptyState
               icon={filter === 'favorites' ? <HeartIcon size={36} /> : <ImageIcon size={36} />}

@@ -28,6 +28,7 @@ from __future__ import annotations
 import base64
 import os
 import secrets
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -49,7 +50,11 @@ _KDF_PARALLELISM = 1
 _SECRET_FILE = Path("config/secret.key")
 
 # Cached derived Fernet so we don't re-run Argon2id on every encrypt/decrypt.
+# Guarded by a lock because encrypt/decrypt can be called from thread-pool
+# executors (the hot API-key auth path), which could otherwise race the
+# expensive lazy derivation.
 _fernet: Optional[Fernet] = None
+_fernet_lock = threading.Lock()
 
 
 def _resolve_secret() -> bytes:
@@ -95,7 +100,9 @@ def _derive_fernet(secret: bytes) -> Fernet:
 def _get_fernet() -> Fernet:
     global _fernet
     if _fernet is None:
-        _fernet = _derive_fernet(_resolve_secret())
+        with _fernet_lock:
+            if _fernet is None:
+                _fernet = _derive_fernet(_resolve_secret())
     return _fernet
 
 

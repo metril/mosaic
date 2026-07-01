@@ -72,40 +72,22 @@ function GroupPicker() {
 
   let body
   if (error) {
-    body = <div style={{ color: '#aaa' }}>Couldn’t load display groups ({error}).</div>
+    body = <div className="dp-picker__msg">Couldn’t load display groups ({error}).</div>
   } else if (!groups) {
-    body = <div style={{ color: '#aaa' }}>Loading display groups…</div>
+    body = <div className="dp-picker__msg">Loading display groups…</div>
   } else if (groups.length === 0) {
     body = (
-      <div style={{ color: '#aaa' }}>
-        No display groups yet. Create one in{' '}
-        <a href="/admin" style={{ color: '#60a5fa' }}>
-          Admin
-        </a>
-        .
+      <div className="dp-picker__msg">
+        No display groups yet. Create one in <a href="/admin">Admin</a>.
       </div>
     )
   } else {
     body = (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 20, minWidth: 280 }}>
+      <div className="dp-picker__list">
         {groups.map((g) => (
-          <a
-            key={g.group_id}
-            href={`/display?group=${encodeURIComponent(g.group_id)}`}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '14px 18px',
-              borderRadius: 10,
-              border: '1px solid #2a2a2a',
-              background: '#161616',
-              color: '#eee',
-              textDecoration: 'none',
-            }}
-          >
-            <span style={{ fontWeight: 600 }}>{g.group_id}</span>
-            <span style={{ fontSize: 13, color: '#888' }}>{g.image_count} photos</span>
+          <a key={g.group_id} className="dp-group" href={`/display?group=${encodeURIComponent(g.group_id)}`}>
+            <span className="dp-group__name">{g.group_id}</span>
+            <span className="dp-group__count">{g.image_count} photos</span>
           </a>
         ))}
       </div>
@@ -114,11 +96,9 @@ function GroupPicker() {
 
   return (
     <div className="display-root">
-      <div id="display-fatal" style={{ color: '#eee' }}>
-        <div style={{ fontSize: 22, fontWeight: 700 }}>Open a display</div>
-        <div style={{ fontSize: 14, color: '#aaa', marginTop: 6 }}>
-          Pick a group to start its kiosk slideshow.
-        </div>
+      <div id="display-fatal" className="dp-picker">
+        <div className="dp-picker__title">Open a display</div>
+        <div className="dp-picker__hint">Pick a group to start its kiosk slideshow.</div>
         {body}
       </div>
     </div>

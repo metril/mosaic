@@ -5,7 +5,7 @@ import { groupAction, deleteGroup, type PlaybackAction } from '@/api/admin'
 import { thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
 import { useNow, secondsUntil } from '@/hooks/useNow'
-import { Card, IconButton, Button } from '@/components/ui'
+import { Card, IconButton, Button, useConfirm } from '@/components/ui'
 import {
   PlayIcon,
   PauseIcon,
@@ -38,6 +38,7 @@ interface Props {
 
 export function GroupCard({ group, onEdit, onClone }: Props) {
   const { favSet, hiddenSet, toggleFavorite, toggleHidden } = useCuration()
+  const [confirm, confirmModal] = useConfirm()
   const [showHistory, setShowHistory] = useState(false)
   const [showShare, setShowShare] = useState(false)
 
@@ -178,13 +179,22 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
           label="Delete"
           size="sm"
           bordered
-          onClick={() => {
-            if (confirm(`Delete group “${group.group_id}”? This cannot be undone.`)) del.mutate()
+          onClick={async () => {
+            if (
+              await confirm({
+                title: `Delete group “${group.group_id}”?`,
+                message: 'This permanently removes the display group and its endpoints. This cannot be undone.',
+                confirmLabel: 'Delete group',
+              })
+            )
+              del.mutate()
           }}
         >
           <TrashIcon size={15} />
         </IconButton>
       </div>
+
+      {confirmModal}
 
       {showHistory && historyEndpointId && (
         <HistoryModal

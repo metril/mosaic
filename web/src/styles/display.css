@@ -6,6 +6,26 @@
    the SPA. Class/ID names match the original so the ported controller works.
    ============================================================================= */
 
+/* Display-local palette. The kiosk is always a dark surface (it never loads the
+   admin light/dark theme), so these are fixed values — chosen to match the
+   admin token hues — rather than the theme-dependent --color-* tokens, which
+   would flip to dark text on this black background. Centralized here so status
+   and error colors aren't scattered as literals through the file. */
+.display-root,
+#display-fatal,
+#no-images-error,
+#display-offline {
+  --disp-fg: #f2f2f3;
+  --disp-fg-dim: #a9abb3;
+  --disp-fg-subtle: #7c7e87;
+  --disp-surface: #161616;
+  --disp-line: #2a2a2a;
+  --disp-accent: #60a5fa;
+  --disp-ok: #34c27e;
+  --disp-warn: #e0a23a;
+  --disp-danger: #ef5350;
+}
+
 .display-root {
   position: fixed;
   inset: 0;
@@ -112,27 +132,33 @@
 
 .status-indicator {
   position: fixed;
-  top: 10px;
-  right: 10px;
-  width: 12px;
-  height: 12px;
+  top: 12px;
+  right: 12px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background-color: #888;
+  background-color: var(--disp-fg-subtle);
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.35);
   z-index: 1000;
-  transition: opacity 0.5s ease-out;
+  transition:
+    opacity 0.5s ease-out,
+    background-color 0.3s ease;
 }
 .status-indicator.hidden {
   opacity: 0;
   pointer-events: none;
 }
 .status-indicator.connected {
-  background-color: #4caf50;
+  background-color: var(--disp-ok);
 }
 .status-indicator.disconnected {
-  background-color: #f44336;
+  background-color: var(--disp-danger);
+  /* Glow so a failed display is noticeable across a room. */
+  box-shadow: 0 0 12px 2px rgba(239, 83, 80, 0.7);
+  animation: status-pulse 1.4s infinite;
 }
 .status-indicator.connecting {
-  background-color: #ff9800;
+  background-color: var(--disp-warn);
   animation: status-pulse 1s infinite;
 }
 @keyframes status-pulse {
@@ -143,6 +169,33 @@
   50% {
     opacity: 0.5;
   }
+}
+
+/* On-screen offline notice (sustained WS drop). */
+#display-offline {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.78);
+  color: var(--disp-fg);
+  border: 1px solid var(--disp-line);
+  border-left: 3px solid var(--disp-danger);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  z-index: 1600;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* Weather (or other overlay) showing stale data after a failed refresh. */
+.display-root .overlay--stale {
+  opacity: 0.55;
+  filter: saturate(0.6);
+  transition: opacity 0.4s ease;
 }
 
 .debug-overlay {
@@ -272,11 +325,65 @@
   left: 50%;
   transform: translate(-50%, -50%);
   background: rgba(0, 0, 0, 0.8);
-  color: #f44336;
+  color: var(--disp-danger);
   padding: 40px;
   border-radius: 12px;
   font-size: 24px;
   text-align: center;
   max-width: 80%;
   z-index: 1500;
+}
+
+/* Group picker (shown at /display with no ?group). Class-based so it uses the
+   display palette instead of inline literals. */
+.dp-picker {
+  min-width: 280px;
+  color: var(--disp-fg);
+}
+.dp-picker__title {
+  font-size: 22px;
+  font-weight: 700;
+}
+.dp-picker__hint {
+  font-size: 14px;
+  color: var(--disp-fg-dim);
+  margin-top: 6px;
+}
+.dp-picker__msg {
+  color: var(--disp-fg-dim);
+  margin-top: 16px;
+}
+.dp-picker__msg a {
+  color: var(--disp-accent);
+}
+.dp-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+.dp-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--disp-line);
+  background: var(--disp-surface);
+  color: var(--disp-fg);
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.dp-group:hover {
+  border-color: var(--disp-accent);
+  background: #1c1c1f;
+}
+.dp-group__name {
+  font-weight: 600;
+}
+.dp-group__count {
+  font-size: 13px;
+  color: var(--disp-fg-subtle);
 }

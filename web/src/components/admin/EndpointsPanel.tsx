@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import type { DisplayGroup, DisplayEndpoint } from '@/api/types'
 import { endpointNav, deleteEndpoint } from '@/api/admin'
 import { useCuration } from '@/hooks/useCuration'
-import { IconButton, PrevIcon, NextIcon, SlidersIcon, TrashIcon, HeartIcon, EyeOffIcon, HistoryIcon } from '@/components/ui'
+import { IconButton, PrevIcon, NextIcon, SlidersIcon, TrashIcon, HeartIcon, EyeOffIcon, HistoryIcon, useConfirm } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -14,6 +14,7 @@ import styles from '@/pages/Admin.module.css'
 export function EndpointsPanel({ group }: { group: DisplayGroup }) {
   const [editing, setEditing] = useState<DisplayEndpoint | null>(null)
   const [historyEp, setHistoryEp] = useState<string | null>(null)
+  const [confirm, confirmModal] = useConfirm()
   const { favSet, hiddenSet, toggleFavorite, toggleHidden } = useCuration()
 
   const nav = useMutation({
@@ -28,11 +29,17 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
   })
 
   const eps = group.endpoints ?? []
+  const online = eps.filter((e) => e.last_seen).length
 
   return (
     <details className={styles.endpoints}>
       <summary className={styles.endpointsSummary}>
         Endpoints <span className={styles.tabCount}>{eps.length}</span>
+        {eps.length > 0 && (
+          <span className={styles.epSummaryMeta}>
+            {online} online · {eps.length - online} idle
+          </span>
+        )}
       </summary>
 
       {eps.length === 0 ? (
@@ -102,8 +109,15 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
                 <IconButton
                   label="Remove endpoint"
                   size="sm"
-                  onClick={() => {
-                    if (confirm(`Remove endpoint “${ep.name || ep.endpoint_id}”?`)) del.mutate(ep.endpoint_id)
+                  onClick={async () => {
+                    if (
+                      await confirm({
+                        title: `Remove endpoint “${ep.name || ep.endpoint_id}”?`,
+                        message: 'Its saved history and setting overrides are removed. A live display will re-register as a new anonymous endpoint.',
+                        confirmLabel: 'Remove',
+                      })
+                    )
+                      del.mutate(ep.endpoint_id)
                   }}
                 >
                   <TrashIcon size={14} />
@@ -131,6 +145,8 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
           onClose={() => setHistoryEp(null)}
         />
       )}
+
+      {confirmModal}
     </details>
   )
 }

@@ -151,6 +151,7 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
         </>
       }
     >
+      <fieldset disabled={save.isPending} className="fieldsetReset">
       <div className={styles.formGrid}>
         <div className={styles.fieldGroup}>
           <Label htmlFor="key-name">Name</Label>
@@ -204,6 +205,7 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
           )}
         </div>
       </div>
+      </fieldset>
     </Modal>
   )
 }

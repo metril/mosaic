@@ -185,6 +185,19 @@ samp {
   }
 }
 
+/* Bare fieldset used purely to disable a whole form while a mutation is in
+   flight (native fieldset[disabled] disables all descendant controls). */
+.fieldsetReset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+.fieldsetReset:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 /* Staggered page-load reveal. Wrap a view in .reveal and give children
    --i (index) for a cascade. */
 .reveal > * {

@@ -11,9 +11,11 @@ import {
   CloudIcon,
   PlusIcon,
   PlayIcon,
+  SparkleIcon,
   XIcon,
   EditIcon,
   TrashIcon,
+  useConfirm,
 } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
@@ -57,6 +59,7 @@ export function ImmichTab() {
 
 function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
   const qc = useQueryClient()
+  const [confirm, confirmModal] = useConfirm()
   const [running, setRunning] = useState(false)
 
   const status = useQuery({
@@ -70,11 +73,11 @@ function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
   if (!isRunning && running && result) setRunning(false)
 
   const trigger = useMutation({
-    mutationFn: () => triggerPull(pull.name),
-    onSuccess: () => {
+    mutationFn: (delta: boolean) => triggerPull(pull.name, delta),
+    onSuccess: (_r, delta) => {
       setRunning(true)
       qc.invalidateQueries({ queryKey: ['pull-status', pull.name] })
-      toast.info(`Pull “${pull.name}” started`)
+      toast.info(`${delta ? 'Delta pull' : 'Pull'} “${pull.name}” started`)
     },
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Trigger failed'),
   })
@@ -138,9 +141,18 @@ function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
             <XIcon size={16} />
           </IconButton>
         ) : (
-          <IconButton label="Run now" bordered onClick={() => trigger.mutate()}>
-            <PlayIcon size={15} />
-          </IconButton>
+          <>
+            <IconButton label="Run full pull" bordered onClick={() => trigger.mutate(false)}>
+              <PlayIcon size={15} />
+            </IconButton>
+            <IconButton
+              label="Delta pull — fetch only assets added since the last run (no folder wipe)"
+              bordered
+              onClick={() => trigger.mutate(true)}
+            >
+              <SparkleIcon size={15} />
+            </IconButton>
+          </>
         )}
         <IconButton label="Edit" bordered onClick={onEdit}>
           <EditIcon size={15} />
@@ -148,13 +160,21 @@ function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
         <IconButton
           label="Delete"
           bordered
-          onClick={() => {
-            if (confirm(`Delete pull “${pull.name}”? Downloaded images are kept.`)) del.mutate()
+          onClick={async () => {
+            if (
+              await confirm({
+                title: `Delete pull “${pull.name}”?`,
+                message: 'The pull configuration is removed. Images already downloaded to the folder are kept.',
+                confirmLabel: 'Delete pull',
+              })
+            )
+              del.mutate()
           }}
         >
           <TrashIcon size={15} />
         </IconButton>
       </div>
+      {confirmModal}
     </Card>
   )
 }

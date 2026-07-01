@@ -46,7 +46,9 @@ export function VirtualGrid({
     const compute = () => {
       const width = el.clientWidth
       if (width <= 0) return
-      const c = Math.max(1, Math.floor((width + GAP) / (MIN_COL + GAP)))
+      // Smaller minimum on narrow phones so the grid keeps ≥2 columns.
+      const minCol = width < 430 ? 130 : MIN_COL
+      const c = Math.max(1, Math.floor((width + GAP) / (minCol + GAP)))
       const colWidth = (width - GAP * (c - 1)) / c
       setCols(c)
       setEstRow(Math.round(colWidth + META_H + GAP))

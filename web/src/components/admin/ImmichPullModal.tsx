@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ImmichPull } from '@/api/types'
 import { savePull, testConnection, listAlbums, listPeople, type PullSave } from '@/api/immich'
-import { Modal, Button, Input, Select, Label, Toggle, CheckIcon } from '@/components/ui'
+import { Modal, Button, Input, Select, Label, Toggle, CheckIcon, FieldError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -107,12 +107,22 @@ export function ImmichPullModal({ pull, onClose }: Props) {
         </>
       }
     >
+      <fieldset disabled={save.isPending} className="fieldsetReset">
       <div className={styles.formGrid}>
         <div className={styles.fieldGroup}>
           {!editing && (
             <>
               <Label htmlFor="pull-name">Name</Label>
-              <Input id="pull-name" value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="vacation-2024" />
+              <Input
+                id="pull-name"
+                value={form.name}
+                onChange={(e) => set('name', e.target.value)}
+                placeholder="vacation-2024"
+                invalid={!!form.name && !nameValid}
+              />
+              {form.name && !nameValid && (
+                <FieldError>Letters, numbers, dashes and underscores only (max 64).</FieldError>
+              )}
             </>
           )}
           <Label>Server URL</Label>
@@ -237,6 +247,7 @@ export function ImmichPullModal({ pull, onClose }: Props) {
           <ToggleLine label="Skip images you’ve hidden" value={form.skip_excluded!} onChange={(v) => set('skip_excluded', v)} />
         </div>
       </div>
+      </fieldset>
     </Modal>
   )
 }

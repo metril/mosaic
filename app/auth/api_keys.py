@@ -238,7 +238,10 @@ class APIKeyManager:
 
         def _mark_used(api_key: APIKey) -> None:
             api_key.last_used = datetime.now()
-            self._dirty_last_used.add(api_key.id)
+            # verify_key may run in a thread-pool executor (hot auth path), so
+            # guard the shared dirty-set against concurrent save_if_dirty().
+            with self._lock:
+                self._dirty_last_used.add(api_key.id)
 
         # Fast path: candidates sharing this key's lookup prefix
         candidate_ids = self._lookup_index.get(key[:KEY_LOOKUP_LEN], [])
@@ -432,10 +435,13 @@ class APIKeyManager:
 
     async def save_if_dirty(self) -> None:
         """Persist last_used timestamps deferred from the hot verify path."""
-        if not self._dirty_last_used:
-            return
-        ids = list(self._dirty_last_used)
-        self._dirty_last_used.clear()
+        # Snapshot + clear atomically so a concurrent verify_key() add can't be
+        # lost or raise "set changed size during iteration".
+        with self._lock:
+            if not self._dirty_last_used:
+                return
+            ids = list(self._dirty_last_used)
+            self._dirty_last_used.clear()
         with self._lock, self._connect() as conn:
             for key_id in ids:
                 api_key = self.keys.get(key_id)

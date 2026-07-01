@@ -116,6 +116,7 @@ class SettingsService:
         try:
             return int(v) if v is not None else int(SCHEMA[key][2])
         except (ValueError, TypeError):
+            logger.warning(f"Setting {key}={v!r} is not a valid int; using default {SCHEMA[key][2]}")
             return int(SCHEMA[key][2])
 
     def get_float(self, key: str) -> float:
@@ -123,6 +124,7 @@ class SettingsService:
         try:
             return float(v) if v is not None else float(SCHEMA[key][2])
         except (ValueError, TypeError):
+            logger.warning(f"Setting {key}={v!r} is not a valid float; using default {SCHEMA[key][2]}")
             return float(SCHEMA[key][2])
 
     def get_bool(self, key: str) -> bool:

@@ -4,7 +4,7 @@ import type { DisplayGroup, DisplayGroupSettings } from '@/api/types'
 import { createGroup, updateGroup } from '@/api/admin'
 import { GROUPS_KEY } from '@/hooks/useAdminWs'
 import { DEFAULT_SETTINGS } from '@/lib/settingsDefaults'
-import { Modal, Button, Input, Label } from '@/components/ui'
+import { Modal, Button, Input, Label, FieldError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { GroupSettingsForm } from './GroupSettingsForm'
@@ -58,25 +58,26 @@ export function GroupFormModal({ group, onClose }: Props) {
         </>
       }
     >
-      {!editing && (
-        <div style={{ marginBottom: 'var(--s4)' }}>
-          <Label htmlFor="group-id">Group ID</Label>
-          <Input
-            id="group-id"
-            value={groupId}
-            onChange={(e) => setGroupId(e.target.value)}
-            placeholder="living-room"
-            autoFocus
-          />
-          {groupId && !idValid && (
-            <div style={{ color: 'var(--color-danger)', fontSize: 'var(--text-xs)', marginTop: 4 }}>
-              Letters, numbers, dashes and underscores only (max 64).
-            </div>
-          )}
-        </div>
-      )}
+      <fieldset disabled={mutation.isPending} className="fieldsetReset">
+        {!editing && (
+          <div style={{ marginBottom: 'var(--s4)' }}>
+            <Label htmlFor="group-id">Group ID</Label>
+            <Input
+              id="group-id"
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              placeholder="living-room"
+              invalid={!!groupId && !idValid}
+              autoFocus
+            />
+            {groupId && !idValid && (
+              <FieldError>Letters, numbers, dashes and underscores only (max 64).</FieldError>
+            )}
+          </div>
+        )}
 
-      <GroupSettingsForm value={settings} onChange={setSettings} />
+        <GroupSettingsForm value={settings} onChange={setSettings} />
+      </fieldset>
     </Modal>
   )
 }

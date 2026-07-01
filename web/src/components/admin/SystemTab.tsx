@@ -1,6 +1,6 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
-import { fetchMetrics, fetchHealth, testHomeAssistant } from '@/api/system'
-import { Button, Card, Loading } from '@/components/ui'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { fetchMetrics, fetchHealth, testHomeAssistant, refreshCaches } from '@/api/system'
+import { Button, Card, Loading, RefreshIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import styles from '@/pages/Admin.module.css'
@@ -15,6 +15,7 @@ function fmtUptime(s: number) {
 }
 
 export function SystemTab() {
+  const qc = useQueryClient()
   const health = useQuery({ queryKey: ['health'], queryFn: fetchHealth })
   const metrics = useQuery({ queryKey: ['metrics'], queryFn: fetchMetrics, refetchInterval: 10_000 })
 
@@ -22,6 +23,17 @@ export function SystemTab() {
     mutationFn: testHomeAssistant,
     onSuccess: (r) => (r.success ? toast.success('Home Assistant reachable') : toast.error(r.error || 'HA unreachable')),
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'HA test failed'),
+  })
+
+  const refresh = useMutation({
+    mutationFn: () => refreshCaches(),
+    onSuccess: (r) => {
+      const n = Object.keys(r.groups_refreshed ?? {}).length
+      toast.success(n ? `Caches cleared · ${n} group${n === 1 ? '' : 's'} refreshed` : 'Caches cleared')
+      qc.invalidateQueries({ queryKey: ['groups'] })
+      qc.invalidateQueries({ queryKey: ['metrics'] })
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Refresh failed'),
   })
 
   if (health.isLoading) return <Loading label="Loading system status…" />
@@ -61,12 +73,16 @@ export function SystemTab() {
           <Button loading={haTest.isPending} onClick={() => haTest.mutate()}>
             Test Home Assistant
           </Button>
+          <Button loading={refresh.isPending} onClick={() => refresh.mutate()}>
+            <RefreshIcon size={15} /> Refresh caches
+          </Button>
           <a href="/docs" target="_blank" rel="noreferrer">
             <Button variant="ghost">API docs ↗</Button>
           </a>
         </div>
         <div className={styles.scopeNote} style={{ marginTop: 'var(--s2)' }}>
-          Groups, endpoints and pulls now save automatically.
+          Groups, endpoints and pulls save automatically. “Refresh caches” re-scans images and
+          clears cached thumbnails/pages — use it after changing files on disk directly.
         </div>
       </div>
     </div>

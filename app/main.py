@@ -159,10 +159,17 @@ async def periodic_cleanup(
                     had_failure = True
                     logger.error(f"Health check error: {e}")
 
-            # Stage 4: Night-mode scheduling enforcement (F2) — every iteration
+            # Stage 4: Night-mode scheduling enforcement (F2) — every iteration.
+            # Bounded by a timeout so a hung Home Assistant can't stall the
+            # browser/endpoint cleanup stages above.
             try:
                 ha_provider = ha_provider_getter() if ha_provider_getter else None
-                await display_manager.enforce_schedules(ha_provider)
+                await asyncio.wait_for(
+                    display_manager.enforce_schedules(ha_provider), timeout=15.0
+                )
+            except asyncio.TimeoutError:
+                had_failure = True
+                logger.warning("Night-mode enforcement timed out (Home Assistant slow/unreachable)")
             except Exception as e:
                 had_failure = True
                 logger.error(f"Night-mode enforcement error: {e}")
