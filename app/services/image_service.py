@@ -10,7 +10,7 @@ import random
 from pathlib import Path
 from typing import Optional, Tuple, Literal, Dict, List, Any
 from datetime import datetime
-from PIL import Image
+from PIL import Image, ImageOps
 from PIL.ExifTags import TAGS, GPSTAGS
 from io import BytesIO
 
@@ -189,6 +189,11 @@ class ImageService:
             ValueError: If image has invalid dimensions (0 width or height)
         """
         img = Image.open(image_path)
+
+        # Apply the EXIF orientation tag to the pixels; without this, portrait
+        # photos shot on phones render sideways once we re-encode (the tag is
+        # lost on save but the pixels were never rotated).
+        img = ImageOps.exif_transpose(img)
 
         # Validate dimensions to prevent division by zero in aspect ratio calculations
         if img.width == 0 or img.height == 0:

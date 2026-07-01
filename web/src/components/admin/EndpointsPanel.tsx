@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DisplayGroup, DisplayEndpoint } from '@/api/types'
 import { endpointNav, deleteEndpoint } from '@/api/admin'
+import { GROUPS_KEY } from '@/hooks/useAdminWs'
 import { useCuration } from '@/hooks/useCuration'
 import { useNow } from '@/hooks/useNow'
 import { IconButton, PrevIcon, NextIcon, SlidersIcon, TrashIcon, HeartIcon, EyeOffIcon, HistoryIcon, useConfirm } from '@/components/ui'
@@ -18,15 +19,20 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
   const [confirm, confirmModal] = useConfirm()
   const { favSet, hiddenSet, toggleFavorite, toggleHidden } = useCuration()
 
+  // WS pushes are the primary refresh; invalidate on settle as the fallback
+  // (endpoint-level nav doesn't always trigger a GROUP_UPDATED push).
+  const qc = useQueryClient()
   const nav = useMutation({
     mutationFn: ({ id, dir }: { id: string; dir: 'next' | 'previous' }) =>
       endpointNav(group.group_id, id, dir),
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Failed'),
+    onSettled: () => qc.invalidateQueries({ queryKey: GROUPS_KEY }),
   })
   const del = useMutation({
     mutationFn: (id: string) => deleteEndpoint(group.group_id, id),
     onSuccess: () => toast.success('Endpoint removed'),
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Failed'),
+    onSettled: () => qc.invalidateQueries({ queryKey: GROUPS_KEY }),
   })
 
   const eps = group.endpoints ?? []

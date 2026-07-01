@@ -50,6 +50,7 @@ def _generate_thumbnail_worker(
     from PIL import Image, ImageOps
 
     img = Image.open(source_path)
+    img = ImageOps.exif_transpose(img)
     img = ImageOps.fit(img, (size, size), Image.LANCZOS)
     if img.mode != 'RGB':
         img = img.convert('RGB')

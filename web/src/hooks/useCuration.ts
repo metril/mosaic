@@ -21,6 +21,13 @@ export function useCuration() {
     )
   }
 
+  // Reconcile the optimistic cache with the server once the last in-flight
+  // toggle settles (skipping while others are pending avoids clobbering
+  // rapid-fire toggles with a mid-flight refetch).
+  function reconcile() {
+    if (qc.isMutating() <= 1) qc.invalidateQueries({ queryKey: KEY })
+  }
+
   const favMutation = useMutation({
     mutationFn: ({ path, value }: { path: string; value: boolean }) => setFavorite(path, value),
     onError: (_e, vars) => {
@@ -33,10 +40,14 @@ export function useCuration() {
       }))
       toast.error('Could not update favorite')
     },
+    onSettled: reconcile,
   })
 
   const hideMutation = useMutation({
     mutationFn: ({ path, value }: { path: string; value: boolean }) => setExcluded(path, value),
+    onSuccess: (_r, vars) => {
+      toast.info(vars.value ? 'Hidden from slideshows' : 'Visible in slideshows again')
+    },
     onError: (_e, vars) => {
       patch((s) => ({
         ...s,
@@ -46,6 +57,7 @@ export function useCuration() {
       }))
       toast.error('Could not update visibility')
     },
+    onSettled: reconcile,
   })
 
   function toggleFavorite(path: string) {
@@ -64,7 +76,6 @@ export function useCuration() {
       excluded: value ? [...s.excluded, path] : s.excluded.filter((p) => p !== path),
     }))
     hideMutation.mutate({ path, value })
-    toast.info(value ? 'Hidden from slideshows' : 'Visible in slideshows again')
   }
 
   return { favSet, hiddenSet, toggleFavorite, toggleHidden }

@@ -4,7 +4,7 @@ import type { DisplayGroup } from '@/api/types'
 
 export const GROUPS_KEY = ['groups']
 
-type WsStatus = 'connecting' | 'connected' | 'disconnected'
+type WsStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
 
 function wsUrl() {
   const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
@@ -38,7 +38,7 @@ export function useAdminWs(): WsStatus {
 
     function connect() {
       if (closedRef.current) return
-      setStatus(retryRef.current === 0 ? 'connecting' : 'connecting')
+      setStatus(retryRef.current === 0 ? 'connecting' : 'reconnecting')
       const ws = new WebSocket(wsUrl())
       wsRef.current = ws
 

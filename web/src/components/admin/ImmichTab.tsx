@@ -60,22 +60,26 @@ export function ImmichTab() {
 function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
   const qc = useQueryClient()
   const [confirm, confirmModal] = useConfirm()
-  const [running, setRunning] = useState(false)
-
+  // Poll while the server reports a run in progress, plus a short window right
+  // after triggering so we catch the run starting. Derived from query data —
+  // no mirrored "running" state (which used to setState during render).
+  const [triggeredAt, setTriggeredAt] = useState(0)
   const status = useQuery({
     queryKey: ['pull-status', pull.name],
     queryFn: () => pullStatus(pull.name),
-    refetchInterval: running ? 1200 : false,
+    refetchInterval: (query) => {
+      const s = (query.state.data as PullResult | undefined)?.status
+      if (s === 'running') return 1200
+      return Date.now() - triggeredAt < 10_000 ? 1200 : false
+    },
   })
   const result = status.data as PullResult | undefined
   const isRunning = result?.status === 'running'
-  if (isRunning && !running) setRunning(true)
-  if (!isRunning && running && result) setRunning(false)
 
   const trigger = useMutation({
     mutationFn: (delta: boolean) => triggerPull(pull.name, delta),
     onSuccess: (_r, delta) => {
-      setRunning(true)
+      setTriggeredAt(Date.now())
       qc.invalidateQueries({ queryKey: ['pull-status', pull.name] })
       toast.info(`${delta ? 'Delta pull' : 'Pull'} “${pull.name}” started`)
     },

@@ -8,6 +8,7 @@ import os
 import asyncio
 import json
 import hashlib
+import time
 from concurrent.futures import ThreadPoolExecutor
 from email.utils import formatdate
 from io import BytesIO
@@ -1202,9 +1203,14 @@ async def serve_processed_image(
             elif output_format == 'png' and img.mode not in ('RGB', 'RGBA', 'L', 'LA'):
                 img = img.convert('RGBA')
 
-            # Save to buffer
+            # Save to buffer, keeping the source colour profile so wide-gamut
+            # photos don't shift hue after re-encoding.
             buffer = BytesIO()
-            img.save(buffer, format=output_format.upper(), quality=IMAGE_JPEG_QUALITY, optimize=True)
+            save_kwargs = {"quality": IMAGE_JPEG_QUALITY, "optimize": True}
+            icc_profile = img.info.get("icc_profile")
+            if icc_profile and output_format in ("jpeg", "png", "webp"):
+                save_kwargs["icc_profile"] = icc_profile
+            img.save(buffer, format=output_format.upper(), **save_kwargs)
             content = buffer.getvalue()
 
             content_type = f"image/{output_format}"
@@ -3157,6 +3163,16 @@ async def websocket_display(
                 "type": "NO_IMAGES",
                 "error": error_msg
             })
+
+        # Re-show a still-live announcement so a browser that (re)connects
+        # mid-announcement doesn't miss it; duration is trimmed to what's left.
+        active = group.active_announcement
+        if active:
+            remaining = active["expires_at"] - time.monotonic()
+            if remaining > 1:
+                announcement = {k: v for k, v in active.items() if k != "expires_at"}
+                announcement["duration_s"] = int(remaining)
+                await websocket.send_json(announcement)
 
         # Handle incoming messages
         # Timeout is slightly longer than the client heartbeat interval (30s)

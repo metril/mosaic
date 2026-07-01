@@ -7,6 +7,7 @@ import { GROUPS_KEY } from '@/hooks/useAdminWs'
 import { authorizesDisplay } from '@/lib/scopeAccess'
 import { Modal, Button, Label, Select, Toggle, CopyIcon, CheckIcon, ExternalIcon, EmptyState, KeyIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
+import { copyText } from '@/lib/clipboard'
 import styles from '@/pages/Admin.module.css'
 
 const NO_KEY = '__none__'
@@ -225,10 +226,13 @@ function UrlBlock({ url }: { url: string }) {
       <div className={styles.shareActions}>
         <Button
           variant="primary"
-          onClick={() => {
-            navigator.clipboard?.writeText(url)
-            setCopied(true)
-            toast.success('Link copied')
+          onClick={async () => {
+            if (await copyText(url)) {
+              setCopied(true)
+              toast.success('Link copied')
+            } else {
+              toast.error('Copy failed — select and copy the link manually')
+            }
           }}
         >
           {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />} {copied ? 'Copied' : 'Copy link'}

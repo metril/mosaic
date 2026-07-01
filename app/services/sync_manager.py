@@ -10,6 +10,7 @@ import asyncio
 import math
 import os
 import random
+import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -532,6 +533,10 @@ class DisplayGroup:
     _cycle_task: Optional[asyncio.Task] = field(default=None, repr=False)
     _webhook_interval_tasks: Dict[str, asyncio.Task] = field(default_factory=dict, repr=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
+    # Active announcement (payload + monotonic expiry) so late-joining or
+    # reconnecting browsers can be re-shown a message that is still live.
+    active_announcement: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    _announcement_task: Optional[asyncio.Task] = field(default=None, repr=False)
 
     def get_endpoint(self, endpoint_id: str) -> Optional[DisplayEndpoint]:
         """Get an endpoint by ID."""
@@ -598,7 +603,7 @@ class DisplayGroup:
             "current_cycle": self.current_cycle,
             "paused": self.paused,
             "night_paused": self.night_paused,
-            "created_at": self.created_at.isoformat() + "Z",
+            "created_at": self.created_at.isoformat(),
             "next_switch_at": self.next_switch_time.isoformat() if self.next_switch_time else None,
             "settings": self.settings.to_dict(),
             "browsers": browsers_list,
@@ -982,7 +987,7 @@ class DisplayManager:
         group = self.groups.get(group_id)
         if group is None:
             return -1
-        await self._broadcast_to_group(group, {
+        payload = {
             "type": "ANNOUNCEMENT",
             "text": text,
             "position": position,
@@ -991,14 +996,37 @@ class DisplayManager:
             "color": color,
             "scroll": scroll,
             "duration_s": duration_s,
-        })
+        }
+        # Remember the live announcement so reconnecting browsers get it in
+        # their WELCOME flow, and schedule a server-side clear so it ends even
+        # if a display misses its client-side timer.
+        group.active_announcement = {**payload, "expires_at": time.monotonic() + duration_s}
+        if group._announcement_task and not group._announcement_task.done():
+            group._announcement_task.cancel()
+        group._announcement_task = asyncio.create_task(
+            self._expire_announcement(group, duration_s)
+        )
+        await self._broadcast_to_group(group, payload)
         return len(group.browsers)
+
+    async def _expire_announcement(self, group: DisplayGroup, duration_s: int) -> None:
+        """Auto-clear an announcement when its duration elapses."""
+        try:
+            await asyncio.sleep(duration_s)
+        except asyncio.CancelledError:
+            return
+        group.active_announcement = None
+        await self._broadcast_to_group(group, {"type": "CLEAR_ANNOUNCEMENT"})
 
     async def clear_announcement(self, group_id: str) -> bool:
         """Remove any active announcement overlay from a group's browsers."""
         group = self.groups.get(group_id)
         if group is None:
             return False
+        group.active_announcement = None
+        if group._announcement_task and not group._announcement_task.done():
+            group._announcement_task.cancel()
+        group._announcement_task = None
         await self._broadcast_to_group(group, {"type": "CLEAR_ANNOUNCEMENT"})
         return True
 
@@ -1015,6 +1043,8 @@ class DisplayManager:
             for group in old_groups:
                 if group._cycle_task and not group._cycle_task.done():
                     group._cycle_task.cancel()
+                if group._announcement_task and not group._announcement_task.done():
+                    group._announcement_task.cancel()
                 for task in group._webhook_interval_tasks.values():
                     task.cancel()
                 group._webhook_interval_tasks.clear()
@@ -1050,6 +1080,8 @@ class DisplayManager:
             cycle_task = group._cycle_task
             if cycle_task and not cycle_task.done():
                 cycle_task.cancel()
+            if group._announcement_task and not group._announcement_task.done():
+                group._announcement_task.cancel()
 
             browsers = list(group.browsers.values())
 

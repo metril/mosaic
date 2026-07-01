@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DisplayGroup } from '@/api/types'
 import { groupAction, deleteGroup, type PlaybackAction } from '@/api/admin'
+import { GROUPS_KEY } from '@/hooks/useAdminWs'
 import { thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
 import { useNow, secondsUntil } from '@/hooks/useNow'
@@ -48,15 +49,20 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
   const [showPreview, setShowPreview] = useState(false)
   const [showAnnounce, setShowAnnounce] = useState(false)
 
+  // The admin WS normally pushes the updated group state; invalidating on
+  // settle is the fallback for reconnect gaps where that push never arrives.
+  const qc = useQueryClient()
   const action = useMutation({
     mutationFn: (a: PlaybackAction) => groupAction(group.group_id, a),
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Action failed'),
+    onSettled: () => qc.invalidateQueries({ queryKey: GROUPS_KEY }),
   })
 
   const del = useMutation({
     mutationFn: () => deleteGroup(group.group_id),
     onSuccess: () => toast.success(`Deleted ${group.group_id}`),
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'Delete failed'),
+    onSettled: () => qc.invalidateQueries({ queryKey: GROUPS_KEY }),
   })
 
   const current = group.browsers.find((b) => b.current_image)?.current_image ?? null

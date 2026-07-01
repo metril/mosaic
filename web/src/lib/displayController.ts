@@ -471,6 +471,10 @@ export function mountDisplay(wsUrl: string): () => void {
   const RECONNECT_BASE_DELAY = 1000
   const RECONNECT_MAX_DELAY = 30000
   const IMAGE_RETRY_MAX = 3
+  // Last-resort watchdog: a wall-mounted display that has been offline this
+  // long reloads the page, recovering from wedged JS/WS states no reconnect
+  // loop can fix.
+  const OFFLINE_RELOAD_AFTER = 10 * 60 * 1000
 
   const timers: Record<string, number | null> = {
     heartbeat: null,
@@ -480,6 +484,7 @@ export function mountDisplay(wsUrl: string): () => void {
     debugUpdate: null,
     statusHide: null,
     announcement: null,
+    offlineReload: null,
   }
 
   let ws: WebSocket | null = null
@@ -616,6 +621,10 @@ export function mountDisplay(wsUrl: string): () => void {
     ws.onopen = () => {
       setStatus('connected')
       reconnectAttempts = 0
+      if (timers.offlineReload) {
+        clearTimeout(timers.offlineReload)
+        timers.offlineReload = null
+      }
       startHeartbeat()
     }
     ws.onclose = (event) => {
@@ -642,7 +651,15 @@ export function mountDisplay(wsUrl: string): () => void {
     reconnectAttempts++
     // Surface a persistent notice once reconnects have been failing for a while.
     if (reconnectAttempts >= 3) showOfflineNotice(true)
-    const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_DELAY)
+    // Arm the reload watchdog on the first failure; it survives across retries
+    // and only a successful reconnect disarms it.
+    if (!timers.offlineReload) {
+      timers.offlineReload = window.setTimeout(() => location.reload(), OFFLINE_RELOAD_AFTER)
+    }
+    // ±25% jitter so a fleet of displays doesn't hammer a restarting server in
+    // lockstep after an outage.
+    const base = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttempts - 1), RECONNECT_MAX_DELAY)
+    const delay = base * (0.75 + Math.random() * 0.5)
     timers.reconnect = window.setTimeout(connect, delay)
   }
 

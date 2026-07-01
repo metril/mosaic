@@ -6,6 +6,7 @@ import { Modal, Button, Input, Label, Toggle, CopyIcon, CheckIcon } from '@/comp
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
+import { copyText } from '@/lib/clipboard'
 import styles from '@/pages/Admin.module.css'
 
 /** Show a key secret with a copy button (used for the post-rotate reveal and
@@ -37,10 +38,13 @@ export function SecretRevealModal({
       <div className={styles.revealKey}>{secret}</div>
       <Button
         style={{ marginTop: 'var(--s3)' }}
-        onClick={() => {
-          navigator.clipboard?.writeText(secret)
-          setCopied(true)
-          toast.success('Copied to clipboard')
+        onClick={async () => {
+          if (await copyText(secret)) {
+            setCopied(true)
+            toast.success('Copied to clipboard')
+          } else {
+            toast.error('Copy failed — select and copy the key manually')
+          }
         }}
       >
         {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />} {copied ? 'Copied' : 'Copy key'}
@@ -123,10 +127,13 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
         <div className={styles.revealKey}>{created}</div>
         <Button
           style={{ marginTop: 'var(--s3)' }}
-          onClick={() => {
-            navigator.clipboard?.writeText(created)
-            setCopied(true)
-            toast.success('Copied to clipboard')
+          onClick={async () => {
+            if (await copyText(created)) {
+              setCopied(true)
+              toast.success('Copied to clipboard')
+            } else {
+              toast.error('Copy failed — select and copy the key manually')
+            }
           }}
         >
           {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />} {copied ? 'Copied' : 'Copy key'}
