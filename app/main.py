@@ -13,9 +13,10 @@ from fastapi.responses import JSONResponse
 from starlette_compress import CompressMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+
+from app.utils.rate_limit import limiter
 import os
 from pathlib import Path
 
@@ -31,9 +32,6 @@ from app.services.thumbnail_cache import ThumbnailCache, THUMBNAIL_CACHE_DIR
 from app.utils.logging import logger
 from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException, error_response
 from pytimeparse import parse as parse_duration
-
-# Rate limiter for API endpoints
-limiter = Limiter(key_func=get_remote_address)
 
 # Iframe embedding configuration (for Wallpanel, Home Assistant, etc.)
 ALLOW_FRAME_EMBEDDING = os.environ.get("ALLOW_FRAME_EMBEDDING", "false").lower() == "true"
@@ -458,12 +456,22 @@ app.add_middleware(
     https_only=os.environ.get("HTTPS_ONLY", "false").lower() == "true",
 )
 
-# Add CORS middleware (allow_credentials=True for session cookies)
-allowed_origins = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+# Add CORS middleware. Credentialed CORS with a wildcard origin would let any
+# website make session-cookie requests against this server (Starlette reflects
+# the request Origin when it matches "*"), so credentials are only enabled
+# when an explicit origin list is configured via ALLOWED_ORIGINS.
+allowed_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",") if o.strip()]
+_cors_wildcard = "*" in allowed_origins
+if _cors_wildcard:
+    logger.warning(
+        "ALLOWED_ORIGINS is '*': cross-origin requests are allowed WITHOUT "
+        "credentials. Set ALLOWED_ORIGINS to an explicit comma-separated list "
+        "to enable credentialed CORS."
+    )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=not _cors_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )

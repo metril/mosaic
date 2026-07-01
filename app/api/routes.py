@@ -45,6 +45,13 @@ from app.utils.logging import logger, log_buffer
 from app.utils.metrics import metrics
 from app.utils.blur import create_blur_background, should_skip_blur
 from app.utils.lru_cache import BoundedLRU
+from app.utils.rate_limit import (
+    limiter,
+    IMAGE_RATE_LIMIT,
+    EINK_COST,
+    THUMBNAIL_RATE_LIMIT,
+    BLUR_RATE_LIMIT,
+)
 from app.services.thumbnail_cache import ThumbnailCache
 from app.services import cron_utils
 
@@ -484,14 +491,15 @@ async def _get_cached_image_count() -> int:
         "description": "Health status with image count",
         "content": {
             "application/json": {
-                "example": {"status": "healthy", "image_count": 42, "image_directory": "/www/images"}
+                "example": {"status": "healthy", "image_count": 42}
             }
         }
     }
 })
 async def health_check():
     """
-    Health check endpoint.
+    Health check endpoint (unauthenticated — keep the payload free of
+    filesystem details).
 
     Returns:
         JSON with status and image count
@@ -501,7 +509,6 @@ async def health_check():
     return {
         "status": "healthy",
         "image_count": image_count,
-        "image_directory": str(image_service.image_dir)
     }
 
 
@@ -769,9 +776,10 @@ async def update_settings(
         }
     }
 })
-async def get_metrics():
+async def get_metrics(auth: Union[APIKey, User] = Depends(get_admin_auth)):
     """
-    Return application metrics for observability.
+    Return application metrics for observability. Admin-only: connection and
+    group counters are operational details, not public data.
 
     Provides counters (monotonically increasing) and gauges (current values)
     for monitoring display group and WebSocket connection health.
@@ -917,6 +925,7 @@ async def browse_files(
     401: {"description": "Authentication required"},
     404: {"description": "Image not found", "content": {"application/json": {"example": {"error": "Image not found"}}}}
 })
+@limiter.limit(THUMBNAIL_RATE_LIMIT)
 async def get_thumbnail(
     request: Request,
     image_path: str,
@@ -1134,13 +1143,23 @@ async def get_image_metadata(
         )
 
 
+def _image_request_cost(request: Request) -> int:
+    """E-Ink processing is far more expensive than a plain serve — bill those
+    requests more units against the shared per-IP image budget."""
+    if request.query_params.get("eink", "").lower() == "true":
+        return max(1, EINK_COST)
+    return 1
+
+
 @router.api_route("/api/image/{image_path:path}", methods=["GET", "HEAD"], responses={
     200: {"description": "Processed image", "content": {"image/*": {}}},
     304: {"description": "Not Modified (conditional request)"},
     400: {"description": "Invalid image path"},
     401: {"description": "Authentication required"},
-    404: {"description": "Image not found"}
+    404: {"description": "Image not found"},
+    429: {"description": "Rate limit exceeded"}
 })
+@limiter.limit(IMAGE_RATE_LIMIT, cost=_image_request_cost)
 async def serve_processed_image(
     request: Request,
     image_path: str,
@@ -1338,6 +1357,7 @@ async def serve_processed_image(
     401: {"description": "Authentication required"},
     404: {"description": "Image not found"}
 })
+@limiter.limit(BLUR_RATE_LIMIT)
 async def get_blur_background(
     request: Request,
     image_path: str,
