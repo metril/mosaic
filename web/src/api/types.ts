@@ -154,8 +154,51 @@ export interface DisplayEndpoint {
 
 export interface BrowserState {
   browser_id: string
+  endpoint_id: string
+  status: string
   current_image: string | null
+  connected_at: string
+  /** Health telemetry (admin health view). */
+  last_heartbeat?: string
+  last_load_ms?: number | null
+  last_cycle_ms?: number | null
   [k: string]: unknown
+}
+
+/** GET /api/display/health — per-endpoint status for dashboards / external monitors. */
+export interface DisplayHealthEndpoint {
+  endpoint_id: string
+  name: string | null
+  status: 'online' | 'idle' | 'stale' | 'offline'
+  current_image: string | null
+  heartbeat_age_s: number | null
+  last_load_ms: number | null
+  last_cycle_ms: number | null
+  uptime_s: number | null
+  last_seen: string | null
+}
+export interface DisplayHealth {
+  displays: number
+  online: number
+  offline: number
+  worst_load_ms: number | null
+  groups: {
+    group_id: string
+    image_count: number
+    browser_count: number
+    paused: boolean
+    night_paused: boolean
+    error: string | null
+    endpoints: DisplayHealthEndpoint[]
+  }[]
+}
+
+/** Server-built caption for the admin display preview. Keys are a subset of
+ *  filename / date_taken / folder / location (per the group's caption_fields). */
+export interface EndpointCaption {
+  endpoint_id: string
+  current_image: string | null
+  caption: Record<string, string> | null
 }
 
 export interface DisplayGroup {

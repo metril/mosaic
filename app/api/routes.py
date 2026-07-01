@@ -2345,6 +2345,125 @@ async def get_endpoint_history(
     })
 
 
+@router.get("/api/display/groups/{group_id}/endpoints/{endpoint_id}/caption", responses={
+    200: {"description": "Server-built caption for the endpoint's current image"},
+    404: {"description": "Group or endpoint not found"},
+})
+async def get_endpoint_caption(
+    group_id: str = PathParam(...),
+    endpoint_id: str = PathParam(...),
+    request: Request = None,
+    auth: Union[APIKey, User] = Depends(get_admin_auth)
+):
+    """The caption the kiosk shows for this endpoint's current image, built with
+    the group's caption settings. Used by the admin display preview so it renders
+    the exact same caption text without re-deriving it client-side."""
+    check_admin_scope(auth, "admin:endpoints:monitor")
+    display_manager = get_display_manager(request)
+    group = await display_manager.get_group(group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail=f"Group '{group_id}' not found")
+    endpoint = group.endpoints.get(endpoint_id)
+    if not endpoint:
+        raise HTTPException(status_code=404, detail=f"Endpoint '{endpoint_id}' not found")
+
+    caption = None
+    if endpoint.current_image:
+        caption = display_manager.build_caption(endpoint.current_image, group.settings)
+    return JSONResponse(content={
+        "endpoint_id": endpoint.endpoint_id,
+        "current_image": endpoint.current_image,
+        "caption": caption,
+    })
+
+
+@router.get("/api/display/health", responses={
+    200: {"description": "Per-endpoint display health summary"},
+    401: {"description": "Authentication required"},
+})
+async def get_display_health(
+    request: Request,
+    auth: Union[APIKey, User] = Depends(get_admin_auth),
+):
+    """Health of every display endpoint for dashboards / external monitors.
+
+    Status per endpoint: `online` (a browser is connected with a fresh
+    heartbeat), `idle` (connected but the heartbeat is aging), `stale` (heartbeat
+    older than the cleanup timeout — about to be dropped), or `offline` (no live
+    browser). Includes last image-load and cycle latency and a top-level rollup
+    suitable for Uptime Kuma / Home Assistant / cron checks.
+    """
+    check_admin_scope(auth, "admin:display:monitor")
+    display_manager = get_display_manager(request)
+    settings = getattr(request.app.state, "settings", None)
+    stale_after = settings.get_int("browser_stale_timeout") if settings else 60
+    online_after = 45  # ~1.5x the 30s client heartbeat interval
+    now = datetime.now(timezone.utc)
+
+    groups_out = []
+    total = online = offline = 0
+    worst_load_ms = 0.0
+    for group in display_manager.groups.values():
+        # Newest live browser per endpoint (there is normally one).
+        browser_by_ep = {}
+        for b in group.browsers.values():
+            browser_by_ep[b.endpoint_id] = b
+
+        endpoints_out = []
+        for ep in group.endpoints.values():
+            total += 1
+            b = browser_by_ep.get(ep.endpoint_id)
+            if b is None:
+                status = "offline"
+                offline += 1
+                heartbeat_age = None
+                load_ms = cycle_ms = None
+                uptime_s = None
+            else:
+                age = (now - b.last_heartbeat).total_seconds()
+                heartbeat_age = round(age, 1)
+                if age <= online_after:
+                    status = "online"; online += 1
+                elif age <= stale_after:
+                    status = "idle"; online += 1
+                else:
+                    status = "stale"; offline += 1
+                load_ms = b.last_load_ms
+                cycle_ms = b.last_cycle_ms
+                uptime_s = round((now - b.connected_at).total_seconds(), 1)
+                if load_ms:
+                    worst_load_ms = max(worst_load_ms, load_ms)
+            endpoints_out.append({
+                "endpoint_id": ep.endpoint_id,
+                "name": ep.name,
+                "status": status,
+                "current_image": ep.current_image,
+                "heartbeat_age_s": heartbeat_age,
+                "last_load_ms": load_ms,
+                "last_cycle_ms": cycle_ms,
+                "uptime_s": uptime_s,
+                "last_seen": ep.last_seen.isoformat() + "Z" if ep.last_seen else None,
+            })
+
+        groups_out.append({
+            "group_id": group.group_id,
+            "image_count": len(group.image_pool._all_images),
+            "browser_count": len(group.browsers),
+            "paused": group.paused,
+            "night_paused": group.night_paused,
+            "error": group.image_pool.error,
+            "endpoints": endpoints_out,
+        })
+
+    return JSONResponse(content={
+        "displays": total,
+        "online": online,
+        "offline": offline,
+        "worst_load_ms": round(worst_load_ms, 1) if worst_load_ms else None,
+        "groups": groups_out,
+    })
+
+
 @router.patch("/api/display/groups/{group_id}/endpoints/{endpoint_id}", responses={
     200: {"description": "Endpoint updated successfully"},
     404: {"description": "Group or endpoint not found"},

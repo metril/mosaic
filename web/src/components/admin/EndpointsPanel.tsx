@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import type { DisplayGroup, DisplayEndpoint } from '@/api/types'
 import { endpointNav, deleteEndpoint } from '@/api/admin'
 import { useCuration } from '@/hooks/useCuration'
+import { useNow } from '@/hooks/useNow'
 import { IconButton, PrevIcon, NextIcon, SlidersIcon, TrashIcon, HeartIcon, EyeOffIcon, HistoryIcon, useConfirm } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
@@ -29,7 +30,15 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
   })
 
   const eps = group.endpoints ?? []
-  const online = eps.filter((e) => e.last_seen).length
+  // "Online" = an endpoint with a connected browser whose heartbeat is fresh.
+  const now = useNow(5000)
+  const liveIds = new Set(
+    (group.browsers ?? [])
+      .filter((b) => b.last_heartbeat && (now - new Date(b.last_heartbeat).getTime()) / 1000 <= 60)
+      .map((b) => b.endpoint_id),
+  )
+  const online = eps.filter((e) => liveIds.has(e.endpoint_id)).length
+  const offline = eps.length - online
 
   return (
     <details className={styles.endpoints}>
@@ -37,7 +46,9 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
         Endpoints <span className={styles.tabCount}>{eps.length}</span>
         {eps.length > 0 && (
           <span className={styles.epSummaryMeta}>
-            {online} online · {eps.length - online} idle
+            <span style={{ color: online ? 'var(--color-success)' : undefined }}>{online} online</span>
+            {' · '}
+            <span style={{ color: offline ? 'var(--color-danger)' : undefined }}>{offline} offline</span>
           </span>
         )}
       </summary>

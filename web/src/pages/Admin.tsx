@@ -5,16 +5,17 @@ import { listGroups } from '@/api/admin'
 import { listPulls } from '@/api/immich'
 import { listKeys } from '@/api/keys'
 import { cn } from '@/lib/cn'
-import { GridIcon, CloudIcon, HeartIcon, KeyIcon, ServerIcon, SettingsIcon } from '@/components/ui'
+import { GridIcon, CloudIcon, HeartIcon, KeyIcon, ServerIcon, SettingsIcon, ActivityIcon } from '@/components/ui'
 import { GroupsTab } from '@/components/admin/GroupsTab'
 import { ImmichTab } from '@/components/admin/ImmichTab'
 import { CurationTab } from '@/components/admin/CurationTab'
 import { KeysTab } from '@/components/admin/KeysTab'
 import { SystemTab } from '@/components/admin/SystemTab'
 import { SettingsTab } from '@/components/admin/SettingsTab'
+import { HealthTab } from '@/components/admin/HealthTab'
 import styles from './Admin.module.css'
 
-type TabId = 'displays' | 'immich' | 'curation' | 'keys' | 'settings' | 'system'
+type TabId = 'displays' | 'immich' | 'curation' | 'keys' | 'health' | 'settings' | 'system'
 
 export default function Admin() {
   const wsStatus = useAdminWs()
@@ -30,6 +31,7 @@ export default function Admin() {
     { id: 'immich', label: 'Immich', icon: <CloudIcon size={16} />, count: pulls.data?.length },
     { id: 'curation', label: 'Curation', icon: <HeartIcon size={16} /> },
     { id: 'keys', label: 'API keys', icon: <KeyIcon size={16} />, count: keys.data?.length },
+    { id: 'health', label: 'Health', icon: <ActivityIcon size={16} /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon size={16} /> },
     { id: 'system', label: 'System', icon: <ServerIcon size={16} /> },
   ]
@@ -70,6 +72,7 @@ export default function Admin() {
       {tab === 'immich' && <ImmichTab />}
       {tab === 'curation' && <CurationTab />}
       {tab === 'keys' && <KeysTab />}
+      {tab === 'health' && <HealthTab />}
       {tab === 'settings' && <SettingsTab />}
       {tab === 'system' && <SystemTab />}
     </div>

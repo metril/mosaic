@@ -1,28 +1,7 @@
 import { useEffect, useState } from 'react'
 import { mountDisplay } from '@/lib/displayController'
+import { ensureOverlayCss } from '@/lib/overlayCss'
 import '@/styles/display.css'
-
-// Overlay theme CSS served by the backend (same files the original kiosk used).
-const OVERLAY_CSS = [
-  '/css/vars.css',
-  '/css/overlays.css',
-  '/css/themes/theme-fade.css',
-  '/css/themes/theme-solid.css',
-  '/css/themes/theme-bubble.css',
-  '/css/themes/theme-blur.css',
-]
-
-function ensureOverlayCss() {
-  for (const href of OVERLAY_CSS) {
-    if (!document.querySelector(`link[data-display-css="${href}"]`)) {
-      const link = document.createElement('link')
-      link.rel = 'stylesheet'
-      link.href = href
-      link.setAttribute('data-display-css', href)
-      document.head.appendChild(link)
-    }
-  }
-}
 
 function buildWsUrl(): string | null {
   const params = new URLSearchParams(window.location.search)

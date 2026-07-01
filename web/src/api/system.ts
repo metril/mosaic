@@ -1,5 +1,9 @@
 import { api } from './client'
-import type { Metrics, Health, AppSettings, HaEntity } from './types'
+import type { Metrics, Health, AppSettings, HaEntity, DisplayHealth } from './types'
+
+export function fetchDisplayHealth() {
+  return api.get<DisplayHealth>('/api/display/health')
+}
 
 export function fetchMetrics() {
   return api.get<Metrics>('/metrics')

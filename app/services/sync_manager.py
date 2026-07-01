@@ -312,6 +312,13 @@ class BrowserState:
     connected_at: datetime = field(default_factory=_utc_now)
     last_heartbeat: datetime = field(default_factory=_utc_now)
     evicted: bool = False  # Set by remove_browser; handler checks this to exit
+    # Health timing (surfaced in the admin health view). *_sent_at are transient
+    # markers set when the server dispatches PRELOAD/SWITCH; last_*_ms are the
+    # measured round-trips filled in when the browser acks.
+    preload_sent_at: Optional[datetime] = None
+    switch_sent_at: Optional[datetime] = None
+    last_load_ms: Optional[float] = None
+    last_cycle_ms: Optional[float] = None
 
 
 class ImagePool:
@@ -568,7 +575,13 @@ class DisplayGroup:
                 "endpoint_id": b.endpoint_id,
                 "status": b.status.value,
                 "current_image": endpoint.current_image if endpoint else None,
-                "connected_at": b.connected_at.isoformat() + "Z",
+                # isoformat() on these tz-aware values already ends in +00:00 —
+                # do NOT append "Z" (that yields "...+00:00Z", unparseable by JS).
+                "connected_at": b.connected_at.isoformat(),
+                # Health telemetry (admin health view)
+                "last_heartbeat": b.last_heartbeat.isoformat(),
+                "last_load_ms": b.last_load_ms,
+                "last_cycle_ms": b.last_cycle_ms,
                 # History info from endpoint
                 "history_count": len(endpoint.image_history) if endpoint else 0,
                 "forward_count": len(endpoint.forward_history) if endpoint else 0,
@@ -1259,10 +1272,20 @@ class DisplayManager:
 
             elif msg_type == "PRELOAD_READY":
                 browser.status = BrowserStatus.PRELOAD_READY
+                if browser.preload_sent_at:
+                    browser.last_load_ms = round(
+                        (_utc_now() - browser.preload_sent_at).total_seconds() * 1000, 1
+                    )
+                    browser.preload_sent_at = None
                 logger.debug(f"Browser {browser_id} preload ready")
 
             elif msg_type == "SWITCH_COMPLETE":
                 browser.status = BrowserStatus.READY
+                if browser.switch_sent_at:
+                    browser.last_cycle_ms = round(
+                        (_utc_now() - browser.switch_sent_at).total_seconds() * 1000, 1
+                    )
+                    browser.switch_sent_at = None
                 # Move next_image to current_image, push old to history (using endpoint)
                 endpoint = group.endpoints.get(browser.endpoint_id)
                 if endpoint and endpoint.next_image:
@@ -1667,6 +1690,8 @@ class DisplayManager:
                                     }),
                                     timeout=WEBSOCKET_SEND_TIMEOUT
                                 )
+                                # Mark for image-load latency (PRELOAD -> PRELOAD_READY).
+                                browser.preload_sent_at = _utc_now()
                             except asyncio.TimeoutError:
                                 logger.warning(f"Preload send timeout for {browser.browser_id}")
                                 preload_failed.append(browser.browser_id)
@@ -1701,6 +1726,11 @@ class DisplayManager:
                         "timestamp": switch_timestamp,
                         "cycle": group.current_cycle
                     })
+
+                    # Mark for cycle latency (SWITCH -> SWITCH_COMPLETE).
+                    switch_marked_at = _utc_now()
+                    for browser in list(group.browsers.values()):
+                        browser.switch_sent_at = switch_marked_at
 
                     # Trigger webhooks for image cycle
                     await self._trigger_webhooks(group, WebhookTrigger.IMAGE_CYCLE)

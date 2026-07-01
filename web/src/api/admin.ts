@@ -1,5 +1,18 @@
 import { api } from './client'
-import type { DisplayGroup, DisplayGroupSettings, DisplayEndpoint, EndpointHistory } from './types'
+import type {
+  DisplayGroup,
+  DisplayGroupSettings,
+  DisplayEndpoint,
+  EndpointHistory,
+  EndpointCaption,
+} from './types'
+
+/** Server-built caption for an endpoint's current image (admin display preview). */
+export function fetchEndpointCaption(groupId: string, endpointId: string) {
+  return api.get<EndpointCaption>(
+    `/api/display/groups/${encodeURIComponent(groupId)}/endpoints/${encodeURIComponent(endpointId)}/caption`,
+  )
+}
 
 /* ---- Groups -------------------------------------------------------------- */
 

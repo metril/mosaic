@@ -18,10 +18,12 @@ import {
   CopyIcon,
   TrashIcon,
   ExternalIcon,
+  ExpandIcon,
   HeartIcon,
   EyeOffIcon,
   HistoryIcon,
 } from '@/components/ui'
+import { DisplayPreviewModal } from './DisplayPreviewModal'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -41,6 +43,7 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
   const [confirm, confirmModal] = useConfirm()
   const [showHistory, setShowHistory] = useState(false)
   const [showShare, setShowShare] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
 
   const action = useMutation({
     mutationFn: (a: PlaybackAction) => groupAction(group.group_id, a),
@@ -92,6 +95,9 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
               </div>
             </div>
             <div className={styles.nowCurate}>
+              <IconButton label="Preview display" size="sm" onClick={() => setShowPreview(true)}>
+                <ExpandIcon size={15} />
+              </IconButton>
               <IconButton
                 label={favSet.has(current) ? 'Remove favorite' : 'Favorite'}
                 size="sm"
@@ -206,6 +212,17 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
       )}
 
       {showShare && <ShareDisplayModal group={group} onClose={() => setShowShare(false)} />}
+
+      {showPreview && (
+        <DisplayPreviewModal
+          groupId={group.group_id}
+          endpointId={shownEndpointId ?? historyEndpointId ?? ''}
+          endpointName={null}
+          currentImage={current}
+          settings={group.settings}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
     </Card>
   )
 }

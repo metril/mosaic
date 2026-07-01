@@ -30,6 +30,18 @@ export const HeartIcon = ({ filled, ...p }: Props & { filled?: boolean }) => (
   </Svg>
 )
 
+export const ActivityIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M3 12h4l3 8 4-16 3 8h4" />
+  </Svg>
+)
+
+export const ExpandIcon = (p: Props) => (
+  <Svg {...p}>
+    <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3" />
+  </Svg>
+)
+
 export const EyeOffIcon = (p: Props) => (
   <Svg {...p}>
     <path d="M10.6 6.2A9.6 9.6 0 0 1 12 6c5 0 9 4.5 9 6-.3 1-1.4 2.5-3 3.7M6 7.5C3.9 8.8 3 10.6 3 12c0 1.5 4 6 9 6 1.2 0 2.3-.2 3.3-.6M3 3l18 18M9.9 9.9a3 3 0 0 0 4.2 4.2" />
