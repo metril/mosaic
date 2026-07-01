@@ -144,27 +144,29 @@
   backdrop-filter: none;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.9);
 }
-/* Colour presets: tint the text and the accent bar. `default` keeps the
-   original neutral look. */
+/* Colour presets: colour BOTH the text and the accent bar so the choice is
+   clearly visible. `default` keeps the neutral off-white look. The text sits on
+   a dark backing (or carries a shadow in the fade theme), so these mid-tone
+   hues stay legible on any photo. */
 .display-root .announcement-overlay.announce--color-blue {
   --announce-accent: #60a5fa;
-  color: #dbeafe;
+  color: #93c5fd;
 }
 .display-root .announcement-overlay.announce--color-green {
   --announce-accent: #34c27e;
-  color: #dcfce7;
+  color: #6ee7b7;
 }
 .display-root .announcement-overlay.announce--color-amber {
   --announce-accent: #e0a23a;
-  color: #fef3c7;
+  color: #fcd34d;
 }
 .display-root .announcement-overlay.announce--color-red {
   --announce-accent: #ef5350;
-  color: #fee2e2;
+  color: #fca5a5;
 }
 .display-root .announcement-overlay.announce--color-pink {
   --announce-accent: #ec4899;
-  color: #fce7f3;
+  color: #f9a8d4;
 }
 /* Size presets drive the text scale (viewport-relative so it reads across the
    room on a TV). */
