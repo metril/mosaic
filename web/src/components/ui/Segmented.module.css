@@ -1,0 +1,39 @@
+/* Recessed track (value-holder tier) holding raised segments. */
+.track {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--color-input-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--r-sm);
+}
+
+.seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.35em 0.8em;
+  border: none;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--dur-1) var(--ease),
+    color var(--dur-1) var(--ease);
+}
+.seg:hover {
+  color: var(--color-text);
+}
+.segOn {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+.seg:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -1px;
+}

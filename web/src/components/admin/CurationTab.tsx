@@ -17,7 +17,7 @@ export function CurationTab() {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--s5)' }}>
       <section>
-        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <h3 className={styles.sectionTitleIcon}>
           <HeartIcon size={17} filled /> Favorites
           <span className={styles.tabCount}>{favorites.length}</span>
         </h3>
@@ -35,7 +35,7 @@ export function CurationTab() {
       </section>
 
       <section>
-        <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s3)', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <h3 className={styles.sectionTitleIcon}>
           <EyeOffIcon size={17} /> Hidden
           <span className={styles.tabCount}>{excluded.length}</span>
         </h3>

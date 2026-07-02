@@ -8,7 +8,7 @@ import {
   downloadConfigExport,
   importConfig,
 } from '@/api/system'
-import { Button, Card, Row, Loading, RefreshIcon, useConfirm, ToggleField, LoadError } from '@/components/ui'
+import { Button, Card, Row, Loading, RefreshIcon, useConfirm, Checkbox, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { LogsPanel } from './LogsPanel'
@@ -125,6 +125,11 @@ export function SystemTab() {
             Test connection
           </Button>
         </Row>
+        <Row label="API reference" hint="Interactive OpenAPI documentation served by this instance.">
+          <Button href="/docs" target="_blank" rel="noreferrer">
+            Open docs ↗
+          </Button>
+        </Row>
       </Card>
 
       <Card
@@ -148,7 +153,7 @@ export function SystemTab() {
           hint="Groups, Immich pulls, settings and curation as one JSON file. Secrets stay encrypted."
         >
           <div className={styles.rowCluster}>
-            <ToggleField checked={includeKeys} onChange={setIncludeKeys}>Include API keys</ToggleField>
+            <Checkbox checked={includeKeys} onChange={setIncludeKeys}>Include API keys</Checkbox>
             <Button loading={exporting} onClick={onExport}>
               Export
             </Button>
@@ -179,12 +184,6 @@ export function SystemTab() {
         <h3 className={styles.sectionTitle}>Logs</h3>
         <LogsPanel />
       </Card>
-
-      <div className={styles.tabFooter}>
-        <a href="/docs" target="_blank" rel="noreferrer">
-          API reference ↗
-        </a>
-      </div>
 
       {confirmModal}
     </div>

@@ -174,14 +174,14 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
         </div>
 
         {editing && (
-          <div className={styles.pickerItem} style={{ padding: 'var(--s2) 0' }}>
+          <div className={cn(styles.pickerItem, styles.pickerItemFlush)}>
             <ToggleField checked={enabled} onChange={setEnabled}>Enabled</ToggleField>
           </div>
         )}
 
         <div className={styles.fieldGroup}>
           <Label>Scopes</Label>
-          <div className={styles.pickerItem} style={{ padding: 'var(--s2) 0' }}>
+          <div className={cn(styles.pickerItem, styles.pickerItemFlush)}>
             <ToggleField checked={full} onChange={(v) => setScopes(v ? ['*'] : ['admin:display:monitor'])}>
               Full access (*)
             </ToggleField>

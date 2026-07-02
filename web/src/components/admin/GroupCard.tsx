@@ -197,6 +197,7 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
           label="Delete"
           size="sm"
           bordered
+          danger
           onClick={async () => {
             if (
               await confirm({

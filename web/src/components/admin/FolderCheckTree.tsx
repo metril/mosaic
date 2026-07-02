@@ -107,7 +107,7 @@ export function FolderCheckTree({ selected, onToggle }: Props) {
               <div
                 key={node.path}
                 className={cn(styles.row, checked && styles.rowChecked)}
-                style={{ paddingLeft: `calc(${depth} * 16px + 0.4em)` }}
+                style={{ paddingLeft: `calc(${depth} * 14px + 0.5em)` }}
               >
                 {expandable && !q ? (
                   <button

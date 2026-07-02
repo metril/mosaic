@@ -10,6 +10,8 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?: 'sm' | 'md'
   bordered?: boolean
   active?: boolean
+  /** Destructive action — danger tint at rest, danger fill on hover. */
+  danger?: boolean
   children: ReactNode
 }
 
@@ -18,6 +20,7 @@ export function IconButton({
   size = 'md',
   bordered,
   active,
+  danger,
   className,
   children,
   ...rest
@@ -33,6 +36,7 @@ export function IconButton({
           size === 'sm' && styles.sm,
           bordered && styles.bordered,
           active && styles.active,
+          danger && styles.danger,
           className,
         )}
         {...rest}

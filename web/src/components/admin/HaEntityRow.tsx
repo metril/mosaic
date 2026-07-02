@@ -30,7 +30,7 @@ export function HaEntityRow({ label, hint, domain, value, onChange, placeholder,
   // Fallback to free text when HA isn't configured / has no such entities.
   if (isError || entities.length === 0) {
     return (
-      <TextRow label={label} hint={hint ?? 'e.g. weather.home'} value={value} onChange={onChange} placeholder={placeholder} />
+      <TextRow label={label} hint={hint ?? 'e.g. weather.home'} value={value} onChange={onChange} placeholder={placeholder} stack />
     )
   }
 

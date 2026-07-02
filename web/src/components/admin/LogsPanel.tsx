@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchLogs, logsDownloadUrl } from '@/api/system'
-import { SearchInput, Button, DownloadIcon, ToggleField } from '@/components/ui'
+import { SearchInput, Button, DownloadIcon, ToggleField, Segmented } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import styles from './LogsPanel.module.css'
 import formStyles from '@/components/ui/Form.module.css'
@@ -14,7 +14,7 @@ function fmtTs(ts: number) {
 }
 
 export function LogsPanel() {
-  const [level, setLevel] = useState<string>('ALL')
+  const [level, setLevel] = useState<(typeof LEVELS)[number]>('ALL')
   const [q, setQ] = useState('')
   const [tail, setTail] = useState(true)
   const consoleRef = useRef<HTMLDivElement>(null)
@@ -34,27 +34,23 @@ export function LogsPanel() {
   return (
     <div>
       <div className={styles.controls}>
-        <div className={styles.chips} role="group" aria-label="Log level">
-          {LEVELS.map((l) => (
-            <button
-              key={l}
-              className={cn(styles.chip, level === l && styles.chipActive)}
-              onClick={() => setLevel(l)}
-            >
-              {LABEL[l]}
-            </button>
-          ))}
-        </div>
-        <div className={formStyles.controlMd}>
-          <SearchInput placeholder="Filter logs…" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
+        <Segmented
+          ariaLabel="Log level"
+          options={LEVELS.map((l) => ({ value: l, label: LABEL[l] }))}
+          value={level}
+          onChange={setLevel}
+        />
+        <SearchInput
+          className={formStyles.controlMd}
+          placeholder="Filter logs…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
         <ToggleField checked={tail} onChange={setTail}>Live tail</ToggleField>
         <div className={styles.spacer} />
-        <a href={logsDownloadUrl()} download style={{ textDecoration: 'none' }}>
-          <Button variant="secondary" size="sm">
-            <DownloadIcon size={15} /> Download
-          </Button>
-        </a>
+        <Button variant="secondary" size="sm" href={logsDownloadUrl()} download>
+          <DownloadIcon size={15} /> Download
+        </Button>
       </div>
 
       <div className={styles.console} ref={consoleRef}>

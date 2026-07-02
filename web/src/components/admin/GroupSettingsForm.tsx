@@ -426,12 +426,14 @@ export function GroupSettingsForm({ value, onChange }: Props) {
                   value={value.night_sleep_time}
                   onChange={(v) => set('night_sleep_time', v)}
                   placeholder="23:00"
+                  size="num"
                 />
                 <TextRow
                   label="Wake time"
                   value={value.night_wake_time}
                   onChange={(v) => set('night_wake_time', v)}
                   placeholder="07:00"
+                  size="num"
                 />
               </>
             ) : (

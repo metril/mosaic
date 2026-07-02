@@ -17,6 +17,7 @@
   background: var(--_bg);
   color: var(--_fg);
   cursor: pointer;
+  text-decoration: none; /* also rendered as <a href> */
   box-shadow: var(--shadow-sm);
   transition:
     background var(--dur-1) var(--ease),
@@ -69,7 +70,7 @@
 }
 .danger:hover {
   background: var(--color-danger);
-  color: #fff;
+  color: var(--color-on-accent);
   border-color: transparent;
 }
 

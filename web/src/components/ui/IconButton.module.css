@@ -16,7 +16,7 @@
     transform var(--dur-1) var(--ease);
 }
 .btn:hover {
-  background: var(--color-surface-hi);
+  background: var(--color-surface-raised);
   color: var(--color-text);
 }
 .btn:active {
@@ -32,12 +32,26 @@
   height: 30px;
 }
 
+/* Raised interactive tier — same recipe as the default Button, so bordered
+   icon buttons read as buttons instead of blending into the card. */
 .bordered {
-  border-color: var(--color-border);
-  background: var(--color-surface);
+  border-color: var(--color-border-hi);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
 }
 .bordered:hover {
-  border-color: var(--color-border-hi);
+  background: var(--color-surface-raised-hi);
+}
+
+/* Destructive action — reads dangerous before you commit to it. */
+.danger {
+  color: var(--color-danger);
+}
+.danger:hover {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }
 
 /* "on" / active state — accent tinted (favorite, theme) */

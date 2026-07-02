@@ -19,7 +19,7 @@ export default function App() {
         <Route
           path="/display"
           element={
-            <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#000' }} />}>
+            <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: 'var(--color-bg)' }} />}>
               <Display />
             </Suspense>
           }

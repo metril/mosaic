@@ -117,7 +117,7 @@ const GroupHealth = memo(function GroupHealth({
 }) {
   return (
     <div style={{ marginBottom: 'var(--s5)' }}>
-      <h3 style={{ fontSize: 'var(--text-md)', marginBottom: 'var(--s2)' }}>
+      <h3 className={styles.sectionTitle}>
         {group.group_id}
         <span className={styles.scopeNote} style={{ marginLeft: 'var(--s3)' }}>
           {group.image_count} photos{group.paused ? ' · paused' : ''}{group.night_paused ? ' · night' : ''}

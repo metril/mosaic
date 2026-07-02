@@ -39,6 +39,7 @@
   --s9: 6rem;
 
   /* ---- Radii --------------------------------------------------------------- */
+  --r-xs: 4px;
   --r-sm: 6px;
   --r: 9px;
   --r-lg: 14px;
@@ -71,14 +72,18 @@
   --color-surface: #16181c;
   --color-surface-hi: #1e2127;
   --color-surface-press: #101216;
-  /* Figure/ground for controls: buttons sit *above* the card surface,
-     inputs sit *below* it. Keeps clickable things visually distinct. */
-  --color-surface-raised: #2a2f37;
-  --color-surface-raised-hi: #343a44;
-  --color-input-bg: #101216;
+  /* Three control tiers, from the card surface: recessed value-holders
+     (inputs, checkboxes, segmented tracks) sit BELOW it, raised interactive
+     elements (buttons, chips) sit clearly ABOVE it. Raised fill ≥1.7:1 and
+     interactive border ≥2.2:1 against the card — measured, not eyeballed. */
+  --color-surface-raised: #3a414d;
+  --color-surface-raised-hi: #464e5c;
+  --color-input-bg: #0a0b0e;
   --color-border: #26292f;
-  --color-border-hi: #353941;
+  --color-border-hi: #4d5563;
   --color-line: rgba(255, 255, 255, 0.06);
+  --scrim: rgba(0, 0, 0, 0.66);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%239aa0a8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   --color-text: #e8eaed;
   --color-text-muted: #9aa0a8;
@@ -108,17 +113,21 @@
 [data-theme='light'] {
   color-scheme: light;
 
-  --color-bg: #ffffff;
-  --color-bg-deep: #f3f4f6;
+  /* Tinted canvas so white cards separate from the page; inputs recess into
+     a cool grey, buttons raise into a clearly darker grey. */
+  --color-bg: #eef0f4;
+  --color-bg-deep: #e5e8ee;
   --color-surface: #ffffff;
   --color-surface-hi: #f6f7f9;
   --color-surface-press: #eef0f3;
-  --color-surface-raised: #eef0f3;
-  --color-surface-raised-hi: #e2e5ea;
-  --color-input-bg: #ffffff;
+  --color-surface-raised: #dfe3e9;
+  --color-surface-raised-hi: #d3d8e0;
+  --color-input-bg: #f3f5f8;
   --color-border: #e4e6ea;
-  --color-border-hi: #d3d6dc;
+  --color-border-hi: #adb6c3;
   --color-line: rgba(17, 19, 24, 0.08);
+  --scrim: rgba(15, 18, 24, 0.45);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%235b616b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 
   --color-text: #16181c;
   --color-text-muted: #5b616b;

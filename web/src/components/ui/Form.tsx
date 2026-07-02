@@ -159,6 +159,12 @@ export function NumberRow({
   )
 }
 
+const TEXT_SIZE_CLASS = {
+  num: 'controlNum',
+  sm: 'controlSm',
+  md: 'controlMd',
+} as const
+
 export function TextRow({
   label,
   hint,
@@ -166,6 +172,7 @@ export function TextRow({
   onChange,
   placeholder,
   stack,
+  size = 'md',
 }: {
   label: string
   hint?: string
@@ -173,13 +180,16 @@ export function TextRow({
   onChange: (v: string) => void
   placeholder?: string
   stack?: boolean
+  /** Width on the shared control scale; pick by expected value length
+   *  (e.g. 'num' for "24h"/"23:00" so it aligns with number fields). */
+  size?: keyof typeof TEXT_SIZE_CLASS
 }) {
   const input = (
     <Input
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
-      className={stack ? undefined : styles.controlMd}
+      className={stack ? undefined : styles[TEXT_SIZE_CLASS[size]]}
     />
   )
   return (

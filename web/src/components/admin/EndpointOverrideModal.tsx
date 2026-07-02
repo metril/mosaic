@@ -4,7 +4,7 @@ import type { DisplayEndpoint, DisplayGroupSettings } from '@/api/types'
 import { ENDPOINT_OVERRIDE_KEYS } from '@/api/types'
 import { updateEndpoint } from '@/api/admin'
 import { GROUPS_KEY } from '@/hooks/useAdminWs'
-import { Modal, Button, Select, Toggle, Input } from '@/components/ui'
+import { Modal, Button, Select, Toggle, ToggleField, Input } from '@/components/ui'
 import { POSITION_OPTS, CAPTION_FIELD_OPTS } from '@/lib/settingsDefaults'
 import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toast'
@@ -132,13 +132,13 @@ export function EndpointOverrideModal({ groupId, endpoint, groupSettings, onClos
     if (key === 'caption_fields') {
       const arr = (val as string[]) ?? []
       return (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div className={cn(formStyles.chips, styles.chipsEnd)}>
           {CAPTION_FIELD_OPTS.map((o) => (
             <button
               type="button"
               key={o.value}
-              className={cn(styles.statusPill, arr.includes(o.value) ? styles.stRunning : styles.stIdle)}
-              style={{ cursor: 'pointer', border: 'none' }}
+              aria-pressed={arr.includes(o.value)}
+              className={cn(formStyles.chip, arr.includes(o.value) && formStyles.chipOn)}
               onClick={() =>
                 setKey(
                   key,
@@ -167,7 +167,7 @@ export function EndpointOverrideModal({ groupId, endpoint, groupSettings, onClos
           <Button variant="ghost" onClick={() => setDraft({})}>
             Reset all
           </Button>
-          <div style={{ display: 'flex', gap: 'var(--s3)' }}>
+          <div className={styles.rowCluster}>
             <Button variant="ghost" onClick={onClose}>
               Cancel
             </Button>
@@ -181,10 +181,11 @@ export function EndpointOverrideModal({ groupId, endpoint, groupSettings, onClos
       {ENDPOINT_OVERRIDE_KEYS.map((key) => {
         const on = key in draft
         return (
-          <div key={key} className={styles.endpointRow} style={{ borderTop: '1px solid var(--color-line)' }}>
-            <Toggle checked={on} onChange={(v) => enable(key, v)} label={`Override ${LABELS[key]}`} />
-            <div style={{ flex: 1 }}>
-              <div className={styles.epName}>{LABELS[key]}</div>
+          <div key={key} className={styles.endpointRow}>
+            <div className={styles.grow}>
+              <ToggleField checked={on} onChange={(v) => enable(key, v)}>
+                <span className={styles.epName}>{LABELS[key]}</span>
+              </ToggleField>
               {!on && <div className={styles.epMeta}>Inherits group default</div>}
             </div>
             {on && control(key)}

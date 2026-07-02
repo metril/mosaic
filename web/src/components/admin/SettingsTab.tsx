@@ -164,6 +164,7 @@ export function SettingsTab() {
           value={form.endpoint_cleanup}
           onChange={(v) => set('endpoint_cleanup', v)}
           placeholder="24h"
+          size="num"
         />
         <NumberRow
           label="Max browsers / group"

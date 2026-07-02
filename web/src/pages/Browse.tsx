@@ -4,7 +4,7 @@ import { fetchFolders, fetchFiles } from '@/api/browse'
 import type { FileFilter, FileSort, SortOrder } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
 import { cn } from '@/lib/cn'
-import { Loading, EmptyState, SearchInput, Select, Button, Spinner, ImageIcon, HeartIcon, EyeOffIcon } from '@/components/ui'
+import { Loading, EmptyState, SearchInput, Select, Button, Spinner, Segmented, ImageIcon, HeartIcon, EyeOffIcon } from '@/components/ui'
 import { FolderTree } from '@/components/browse/FolderTree'
 import { VirtualGrid } from '@/components/browse/VirtualGrid'
 import { Lightbox } from '@/components/browse/Lightbox'
@@ -150,26 +150,16 @@ export default function Browse() {
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <div className={styles.filterChips} role="group" aria-label="Show">
-            <button
-              className={cn(styles.chip, filter === 'all' && styles.chipActive)}
-              onClick={() => setFilter('all')}
-            >
-              All
-            </button>
-            <button
-              className={cn(styles.chip, filter === 'favorites' && styles.chipActive, styles.fav)}
-              onClick={() => setFilter('favorites')}
-            >
-              <HeartIcon size={13} filled={filter === 'favorites'} /> Favorites
-            </button>
-            <button
-              className={cn(styles.chip, filter === 'hidden' && styles.chipActive)}
-              onClick={() => setFilter('hidden')}
-            >
-              <EyeOffIcon size={13} /> Hidden
-            </button>
-          </div>
+          <Segmented
+            ariaLabel="Show"
+            options={[
+              { value: 'all', label: 'All' },
+              { value: 'favorites', label: <><HeartIcon size={13} filled={filter === 'favorites'} /> Favorites</> },
+              { value: 'hidden', label: <><EyeOffIcon size={13} /> Hidden</> },
+            ]}
+            value={filter}
+            onChange={setFilter}
+          />
           <Select
             aria-label="Sort by"
             className={styles.sortSelect}

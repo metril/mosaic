@@ -151,6 +151,7 @@ function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
         <IconButton
           label="Delete"
           bordered
+          danger
           onClick={async () => {
             if (
               await confirm({

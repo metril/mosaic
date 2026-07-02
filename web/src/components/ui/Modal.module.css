@@ -11,7 +11,7 @@
      which makes typing in any modal (worst: the announcement modal with its
      live preview) drop to ~27fps. A darker solid scrim gives the same
      separation for a fraction of the cost. */
-  background: rgba(0, 0, 0, 0.66);
+  background: var(--scrim);
   animation: fade-in var(--dur-2) var(--ease);
 }
 

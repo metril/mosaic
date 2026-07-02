@@ -81,10 +81,9 @@ export function Lightbox({
             <HeartIcon size={19} filled={favorite} />
           </button>
           <button
-            className={styles.lbBtn}
+            className={cn(styles.lbBtn, hidden && styles.lbBtnOn)}
             onClick={() => onToggleHide(file.path)}
             aria-label={hidden ? 'Unhide' : 'Hide from slideshows'}
-            style={hidden ? { color: 'var(--accent-hi)' } : undefined}
           >
             <EyeOffIcon size={19} />
           </button>

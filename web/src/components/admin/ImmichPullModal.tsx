@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ImmichPull } from '@/api/types'
 import { savePull, testConnection, listAlbums, listPeople, type PullSave } from '@/api/immich'
-import { Modal, Button, Input, SearchInput, Select, Label, CheckIcon, FieldError, ToggleField, Checkbox, InfoTip } from '@/components/ui'
+import { Modal, Button, Input, SearchInput, Select, Label, FieldError, ToggleField, Checkbox, InfoTip } from '@/components/ui'
 import formStyles from '@/components/ui/Form.module.css'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
@@ -277,9 +277,8 @@ export function ImmichPullModal({ pull, onClose }: Props) {
 
 function ToggleLine({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className={cn(styles.pickerItem)} style={{ padding: 'var(--s2) 0' }}>
+    <div className={cn(styles.pickerItem, styles.pickerItemFlush)}>
       <ToggleField checked={value} onChange={onChange}>{label}</ToggleField>
-      {value && <CheckIcon size={14} style={{ marginLeft: 'auto', color: 'var(--color-success)' }} />}
     </div>
   )
 }

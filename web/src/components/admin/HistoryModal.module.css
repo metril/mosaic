@@ -43,34 +43,6 @@
   margin-top: 1px;
 }
 
-.selector {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: var(--s4);
-  padding: 3px;
-  background: var(--color-surface-press);
-  border: 1px solid var(--color-border);
-  border-radius: var(--r-sm);
-}
-.selBtn {
-  padding: 0.35em 0.8em;
-  border: none;
-  background: transparent;
-  color: var(--color-text-muted);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  border-radius: calc(var(--r-sm) - 2px);
-  cursor: pointer;
-}
-.selBtn:hover {
-  color: var(--color-text);
-}
-.selBtnActive {
-  background: var(--color-surface-hi);
-  color: var(--color-text);
-  box-shadow: var(--shadow-sm);
-}
 
 .grid {
   display: grid;

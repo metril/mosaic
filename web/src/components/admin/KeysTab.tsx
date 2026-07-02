@@ -117,6 +117,7 @@ export function KeysTab() {
                 <IconButton
                   label="Revoke"
                   bordered
+                  danger
                   onClick={async () => {
                     if (
                       await confirm({

@@ -79,9 +79,9 @@
 .tabCount {
   font-size: 11px;
   font-weight: 700;
-  padding: 1px 7px;
+  padding: 2px 8px;
   border-radius: var(--r-pill);
-  background: var(--color-surface-hi);
+  background: var(--color-surface-raised);
   color: var(--color-text-muted);
 }
 
@@ -123,7 +123,7 @@
   font-weight: 700;
   padding: 2px 8px;
   border-radius: var(--r-pill);
-  background: var(--color-surface-hi);
+  background: var(--color-surface-raised);
   color: var(--color-text-muted);
 }
 .badgeLive {
@@ -237,7 +237,7 @@
   margin-left: auto;
   font-weight: 500;
   font-size: var(--text-xs);
-  color: var(--color-text-subtle, var(--color-text-muted));
+  color: var(--color-text-muted);
 }
 .endpointRow {
   display: flex;
@@ -319,7 +319,7 @@
 .statusPill {
   font-size: 11px;
   font-weight: 700;
-  padding: 2px 9px;
+  padding: 2px 8px;
   border-radius: var(--r-pill);
   text-transform: capitalize;
 }
@@ -336,7 +336,7 @@
   color: var(--color-danger);
 }
 .stIdle {
-  background: var(--color-surface-hi);
+  background: var(--color-surface-raised);
   color: var(--color-text-muted);
 }
 
@@ -375,6 +375,14 @@
 }
 .pickerItem:hover {
   background: var(--color-surface-hi);
+}
+/* pickerItem used as a bare toggle line outside a picker list. */
+.pickerItemFlush {
+  padding: var(--s2) 0;
+}
+/* Right-aligned chip cluster (endpoint override rows). */
+.chipsEnd {
+  justify-content: flex-end;
 }
 .pickerItem input {
   accent-color: var(--accent);
@@ -462,25 +470,18 @@
   }
 }
 
-/* Muted meta links at the very bottom of a tab (e.g. API reference). */
-.tabFooter {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--s3);
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
-}
-.tabFooter a {
-  color: inherit;
-  text-decoration: none;
-}
-.tabFooter a:hover {
-  color: var(--color-text);
-  text-decoration: underline;
-}
 
 /* Section heading inside a System-tab card. */
 .sectionTitle {
+  font-size: var(--text-md);
+  font-weight: 600;
+  margin-bottom: var(--s3);
+}
+/* Section heading with a leading icon (Curation columns). */
+.sectionTitleIcon {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
   font-size: var(--text-md);
   font-weight: 600;
   margin-bottom: var(--s3);
@@ -590,5 +591,5 @@
 /* Config-import drop target highlight */
 .dropActive {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent-soft, rgba(80, 130, 255, 0.25));
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }

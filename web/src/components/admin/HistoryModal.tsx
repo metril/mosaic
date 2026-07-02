@@ -6,7 +6,7 @@ import { thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
 import { GROUPS_KEY, useGroups } from '@/hooks/useAdminWs'
 import { useNow, secondsUntil } from '@/hooks/useNow'
-import { Modal, IconButton, Button, Loading, EmptyState, HeartIcon, EyeOffIcon, HistoryIcon, PlayIcon, PauseIcon } from '@/components/ui'
+import { Modal, IconButton, Button, Loading, EmptyState, HeartIcon, EyeOffIcon, HistoryIcon, PlayIcon, PauseIcon, Segmented } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -205,17 +205,12 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
       </div>
 
       {endpoints.length > 1 && (
-        <div className={styles.selector} role="group" aria-label="Display">
-          {endpoints.map((e) => (
-            <button
-              key={e.endpoint_id}
-              className={cn(styles.selBtn, e.endpoint_id === ep?.endpoint_id && styles.selBtnActive)}
-              onClick={() => setEpId(e.endpoint_id)}
-            >
-              {e.name || e.endpoint_id}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          ariaLabel="Display"
+          options={endpoints.map((e) => ({ value: e.endpoint_id, label: e.name || e.endpoint_id }))}
+          value={ep?.endpoint_id ?? ''}
+          onChange={setEpId}
+        />
       )}
 
       {isPending ? (

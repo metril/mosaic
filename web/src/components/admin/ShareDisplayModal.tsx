@@ -4,7 +4,7 @@ import type { ApiKey, DisplayGroup } from '@/api/types'
 import { listKeys, revealKey } from '@/api/keys'
 import { useGroups } from '@/hooks/useAdminWs'
 import { authorizesDisplay } from '@/lib/scopeAccess'
-import { Modal, Button, Label, Select, Toggle, CopyIcon, CheckIcon, ExternalIcon, EmptyState, KeyIcon } from '@/components/ui'
+import { Modal, Button, Label, Select, Checkbox, CopyIcon, CheckIcon, ExternalIcon, EmptyState, KeyIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { copyText } from '@/lib/clipboard'
 import styles from '@/pages/Admin.module.css'
@@ -123,10 +123,9 @@ function GroupFirst({ group, onClose }: { group: DisplayGroup; onClose: () => vo
               ))}
           </Select>
           {others.length > 0 && (
-            <label className={styles.shareToggle}>
-              <Toggle checked={showAll} onChange={setShowAll} label="Show keys without access" />
-              <span>Show keys that don’t grant access</span>
-            </label>
+            <div className={styles.shareToggle}>
+              <Checkbox checked={showAll} onChange={setShowAll}>Show keys that don’t grant access</Checkbox>
+            </div>
           )}
           {effectiveKeyId !== NO_KEY && !secret && (
             <div className={styles.shareWarn}>Could not load this key’s secret.</div>
@@ -236,7 +235,7 @@ function UrlBlock({ url }: { url: string }) {
         >
           {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />} {copied ? 'Copied' : 'Copy link'}
         </Button>
-        <Button variant="ghost" onClick={() => window.open(url, '_blank', 'noopener')}>
+        <Button variant="ghost" href={url} target="_blank" rel="noopener">
           <ExternalIcon size={15} /> Open
         </Button>
       </div>
