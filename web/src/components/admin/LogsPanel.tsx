@@ -4,6 +4,7 @@ import { fetchLogs, logsDownloadUrl } from '@/api/system'
 import { SearchInput, Button, DownloadIcon, ToggleField } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import styles from './LogsPanel.module.css'
+import formStyles from '@/components/ui/Form.module.css'
 
 const LEVELS = ['ALL', 'INFO', 'WARNING', 'ERROR'] as const
 const LABEL: Record<string, string> = { ALL: 'All', INFO: 'Info', WARNING: 'Warn', ERROR: 'Error' }
@@ -44,7 +45,7 @@ export function LogsPanel() {
             </button>
           ))}
         </div>
-        <div style={{ width: 220 }}>
+        <div className={formStyles.controlMd}>
           <SearchInput placeholder="Filter logs…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
         <ToggleField checked={tail} onChange={setTail}>Live tail</ToggleField>

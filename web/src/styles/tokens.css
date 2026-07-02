@@ -55,6 +55,10 @@
   /* ---- Layout -------------------------------------------------------------- */
   --nav-h: 56px;
   --container: 1320px;
+
+  /* ---- Controls -------------------------------------------------------------
+     One height for inputs, selects and buttons so mixed rows always align. */
+  --control-h: 38px;
 }
 
 /* ---- Dark theme (default) -------------------------------------------------- */
@@ -67,6 +71,11 @@
   --color-surface: #16181c;
   --color-surface-hi: #1e2127;
   --color-surface-press: #101216;
+  /* Figure/ground for controls: buttons sit *above* the card surface,
+     inputs sit *below* it. Keeps clickable things visually distinct. */
+  --color-surface-raised: #2a2f37;
+  --color-surface-raised-hi: #343a44;
+  --color-input-bg: #101216;
   --color-border: #26292f;
   --color-border-hi: #353941;
   --color-line: rgba(255, 255, 255, 0.06);
@@ -104,6 +113,9 @@
   --color-surface: #ffffff;
   --color-surface-hi: #f6f7f9;
   --color-surface-press: #eef0f3;
+  --color-surface-raised: #eef0f3;
+  --color-surface-raised-hi: #e2e5ea;
+  --color-input-bg: #ffffff;
   --color-border: #e4e6ea;
   --color-border-hi: #d3d6dc;
   --color-line: rgba(17, 19, 24, 0.08);

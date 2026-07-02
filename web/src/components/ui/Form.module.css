@@ -88,17 +88,25 @@
   width: 100%;
 }
 
-.controlSm {
-  width: 130px;
+/* The two control widths for right-aligned Row controls: numbers and
+   text/selects. One scale everywhere so field right edges line up. */
+.controlNum {
+  width: 110px;
+}
+.controlMd {
+  width: 220px;
 }
 
-/* number + unit suffix */
+/* number + unit suffix; the unit slot is always rendered (empty when the row
+   has no unit) so number inputs right-align across rows. */
 .numUnit {
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
 }
 .unit {
+  display: inline-block;
+  width: 26px;
   font-size: var(--text-xs);
   color: var(--color-text-faint);
   white-space: nowrap;

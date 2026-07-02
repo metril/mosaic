@@ -57,6 +57,18 @@ export function Row({
 
 /* ---- Bound control helpers ------------------------------------------------ */
 
+/** Right-aligned control with a reserved unit gutter. The gutter is rendered
+ *  even when empty so control right edges align across number/text/select
+ *  rows instead of being ragged. */
+function UnitSlot({ unit, children }: { unit?: string; children: ReactNode }) {
+  return (
+    <span className={styles.numUnit}>
+      {children}
+      <span className={styles.unit}>{unit}</span>
+    </span>
+  )
+}
+
 export function ToggleRow({
   label,
   hint,
@@ -90,17 +102,19 @@ export function SelectRow<T extends string>({
 }) {
   return (
     <Row label={label} hint={hint}>
-      <Select
-        className={styles.controlSm}
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </Select>
+      <UnitSlot>
+        <Select
+          className={styles.controlMd}
+          value={value}
+          onChange={(e) => onChange(e.target.value as T)}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </UnitSlot>
     </Row>
   )
 }
@@ -128,10 +142,10 @@ export function NumberRow({
 }) {
   return (
     <Row label={label} hint={hint}>
-      <span className={styles.numUnit}>
+      <UnitSlot unit={unit}>
         <Input
           type="number"
-          style={{ width: 90 }}
+          className={styles.controlNum}
           value={value ?? ''}
           min={min}
           max={max}
@@ -139,8 +153,7 @@ export function NumberRow({
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
         />
-        {unit && <span className={styles.unit}>{unit}</span>}
-      </span>
+      </UnitSlot>
     </Row>
   )
 }
@@ -160,14 +173,17 @@ export function TextRow({
   placeholder?: string
   stack?: boolean
 }) {
+  const input = (
+    <Input
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className={stack ? undefined : styles.controlMd}
+    />
+  )
   return (
     <Row label={label} hint={hint} stack={stack}>
-      <Input
-        value={value}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        style={stack ? undefined : { width: 200 }}
-      />
+      {stack ? input : <UnitSlot>{input}</UnitSlot>}
     </Row>
   )
 }

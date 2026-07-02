@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import styles from '@/pages/Admin.module.css'
+import formStyles from '@/components/ui/Form.module.css'
 
 type Key = (typeof ENDPOINT_OVERRIDE_KEYS)[number]
 
@@ -103,7 +104,7 @@ export function EndpointOverrideModal({ groupId, endpoint, groupSettings, onClos
     if (SELECTS[key]) {
       return (
         <Select
-          style={{ width: 170 }}
+          className={formStyles.controlMd}
           value={String(val ?? '')}
           onChange={(e) => setKey(key, e.target.value)}
         >
@@ -122,7 +123,7 @@ export function EndpointOverrideModal({ groupId, endpoint, groupSettings, onClos
       return (
         <Input
           type="number"
-          style={{ width: 110 }}
+          className={formStyles.controlNum}
           value={val === undefined ? '' : Number(val)}
           onChange={(e) => setKey(key, e.target.value === '' ? 0 : Number(e.target.value))}
         />

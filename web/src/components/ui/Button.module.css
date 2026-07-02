@@ -1,22 +1,23 @@
 .btn {
-  --_bg: var(--color-surface-hi);
+  --_bg: var(--color-surface-raised);
   --_fg: var(--color-text);
-  --_bd: var(--color-border);
+  --_bd: var(--color-border-hi);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5em;
-  font-weight: 550;
+  font-weight: 600;
   font-size: var(--text-sm);
   line-height: 1;
   white-space: nowrap;
   padding: 0 var(--s4);
-  height: 38px;
+  height: var(--control-h);
   border-radius: var(--r-sm);
   border: 1px solid var(--_bd);
   background: var(--_bg);
   color: var(--_fg);
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
   transition:
     background var(--dur-1) var(--ease),
     border-color var(--dur-1) var(--ease),
@@ -26,7 +27,7 @@
 }
 .btn:hover {
   border-color: var(--color-border-hi);
-  background: var(--color-surface);
+  background: var(--color-surface-raised-hi);
 }
 .btn:active {
   transform: translateY(1px);
@@ -53,9 +54,10 @@
   --_bg: transparent;
   --_bd: transparent;
   color: var(--color-text-muted);
+  box-shadow: none;
 }
 .ghost:hover {
-  background: var(--color-surface-hi);
+  background: var(--color-surface-raised);
   color: var(--color-text);
   border-color: transparent;
 }
@@ -77,6 +79,7 @@
   color: var(--accent);
   height: auto;
   padding: 0;
+  box-shadow: none;
 }
 .link:hover {
   background: transparent;

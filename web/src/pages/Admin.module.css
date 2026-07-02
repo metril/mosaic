@@ -414,6 +414,9 @@
   align-items: center;
   gap: var(--s3);
 }
+.grow {
+  flex: 1;
+}
 
 /* Fieldset that dims dependent rows while their feature toggle is off. */
 .gatedFields {

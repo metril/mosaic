@@ -85,7 +85,7 @@ export function SettingsTab() {
             <div className={styles.rowCluster}>
               <Input
                 type="password"
-                style={{ flex: 1 }}
+                className={styles.grow}
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
                 placeholder={form.has_ha_token ? '•••••••• (unchanged)' : 'paste long-lived access token'}
