@@ -516,3 +516,41 @@
     padding: var(--s3) var(--s3);
   }
 }
+
+/* ---- Bulk selection -------------------------------------------------------- */
+.cardSelected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.selDot {
+  position: absolute;
+  top: var(--s2);
+  left: var(--s2);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  pointer-events: none;
+}
+.selDotOn {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.bulkBar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--r-sm);
+  background: var(--color-surface);
+  font-size: var(--text-sm);
+}
+.bulkCount {
+  font-weight: 600;
+}

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ImmichPull } from '@/api/types'
 import { savePull, testConnection, listAlbums, listPeople, type PullSave } from '@/api/immich'
-import { Modal, Button, Input, Select, Label, CheckIcon, FieldError, ToggleField, Checkbox } from '@/components/ui'
+import { Modal, Button, Input, SearchInput, Select, Label, CheckIcon, FieldError, ToggleField, Checkbox } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -164,35 +164,24 @@ export function ImmichPullModal({ pull, onClose }: Props) {
           ) : albums.isLoading ? (
             <div className={styles.scopeNote}>Loading albums…</div>
           ) : (
-            <div className={styles.pickerList}>
-              {(albums.data ?? []).map((a) => (
-                <div key={a.id} className={styles.pickerItem}>
-                  <Checkbox
-                    checked={(form.album_ids ?? []).includes(a.id)}
-                    onChange={() => toggleId('album_ids', a.id)}
-                  >
-                    {a.name}
-                  </Checkbox>
-                  <span className={styles.pickerCount}>{a.asset_count}</span>
-                </div>
-              ))}
-            </div>
+            <PickerList
+              items={(albums.data ?? []).map((a) => ({ id: a.id, label: a.name, count: a.asset_count }))}
+              selected={form.album_ids ?? []}
+              onToggle={(id) => toggleId('album_ids', id)}
+              onSetAll={(ids) => set('album_ids', ids)}
+              searchPlaceholder="Filter albums…"
+            />
           )}
           {loadDirectory && people.data && people.data.length > 0 && (
             <>
               <Label>People ({(form.person_ids ?? []).length} selected)</Label>
-              <div className={styles.pickerList}>
-                {people.data.map((p) => (
-                  <div key={p.id} className={styles.pickerItem}>
-                    <Checkbox
-                      checked={(form.person_ids ?? []).includes(p.id)}
-                      onChange={() => toggleId('person_ids', p.id)}
-                    >
-                      {p.name || '(unnamed)'}
-                    </Checkbox>
-                  </div>
-                ))}
-              </div>
+              <PickerList
+                items={people.data.map((p) => ({ id: p.id, label: p.name || '(unnamed)' }))}
+                selected={form.person_ids ?? []}
+                onToggle={(id) => toggleId('person_ids', id)}
+                onSetAll={(ids) => set('person_ids', ids)}
+                searchPlaceholder="Filter people…"
+              />
             </>
           )}
 
@@ -262,6 +251,62 @@ function ToggleLine({ label, value, onChange }: { label: string; value: boolean;
     <div className={cn(styles.pickerItem)} style={{ padding: 'var(--s2) 0' }}>
       <ToggleField checked={value} onChange={onChange}>{label}</ToggleField>
       {value && <CheckIcon size={14} style={{ marginLeft: 'auto', color: 'var(--color-success)' }} />}
+    </div>
+  )
+}
+
+/** Searchable multi-select list with select-all/clear — large Immich servers
+ *  have hundreds of albums/people, so a raw checkbox list doesn't scale. */
+function PickerList({
+  items,
+  selected,
+  onToggle,
+  onSetAll,
+  searchPlaceholder,
+}: {
+  items: { id: string; label: string; count?: number }[]
+  selected: string[]
+  onToggle: (id: string) => void
+  onSetAll: (ids: string[]) => void
+  searchPlaceholder: string
+}) {
+  const [q, setQ] = useState('')
+  const visible = q
+    ? items.filter((i) => i.label.toLowerCase().includes(q.toLowerCase()))
+    : items
+  const visibleIds = visible.map((i) => i.id)
+  const allVisibleSelected = visible.length > 0 && visibleIds.every((id) => selected.includes(id))
+  return (
+    <div>
+      {items.length > 8 && (
+        <div style={{ display: 'flex', gap: 'var(--s2)', marginBottom: 'var(--s2)' }}>
+          <SearchInput placeholder={searchPlaceholder} value={q} onChange={(e) => setQ(e.target.value)} />
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              onSetAll(
+                allVisibleSelected
+                  ? selected.filter((id) => !visibleIds.includes(id))
+                  : [...new Set([...selected, ...visibleIds])],
+              )
+            }
+          >
+            {allVisibleSelected ? 'Clear' : 'Select all'}
+          </Button>
+        </div>
+      )}
+      <div className={styles.pickerList}>
+        {visible.length === 0 && <div className={styles.scopeNote}>No matches.</div>}
+        {visible.map((item) => (
+          <div key={item.id} className={styles.pickerItem}>
+            <Checkbox checked={selected.includes(item.id)} onChange={() => onToggle(item.id)}>
+              {item.label}
+            </Checkbox>
+            {item.count !== undefined && <span className={styles.pickerCount}>{item.count}</span>}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

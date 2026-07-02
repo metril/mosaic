@@ -7,21 +7,35 @@ export function fetchFolders() {
 }
 
 export type FileFilter = 'all' | 'favorites' | 'hidden'
+export type FileSort = 'name' | 'date' | 'size'
+export type SortOrder = 'asc' | 'desc'
 
 export interface FilesQuery {
   folder?: string
   q?: string
   filter?: FileFilter
+  sort?: FileSort
+  order?: SortOrder
   offset?: number
   limit?: number
 }
 
-/** A page of image files, scoped/filtered/paginated server-side. */
-export function fetchFiles({ folder = '', q = '', filter = 'all', offset = 0, limit = 200 }: FilesQuery) {
+/** A page of image files, scoped/filtered/sorted/paginated server-side. */
+export function fetchFiles({
+  folder = '',
+  q = '',
+  filter = 'all',
+  sort = 'name',
+  order = 'asc',
+  offset = 0,
+  limit = 200,
+}: FilesQuery) {
   const params = new URLSearchParams({
     folder,
     q,
     filter,
+    sort,
+    order,
     offset: String(offset),
     limit: String(limit),
   })

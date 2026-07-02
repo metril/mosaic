@@ -840,6 +840,8 @@ async def browse_files(
     folder: str = Query("", description="Folder path to scope to (recursive); empty = whole library"),
     q: str = Query("", description="Case-insensitive filename substring filter"),
     filter: Literal["all", "favorites", "hidden"] = Query("all"),
+    sort: Literal["name", "date", "size"] = Query("name", description="Sort key"),
+    order: Literal["asc", "desc"] = Query("asc", description="Sort direction"),
     offset: int = Query(0, ge=0),
     limit: int = Query(200, ge=1, le=1000),
     user: Optional[User] = Depends(get_optional_user),
@@ -862,6 +864,14 @@ async def browse_files(
         curation = request.app.state.curation_service
         wanted = curation.favorite_paths() if filter == "favorites" else curation.excluded_paths()
         files = [f for f in files if f["path"] in wanted]
+
+    reverse = order == "desc"
+    if sort == "name":
+        files = sorted(files, key=lambda f: f["name"].lower(), reverse=reverse)
+    elif sort == "date":
+        files = sorted(files, key=lambda f: f.get("modified") or "", reverse=reverse)
+    elif sort == "size":
+        files = sorted(files, key=lambda f: f.get("size") or 0, reverse=reverse)
 
     total = len(files)
     page = files[offset:offset + limit]

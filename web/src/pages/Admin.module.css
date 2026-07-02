@@ -516,3 +516,9 @@
   gap: var(--s3);
   margin-bottom: var(--s4);
 }
+
+/* Config-import drop target highlight */
+.dropActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(80, 130, 255, 0.25));
+}

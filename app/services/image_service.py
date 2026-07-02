@@ -746,6 +746,7 @@ class ImageService:
                 "error": str(e)
             }
 
+    @staticmethod
     def _format_size(file_size: int) -> str:
         """Human-readable byte size (shared by the fast scan)."""
         if file_size < 1024:

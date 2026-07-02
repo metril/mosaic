@@ -60,6 +60,35 @@ export function useCuration() {
     onSettled: reconcile,
   })
 
+  /** Set favorite/hidden for many paths at once (bulk selection). Optimistic,
+   *  then reconciled with one invalidation; per-path failures are counted. */
+  async function bulkApply(kind: 'favorites' | 'excluded', paths: string[], value: boolean) {
+    const current = kind === 'favorites' ? favSet : hiddenSet
+    const targets = paths.filter((p) => current.has(p) !== value)
+    if (targets.length === 0) return
+    const targetSet = new Set(targets)
+    patch((s) => ({
+      ...s,
+      [kind]: value ? [...s[kind], ...targets] : s[kind].filter((p) => !targetSet.has(p)),
+    }))
+    const call = kind === 'favorites' ? setFavorite : setExcluded
+    const results = await Promise.allSettled(targets.map((p) => call(p, value)))
+    const failed = results.filter((r) => r.status === 'rejected').length
+    qc.invalidateQueries({ queryKey: KEY })
+    if (failed > 0) {
+      toast.error(`${failed} of ${targets.length} updates failed`)
+    } else {
+      const verb =
+        kind === 'favorites'
+          ? value ? 'Favorited' : 'Unfavorited'
+          : value ? 'Hidden' : 'Unhidden'
+      toast.success(`${verb} ${targets.length} photo${targets.length === 1 ? '' : 's'}`)
+    }
+  }
+
+  const bulkFavorite = (paths: string[], value: boolean) => bulkApply('favorites', paths, value)
+  const bulkHidden = (paths: string[], value: boolean) => bulkApply('excluded', paths, value)
+
   function toggleFavorite(path: string) {
     const value = !favSet.has(path)
     patch((s) => ({
@@ -78,5 +107,5 @@ export function useCuration() {
     hideMutation.mutate({ path, value })
   }
 
-  return { favSet, hiddenSet, toggleFavorite, toggleHidden }
+  return { favSet, hiddenSet, toggleFavorite, toggleHidden, bulkFavorite, bulkHidden }
 }

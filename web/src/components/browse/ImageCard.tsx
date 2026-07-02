@@ -12,9 +12,23 @@ interface Props {
   onOpen: () => void
   onToggleFav: () => void
   onToggleHide: () => void
+  /** Bulk-select mode: clicking toggles selection instead of opening. */
+  selectMode?: boolean
+  selected?: boolean
+  onToggleSelect?: () => void
 }
 
-export function ImageCard({ file, favorite, hidden, onOpen, onToggleFav, onToggleHide }: Props) {
+export function ImageCard({
+  file,
+  favorite,
+  hidden,
+  onOpen,
+  onToggleFav,
+  onToggleHide,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
+}: Props) {
   const [loaded, setLoaded] = useState(false)
   // On touch devices there's no hover, so reveal the favorite/hide actions on a
   // first tap (a second tap opens the lightbox); they auto-hide on scroll or
@@ -37,6 +51,10 @@ export function ImageCard({ file, favorite, hidden, onOpen, onToggleFav, onToggl
   }, [revealed])
 
   function handleActivate() {
+    if (selectMode) {
+      onToggleSelect?.()
+      return
+    }
     // First tap on touch reveals actions instead of opening; then it opens.
     if (isTouch && !revealed) {
       setRevealed(true)
@@ -50,14 +68,20 @@ export function ImageCard({ file, favorite, hidden, onOpen, onToggleFav, onToggl
     // real thumbnail <button> below — nesting the action <button>s inside a
     // role="button" container is invalid interactive-in-interactive semantics.
     <div
-      className={cn(styles.card, hidden && styles.cardHidden, revealed && styles.cardRevealed)}
+      className={cn(
+        styles.card,
+        hidden && styles.cardHidden,
+        revealed && styles.cardRevealed,
+        selected && styles.cardSelected,
+      )}
       onClick={handleActivate}
     >
       <div className={styles.thumbWrap}>
         <button
           type="button"
           className={styles.thumbOpenBtn}
-          aria-label={`Open ${file.name}`}
+          aria-label={selectMode ? `${selected ? 'Deselect' : 'Select'} ${file.name}` : `Open ${file.name}`}
+          aria-pressed={selectMode ? selected : undefined}
           onClick={(e) => {
             e.stopPropagation()
             handleActivate()
@@ -73,6 +97,15 @@ export function ImageCard({ file, favorite, hidden, onOpen, onToggleFav, onToggl
           />
         </button>
 
+        {selectMode && (
+          <span className={cn(styles.selDot, selected && styles.selDotOn)} aria-hidden="true">
+            {selected && (
+              <svg viewBox="0 0 12 12" width="11" height="11">
+                <path d="M2 6.5 4.8 9 10 3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </span>
+        )}
         {favorite && (
           <span className={styles.favBadge} aria-hidden="true">
             <HeartIcon size={15} filled />
@@ -80,7 +113,7 @@ export function ImageCard({ file, favorite, hidden, onOpen, onToggleFav, onToggl
         )}
         {hidden && <span className={styles.hiddenBadge}>Hidden</span>}
 
-        <div className={styles.actions}>
+        <div className={styles.actions} style={selectMode ? { display: 'none' } : undefined}>
           <button
             className={cn(styles.curBtn, favorite && styles.curBtnFav)}
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}

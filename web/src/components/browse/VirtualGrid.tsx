@@ -18,6 +18,9 @@ interface Props {
   hasNextPage?: boolean
   isFetchingNextPage?: boolean
   fetchNextPage?: () => void
+  selectMode?: boolean
+  selectedSet?: Set<string>
+  onToggleSelect?: (path: string) => void
 }
 
 /** Windowed photo grid: virtualizes rows against the window scroll so only the
@@ -33,6 +36,9 @@ export function VirtualGrid({
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,
+  selectMode,
+  selectedSet,
+  onToggleSelect,
 }: Props) {
   const parentRef = useRef<HTMLDivElement>(null)
   const [cols, setCols] = useState(1)
@@ -121,6 +127,9 @@ export function VirtualGrid({
                     onOpen={() => onOpen(index)}
                     onToggleFav={() => onToggleFav(file.path)}
                     onToggleHide={() => onToggleHide(file.path)}
+                    selectMode={selectMode}
+                    selected={selectedSet?.has(file.path)}
+                    onToggleSelect={() => onToggleSelect?.(file.path)}
                   />
                 )
               })}

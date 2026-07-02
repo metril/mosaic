@@ -27,6 +27,7 @@ export function SystemTab() {
   const qc = useQueryClient()
   const [confirm, confirmModal] = useConfirm()
   const [includeKeys, setIncludeKeys] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const [exporting, setExporting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   const health = useQuery({ queryKey: ['health'], queryFn: fetchHealth })
@@ -116,9 +117,6 @@ export function SystemTab() {
             </Card>
           ))}
         </div>
-        <div className={styles.scopeNote} style={{ marginTop: 'var(--s3)' }}>
-          Image directory: <span className={styles.mono}>{health.data?.image_directory}</span>
-        </div>
       </Card>
 
       <Card pad>
@@ -140,7 +138,21 @@ export function SystemTab() {
         </div>
       </Card>
 
-      <Card pad>
+      <Card
+        pad
+        className={dragging ? styles.dropActive : undefined}
+        onDragOver={(e: React.DragEvent) => {
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e: React.DragEvent) => {
+          e.preventDefault()
+          setDragging(false)
+          const f = e.dataTransfer.files?.[0]
+          if (f) onImportFile(f)
+        }}
+      >
         <h3 className={styles.sectionTitle}>Backup &amp; restore</h3>
         <div style={{ display: 'flex', gap: 'var(--s3)', flexWrap: 'wrap', alignItems: 'center' }}>
           <Button loading={exporting} onClick={onExport}>
@@ -164,7 +176,8 @@ export function SystemTab() {
         </div>
         <div className={styles.scopeNote} style={{ marginTop: 'var(--s3)' }}>
           Downloads all groups, Immich pulls, settings and curation as one JSON file. Secrets stay
-          encrypted; import overwrites current config and reloads without a restart.
+          encrypted; import overwrites current config and reloads without a restart. You can also
+          drop a config JSON anywhere on this card to import it.
         </div>
       </Card>
 

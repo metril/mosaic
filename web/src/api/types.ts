@@ -349,7 +349,7 @@ export interface Metrics {
 export interface Health {
   status: string
   image_count: number
-  image_directory: string
+  image_directory?: string
 }
 
 /* ============================== Settings ================================= */
