@@ -104,6 +104,11 @@
   width: 100%;
 }
 
+/* Uniform width for stacked row-action columns. */
+.wide {
+  min-width: 132px;
+}
+
 .spinner {
   width: 1em;
   height: 1em;

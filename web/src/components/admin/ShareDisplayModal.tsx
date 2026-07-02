@@ -4,7 +4,7 @@ import type { ApiKey, DisplayGroup } from '@/api/types'
 import { listKeys, revealKey } from '@/api/keys'
 import { useGroups } from '@/hooks/useAdminWs'
 import { authorizesDisplay } from '@/lib/scopeAccess'
-import { Modal, Button, Label, Select, Checkbox, CopyIcon, CheckIcon, ExternalIcon, EmptyState, KeyIcon } from '@/components/ui'
+import { Modal, Button, Label, Select, ToggleField, CopyIcon, CheckIcon, ExternalIcon, EmptyState, KeyIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { copyText } from '@/lib/clipboard'
 import styles from '@/pages/Admin.module.css'
@@ -124,7 +124,7 @@ function GroupFirst({ group, onClose }: { group: DisplayGroup; onClose: () => vo
           </Select>
           {others.length > 0 && (
             <div className={styles.shareToggle}>
-              <Checkbox checked={showAll} onChange={setShowAll}>Show keys that don’t grant access</Checkbox>
+              <ToggleField checked={showAll} onChange={setShowAll}>Show keys that don’t grant access</ToggleField>
             </div>
           )}
           {effectiveKeyId !== NO_KEY && !secret && (

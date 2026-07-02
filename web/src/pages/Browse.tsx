@@ -178,7 +178,6 @@ export default function Browse() {
             <option value="size-asc">Smallest first</option>
           </Select>
           <Button
-            size="sm"
             variant={selectMode ? 'primary' : 'secondary'}
             onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
           >

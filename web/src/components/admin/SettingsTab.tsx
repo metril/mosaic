@@ -91,7 +91,7 @@ export function SettingsTab() {
                 placeholder={form.has_ha_token ? '•••••••• (unchanged)' : 'paste long-lived access token'}
                 autoComplete="new-password"
               />
-              <Button loading={haTest.isPending} onClick={() => haTest.mutate()}>
+              <Button wide loading={haTest.isPending} onClick={() => haTest.mutate()}>
                 Test connection
               </Button>
             </div>

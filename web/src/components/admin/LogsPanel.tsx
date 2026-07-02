@@ -48,7 +48,7 @@ export function LogsPanel() {
         />
         <ToggleField checked={tail} onChange={setTail}>Live tail</ToggleField>
         <div className={styles.spacer} />
-        <Button variant="secondary" size="sm" href={logsDownloadUrl()} download>
+        <Button variant="secondary" href={logsDownloadUrl()} download>
           <DownloadIcon size={15} /> Download
         </Button>
       </div>

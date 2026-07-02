@@ -8,7 +8,7 @@ import {
   downloadConfigExport,
   importConfig,
 } from '@/api/system'
-import { Button, Card, Row, Loading, RefreshIcon, useConfirm, Checkbox, LoadError } from '@/components/ui'
+import { Button, Card, Row, ToggleRow, Loading, RefreshIcon, useConfirm, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { LogsPanel } from './LogsPanel'
@@ -116,17 +116,17 @@ export function SystemTab() {
           label="Refresh caches"
           hint="Re-scan images and clear cached thumbnails after changing files on disk directly."
         >
-          <Button loading={refresh.isPending} onClick={() => refresh.mutate()}>
+          <Button wide loading={refresh.isPending} onClick={() => refresh.mutate()}>
             <RefreshIcon size={15} /> Refresh
           </Button>
         </Row>
         <Row label="Home Assistant" hint="Check the configured HA connection.">
-          <Button loading={haTest.isPending} onClick={() => haTest.mutate()}>
+          <Button wide loading={haTest.isPending} onClick={() => haTest.mutate()}>
             Test connection
           </Button>
         </Row>
         <Row label="API reference" hint="Interactive OpenAPI documentation served by this instance.">
-          <Button href="/docs" target="_blank" rel="noreferrer">
+          <Button wide href="/docs" target="_blank" rel="noreferrer">
             Open docs ↗
           </Button>
         </Row>
@@ -152,18 +152,21 @@ export function SystemTab() {
           label="Export configuration"
           hint="Groups, Immich pulls, settings and curation as one JSON file. Secrets stay encrypted."
         >
-          <div className={styles.rowCluster}>
-            <Checkbox checked={includeKeys} onChange={setIncludeKeys}>Include API keys</Checkbox>
-            <Button loading={exporting} onClick={onExport}>
-              Export
-            </Button>
-          </div>
+          <Button wide loading={exporting} onClick={onExport}>
+            Export
+          </Button>
         </Row>
+        <ToggleRow
+          label="Include API keys"
+          hint="Exported JSON contains decrypted service keys — keep the file safe."
+          value={includeKeys}
+          onChange={setIncludeKeys}
+        />
         <Row
           label="Restore from backup"
           hint="Overwrites current config and reloads — or drop a JSON file anywhere on this card."
         >
-          <Button loading={importMut.isPending} onClick={() => fileInput.current?.click()}>
+          <Button wide loading={importMut.isPending} onClick={() => fileInput.current?.click()}>
             Import config…
           </Button>
         </Row>

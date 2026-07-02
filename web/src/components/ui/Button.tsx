@@ -10,6 +10,9 @@ interface CommonProps {
   size?: Size
   block?: boolean
   loading?: boolean
+  /** Row-action buttons: uniform min-width so a stacked column of
+   *  right-aligned buttons shares one left edge. */
+  wide?: boolean
   children?: ReactNode
 }
 
@@ -19,12 +22,13 @@ type ButtonProps = CommonProps & ButtonHTMLAttributes<HTMLButtonElement> & { hre
 type AnchorProps = CommonProps & AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }
 
 export function Button(props: ButtonProps | AnchorProps) {
-  const { variant = 'secondary', size = 'md', block, loading, className, children } = props
+  const { variant = 'secondary', size = 'md', block, loading, wide, className, children } = props
   const classes = cn(
     styles.btn,
     variant !== 'secondary' && styles[variant],
     size !== 'md' && styles[size],
     block && styles.block,
+    wide && styles.wide,
     className,
   )
   const content = (
@@ -35,7 +39,7 @@ export function Button(props: ButtonProps | AnchorProps) {
   )
 
   if (props.href !== undefined) {
-    const { variant: _v, size: _s, block: _b, loading: _l, className: _c, children: _ch, ...rest } = props
+    const { variant: _v, size: _s, block: _b, loading: _l, wide: _w, className: _c, children: _ch, ...rest } = props
     return (
       <a className={classes} {...rest}>
         {content}
@@ -43,7 +47,7 @@ export function Button(props: ButtonProps | AnchorProps) {
     )
   }
 
-  const { variant: _v, size: _s, block: _b, loading: _l, className: _c, children: _ch, disabled, ...rest } = props
+  const { variant: _v, size: _s, block: _b, loading: _l, wide: _w, className: _c, children: _ch, disabled, ...rest } = props
   return (
     <button className={classes} disabled={disabled || loading} {...rest}>
       {content}
