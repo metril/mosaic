@@ -1,0 +1,62 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* High-contrast inverse bubble, positioned fixed by the component. */
+.bubble {
+  position: fixed;
+  z-index: 1100; /* above modals (400) and toasts (1000) */
+  transform: translate(-50%, -100%);
+  max-width: 280px;
+  padding: var(--s2) var(--s3);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: var(--leading-snug);
+  border-radius: var(--r-sm);
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  white-space: normal;
+  animation: tipIn var(--dur-1) var(--ease);
+}
+.bubble[data-below] {
+  transform: translate(-50%, 0);
+}
+@keyframes tipIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Always-rendered copy for aria-describedby. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The ⓘ trigger next to labels. */
+.infoDot {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-faint);
+  cursor: help;
+  border-radius: 50%;
+  transition: color var(--dur-1) var(--ease);
+}
+.infoDot:hover,
+.infoDot:focus-visible {
+  color: var(--color-text);
+}
+.infoDot:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}

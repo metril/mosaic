@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import { Input, Select } from './Field'
 import { Toggle } from './Toggle'
+import { InfoTip } from './Tooltip'
 import styles from './Form.module.css'
 
 export function FormSection({
@@ -45,9 +46,9 @@ export function Row({
   return (
     <div className={cn(styles.row, stack && styles.rowStack)}>
       {(label || hint) && (
-        <div>
-          {label && <div className={styles.rowLabel}>{label}</div>}
-          {hint && <div className={styles.rowHint}>{hint}</div>}
+        <div className={styles.rowLabel}>
+          {label}
+          {hint && <InfoTip text={hint} />}
         </div>
       )}
       <div className={cn(styles.rowControl, stack && styles.wide)}>{children}</div>

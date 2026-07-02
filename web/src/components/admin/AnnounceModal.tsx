@@ -13,6 +13,7 @@ import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
 import styles from '@/pages/Admin.module.css'
+import formStyles from '@/components/ui/Form.module.css'
 import preview from './AnnounceModal.module.css'
 
 const POS_CLASS: Record<AnnouncePosition, string> = {
@@ -134,7 +135,7 @@ export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: 
           <div className={styles.grid2}>
             <div>
               <Label>Position</Label>
-              <Select value={position} onChange={(e) => setPosition(e.target.value as AnnouncePosition)}>
+              <Select className={formStyles.controlMd} value={position} onChange={(e) => setPosition(e.target.value as AnnouncePosition)}>
                 <option value="top-left">Top left</option>
                 <option value="top-center">Top center</option>
                 <option value="top-right">Top right</option>
@@ -146,7 +147,7 @@ export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: 
             </div>
             <div>
               <Label>Style</Label>
-              <Select value={theme} onChange={(e) => setTheme(e.target.value as AnnounceTheme)}>
+              <Select className={formStyles.controlMd} value={theme} onChange={(e) => setTheme(e.target.value as AnnounceTheme)}>
                 <option value="solid">Solid</option>
                 <option value="bubble">Bubble</option>
                 <option value="blur">Blur</option>
@@ -155,7 +156,7 @@ export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: 
             </div>
             <div>
               <Label>Size</Label>
-              <Select value={size} onChange={(e) => setSize(e.target.value as AnnounceSize)}>
+              <Select className={formStyles.controlMd} value={size} onChange={(e) => setSize(e.target.value as AnnounceSize)}>
                 <option value="s">Small</option>
                 <option value="m">Medium</option>
                 <option value="l">Large</option>
@@ -164,7 +165,7 @@ export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: 
             </div>
             <div>
               <Label>Color</Label>
-              <Select value={color} onChange={(e) => setColor(e.target.value as AnnounceColor)}>
+              <Select className={formStyles.controlMd} value={color} onChange={(e) => setColor(e.target.value as AnnounceColor)}>
                 <option value="default">Default</option>
                 <option value="blue">Blue</option>
                 <option value="green">Green</option>
@@ -183,6 +184,7 @@ export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: 
           <Input
             id="announce-duration"
             type="number"
+            className={formStyles.controlNum}
             min={1}
             max={3600}
             value={duration}

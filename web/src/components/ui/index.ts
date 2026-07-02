@@ -19,3 +19,4 @@ export {
   ChipsRow,
 } from './Form'
 export * from './Icon'
+export { Tooltip, InfoTip } from './Tooltip'

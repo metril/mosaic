@@ -71,13 +71,11 @@
   grid-template-columns: 1fr;
 }
 .rowLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--text-sm);
   font-weight: 500;
-}
-.rowHint {
-  font-size: var(--text-xs);
-  color: var(--color-text-faint);
-  margin-top: 1px;
 }
 .rowControl {
   justify-self: end;
@@ -88,10 +86,13 @@
   width: 100%;
 }
 
-/* The two control widths for right-aligned Row controls: numbers and
-   text/selects. One scale everywhere so field right edges line up. */
+/* The control width scale: numbers, constrained-value fields (dates, cron,
+   timezones), and text/selects. One scale everywhere so fields line up. */
 .controlNum {
   width: 110px;
+}
+.controlSm {
+  width: 160px;
 }
 .controlMd {
   width: 220px;

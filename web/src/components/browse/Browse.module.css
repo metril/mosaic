@@ -41,7 +41,10 @@
   gap: var(--s3);
 }
 .toolbar .search {
-  width: 240px;
+  flex: 0 0 240px; /* fixed basis so the sort select can't crush it */
+}
+.sortSelect {
+  width: 170px;
 }
 .filterChips {
   display: inline-flex;

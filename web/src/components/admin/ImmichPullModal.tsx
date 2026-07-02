@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ImmichPull } from '@/api/types'
 import { savePull, testConnection, listAlbums, listPeople, type PullSave } from '@/api/immich'
-import { Modal, Button, Input, SearchInput, Select, Label, CheckIcon, FieldError, ToggleField, Checkbox } from '@/components/ui'
+import { Modal, Button, Input, SearchInput, Select, Label, CheckIcon, FieldError, ToggleField, Checkbox, InfoTip } from '@/components/ui'
+import formStyles from '@/components/ui/Form.module.css'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -132,7 +133,9 @@ export function ImmichPullModal({ pull, onClose }: Props) {
           )}
           <Label>Server URL</Label>
           <Input value={form.server_url} onChange={(e) => set('server_url', e.target.value)} placeholder="https://immich.example.com" />
-          <Label>API key {editing && <span className={styles.scopeNote}>(blank = keep current)</span>}</Label>
+          <Label>
+            API key {editing && <InfoTip text="Leave blank to keep the current key." />}
+          </Label>
           <div style={{ display: 'flex', gap: 'var(--s2)' }}>
             <Input
               type="password"
@@ -151,7 +154,13 @@ export function ImmichPullModal({ pull, onClose }: Props) {
             </div>
             <div>
               <Label>Count</Label>
-              <Input type="number" min={1} value={form.count} onChange={(e) => set('count', Number(e.target.value))} />
+              <Input
+                type="number"
+                className={formStyles.controlNum}
+                min={1}
+                value={form.count}
+                onChange={(e) => set('count', Number(e.target.value))}
+              />
             </div>
           </div>
         </div>
@@ -188,17 +197,28 @@ export function ImmichPullModal({ pull, onClose }: Props) {
           <div className={styles.grid2}>
             <div>
               <Label>Taken after</Label>
-              <Input type="date" value={form.taken_after ?? ''} onChange={(e) => set('taken_after', e.target.value || null)} />
+              <Input
+                type="date"
+                className={formStyles.controlSm}
+                value={form.taken_after ?? ''}
+                onChange={(e) => set('taken_after', e.target.value || null)}
+              />
             </div>
             <div>
               <Label>Taken before</Label>
-              <Input type="date" value={form.taken_before ?? ''} onChange={(e) => set('taken_before', e.target.value || null)} />
+              <Input
+                type="date"
+                className={formStyles.controlSm}
+                value={form.taken_before ?? ''}
+                onChange={(e) => set('taken_before', e.target.value || null)}
+              />
             </div>
           </div>
           <div className={styles.grid2}>
             <div>
               <Label>Favorites</Label>
               <Select
+                className={formStyles.controlMd}
                 value={form.is_favorite === null ? 'any' : form.is_favorite ? 'fav' : 'nonfav'}
                 onChange={(e) =>
                   set('is_favorite', e.target.value === 'any' ? null : e.target.value === 'fav')
@@ -211,7 +231,11 @@ export function ImmichPullModal({ pull, onClose }: Props) {
             </div>
             <div>
               <Label>Media type</Label>
-              <Select value={form.media_type} onChange={(e) => set('media_type', e.target.value as 'IMAGE' | 'VIDEO')}>
+              <Select
+                className={formStyles.controlMd}
+                value={form.media_type}
+                onChange={(e) => set('media_type', e.target.value as 'IMAGE' | 'VIDEO')}
+              >
                 <option value="IMAGE">Image</option>
                 <option value="VIDEO">Video</option>
               </Select>
@@ -228,12 +252,17 @@ export function ImmichPullModal({ pull, onClose }: Props) {
                 value={form.cron_expression ?? ''}
                 onChange={(e) => set('cron_expression', e.target.value)}
                 placeholder="0 3 * * *"
-                className={styles.mono}
+                className={cn(styles.mono, formStyles.controlSm)}
               />
             </div>
             <div>
               <Label>Timezone</Label>
-              <Input value={form.cron_timezone ?? ''} onChange={(e) => set('cron_timezone', e.target.value)} placeholder="UTC" />
+              <Input
+                className={formStyles.controlSm}
+                value={form.cron_timezone ?? ''}
+                onChange={(e) => set('cron_timezone', e.target.value)}
+                placeholder="UTC"
+              />
             </div>
           </div>
           <ToggleLine label="Replace existing on each pull" value={form.replace_existing!} onChange={(v) => set('replace_existing', v)} />

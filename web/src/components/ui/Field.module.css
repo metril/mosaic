@@ -66,7 +66,9 @@ select.control {
 }
 
 .label {
-  display: inline-block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;

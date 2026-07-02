@@ -1,9 +1,11 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from '@/lib/cn'
+import { Tooltip } from './Tooltip'
 import styles from './IconButton.module.css'
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
-  /** Accessible label — required since the button is icon-only. */
+  /** Accessible label — required since the button is icon-only. Shown as a
+   *  styled tooltip on hover/focus. */
   label: string
   size?: 'sm' | 'md'
   bordered?: boolean
@@ -21,21 +23,22 @@ export function IconButton({
   ...rest
 }: Props) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      aria-pressed={active}
-      className={cn(
-        styles.btn,
-        size === 'sm' && styles.sm,
-        bordered && styles.bordered,
-        active && styles.active,
-        className,
-      )}
-      {...rest}
-    >
-      {children}
-    </button>
+    <Tooltip content={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        className={cn(
+          styles.btn,
+          size === 'sm' && styles.sm,
+          bordered && styles.bordered,
+          active && styles.active,
+          className,
+        )}
+        {...rest}
+      >
+        {children}
+      </button>
+    </Tooltip>
   )
 }

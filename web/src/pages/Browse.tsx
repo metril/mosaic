@@ -172,6 +172,7 @@ export default function Browse() {
           </div>
           <Select
             aria-label="Sort by"
+            className={styles.sortSelect}
             value={`${sort}-${order}`}
             onChange={(e) => {
               const [s, o] = e.target.value.split('-') as [FileSort, SortOrder]
