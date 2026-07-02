@@ -1,8 +1,6 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { memo, useState } from 'react'
 import type { DisplayGroup, DisplayGroupSettings } from '@/api/types'
-import { listGroups } from '@/api/admin'
-import { GROUPS_KEY } from '@/hooks/useAdminWs'
+import { useGroups } from '@/hooks/useAdminWs'
 import { useNow } from '@/hooks/useNow'
 import { Card, EmptyState, Loading, Button, ActivityIcon } from '@/components/ui'
 import { cn } from '@/lib/cn'
@@ -48,8 +46,10 @@ interface PreviewTarget {
 }
 
 export function HealthTab() {
-  const { data: groups, isLoading } = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
-  const now = useNow(1000)
+  const { data: groups, isLoading } = useGroups()
+  // 5s resolution is plenty for heartbeat ages (status thresholds are 45/60s)
+  // and avoids re-rendering every endpoint row once a second.
+  const now = useNow(5000)
   const [preview, setPreview] = useState<PreviewTarget | null>(null)
 
   if (isLoading) return <Loading label="Loading display health…" />
@@ -110,7 +110,9 @@ export function HealthTab() {
   )
 }
 
-function GroupHealth({
+// Memoized so opening/closing the preview modal (parent state) doesn't
+// re-render every group's endpoint rows.
+const GroupHealth = memo(function GroupHealth({
   group,
   now,
   onPreview,
@@ -177,4 +179,4 @@ function GroupHealth({
       )}
     </div>
   )
-}
+})

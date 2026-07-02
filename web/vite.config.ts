@@ -37,6 +37,18 @@ export default defineConfig({
     // with no font-src, so data: fonts are blocked. Keep every font/asset as a
     // real /assets/* file served from 'self'.
     assetsInlineLimit: 0,
+    rollupOptions: {
+      output: {
+        // Framework code changes far less often than app code — a separate
+        // vendor chunk survives deploys in the browser cache. (Function form:
+        // Rolldown-Vite doesn't accept the object shorthand.)
+        manualChunks(id: string) {
+          if (/node_modules\/(react|react-dom|scheduler|react-router|react-router-dom|@tanstack|zustand)\//.test(id)) {
+            return 'vendor'
+          }
+        },
+      },
+    },
   },
   server: {
     port: 5173,

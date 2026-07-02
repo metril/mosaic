@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ApiKey, DisplayGroup } from '@/api/types'
-import { listGroups } from '@/api/admin'
 import { listKeys, revealKey } from '@/api/keys'
-import { GROUPS_KEY } from '@/hooks/useAdminWs'
+import { useGroups } from '@/hooks/useAdminWs'
 import { authorizesDisplay } from '@/lib/scopeAccess'
 import { Modal, Button, Label, Select, Toggle, CopyIcon, CheckIcon, ExternalIcon, EmptyState, KeyIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
@@ -145,7 +144,7 @@ function GroupFirst({ group, onClose }: { group: DisplayGroup; onClose: () => vo
 /* ----------------------------------------------------------------------- */
 
 function KeyFirst({ apiKey, onClose }: { apiKey: ApiKey; onClose: () => void }) {
-  const { data: groups } = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
+  const { data: groups } = useGroups()
 
   const targets = useMemo<Target[]>(() => {
     const out: Target[] = []

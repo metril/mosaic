@@ -553,6 +553,19 @@ export function mountDisplay(wsUrl: string): () => void {
   function toggleDebug() {
     debugVisible = !debugVisible
     debugOverlay.classList.toggle('visible', debugVisible)
+    // The 100ms countdown ticker only matters while the overlay is on screen;
+    // don't burn wakeups 10×/s for the lifetime of a 24/7 wall display.
+    if (debugVisible && !timers.debugUpdate) {
+      timers.debugUpdate = window.setInterval(() => {
+        if (nextSwitchTime) {
+          const remaining = Math.max(0, nextSwitchTime - Date.now())
+          if (remaining > 0) updateDebug('NextSwitch', (remaining / 1000).toFixed(1) + 's')
+        }
+      }, 100)
+    } else if (!debugVisible && timers.debugUpdate) {
+      clearInterval(timers.debugUpdate)
+      timers.debugUpdate = null
+    }
   }
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -1044,7 +1057,17 @@ export function mountDisplay(wsUrl: string): () => void {
     let retryCount = 0
     imgElement.onload = () => {
       recordThroughput(imgElement)
-      if (onSuccess) onSuccess()
+      // Force the bitmap decode now, off the critical path — otherwise the
+      // browser decodes lazily at first paint, i.e. mid-crossfade, which
+      // stutters the transition on large photos.
+      const done = () => {
+        if (onSuccess) onSuccess()
+      }
+      if (typeof imgElement.decode === 'function') {
+        imgElement.decode().then(done, done)
+      } else {
+        done()
+      }
     }
     imgElement.onerror = () => {
       retryCount++
@@ -1076,13 +1099,6 @@ export function mountDisplay(wsUrl: string): () => void {
   function send(msg: any) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))
   }
-
-  timers.debugUpdate = window.setInterval(() => {
-    if (nextSwitchTime) {
-      const remaining = Math.max(0, nextSwitchTime - Date.now())
-      if (remaining > 0) updateDebug('NextSwitch', (remaining / 1000).toFixed(1) + 's')
-    }
-  }, 100)
 
   const onBeforeUnload = () => {
     clearAllTimers()

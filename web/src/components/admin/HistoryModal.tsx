@@ -1,10 +1,10 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { DisplayEndpoint, DisplayGroup } from '@/api/types'
-import { fetchEndpointHistory, endpointJump, groupAction, listGroups } from '@/api/admin'
+import { fetchEndpointHistory, endpointJump, groupAction } from '@/api/admin'
 import { thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
-import { GROUPS_KEY } from '@/hooks/useAdminWs'
+import { GROUPS_KEY, useGroups } from '@/hooks/useAdminWs'
 import { useNow, secondsUntil } from '@/hooks/useNow'
 import { Modal, IconButton, Button, Loading, EmptyState, HeartIcon, EyeOffIcon, HistoryIcon, PlayIcon, PauseIcon } from '@/components/ui'
 import { toast } from '@/stores/toast'
@@ -123,7 +123,7 @@ export function HistoryModal({ groupId, endpoints, initialEndpointId, onClose }:
 
   // Live pause state from the shared groups cache (kept current by the admin WS).
   // Pause to hold a jumped image and step through history manually, then resume.
-  const { data: groups } = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
+  const { data: groups } = useGroups()
   const liveGroup = groups?.find((g) => g.group_id === groupId)
   const paused = liveGroup?.paused ?? false
   const now = useNow()

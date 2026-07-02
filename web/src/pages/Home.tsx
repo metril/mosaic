@@ -1,8 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { listGroups } from '@/api/admin'
 import { listPulls } from '@/api/immich'
-import { useAdminWs, GROUPS_KEY } from '@/hooks/useAdminWs'
+import { useAdminWs, useGroups } from '@/hooks/useAdminWs'
 import { useNow } from '@/hooks/useNow'
 import { fetchFolders, thumbUrl } from '@/api/browse'
 import type { DisplayGroup, ImmichPull } from '@/api/types'
@@ -126,7 +125,7 @@ export default function Home() {
   useAdminWs() // keeps the groups cache live
   const now = useNow()
 
-  const { data: groups } = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
+  const { data: groups } = useGroups()
   const { data: pulls } = useQuery({ queryKey: ['pulls'], queryFn: listPulls })
   // Shares the ['folders'] cache with Browse; total_files is the true recursive
   // count (unlike /health, which only counts the root folder), and the

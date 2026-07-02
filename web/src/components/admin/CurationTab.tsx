@@ -57,7 +57,7 @@ export function CurationTab() {
 function Row({ path, action, onAction }: { path: string; action: 'unfavorite' | 'unhide'; onAction: () => void }) {
   return (
     <div className={styles.item} style={{ padding: 'var(--s2)' }}>
-      <img className={styles.nowThumb} src={thumbUrl(path)} alt="" />
+      <img className={styles.nowThumb} src={thumbUrl(path)} alt="" loading="lazy" decoding="async" />
       <div className={styles.itemMain}>
         <div className={styles.epName}>{path.split('/').pop()}</div>
         <div className={styles.epMeta}>{path}</div>

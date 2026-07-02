@@ -500,8 +500,22 @@ if static_swagger_path.exists():
 # SPA index.html references /assets/<name>-<hash>.js. Mounting before the API
 # router keeps these static files ahead of the "/{folder_path}" catch-all.
 spa_assets_path = Path(__file__).parent / "static" / "spa" / "assets"
+
+
+class HashedStaticFiles(StaticFiles):
+    """StaticFiles that marks responses immutable. Safe here because every file
+    under /assets carries a content hash in its name — a new build produces new
+    URLs, so browsers can cache these forever instead of revalidating (304) on
+    every kiosk reload."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
+
 if spa_assets_path.exists():
-    app.mount("/assets", StaticFiles(directory=str(spa_assets_path)), name="spa_assets")
+    app.mount("/assets", HashedStaticFiles(directory=str(spa_assets_path)), name="spa_assets")
 
 # Custom /docs endpoint using self-hosted Swagger UI assets
 from fastapi.openapi.docs import get_swagger_ui_html

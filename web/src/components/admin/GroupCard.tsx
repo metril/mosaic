@@ -96,7 +96,7 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
       <div className={styles.groupBody}>
         {current && (
           <div className={styles.nowShowing}>
-            <img className={styles.nowThumb} src={thumbUrl(current)} alt="" />
+            <img className={styles.nowThumb} src={thumbUrl(current)} alt="" loading="lazy" decoding="async" />
             <div className={styles.nowInfo}>
               <div className={styles.nowLabel}>Now showing</div>
               <div className={styles.nowName} title={current}>

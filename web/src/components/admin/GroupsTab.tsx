@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DisplayGroup } from '@/api/types'
-import { listGroups, cloneGroup } from '@/api/admin'
-import { GROUPS_KEY } from '@/hooks/useAdminWs'
+import { cloneGroup } from '@/api/admin'
+import { GROUPS_KEY, useGroups } from '@/hooks/useAdminWs'
 import { Button, EmptyState, Loading, GridIcon, PlusIcon, Modal, Input, Label } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
@@ -11,7 +11,7 @@ import { GroupFormModal } from './GroupFormModal'
 import styles from '@/pages/Admin.module.css'
 
 export function GroupsTab() {
-  const { data: groups, isLoading } = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
+  const { data: groups, isLoading } = useGroups()
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<DisplayGroup | null>(null)
   const [cloning, setCloning] = useState<DisplayGroup | null>(null)

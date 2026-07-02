@@ -2,13 +2,14 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AppShell } from '@/components/layout/AppShell'
 import { Toaster } from '@/components/ui'
-import Home from '@/pages/Home'
-import Browse from '@/pages/Browse'
-import Admin from '@/pages/Admin'
 
-// The kiosk runs on low-power devices and needs none of the dashboard code, so
-// it's a separate lazy chunk.
+// Every page is its own lazy chunk: the kiosk (low-power devices, 24/7)
+// downloads none of the dashboard code, and dashboard visitors don't pay for
+// tabs they never open.
 const Display = lazy(() => import('@/pages/Display'))
+const Home = lazy(() => import('@/pages/Home'))
+const Browse = lazy(() => import('@/pages/Browse'))
+const Admin = lazy(() => import('@/pages/Admin'))
 
 export default function App() {
   return (
@@ -25,9 +26,30 @@ export default function App() {
         />
 
         <Route element={<AppShell />}>
-          <Route path="/" element={<Home />} />
-          <Route path="/browse" element={<Browse />} />
-          <Route path="/admin" element={<Admin />} />
+          <Route
+            path="/"
+            element={
+              <Suspense fallback={null}>
+                <Home />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/browse"
+            element={
+              <Suspense fallback={null}>
+                <Browse />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <Suspense fallback={null}>
+                <Admin />
+              </Suspense>
+            }
+          />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { FileNode } from '@/api/types'
-import { imageUrl } from '@/api/browse'
+import { imageUrl, thumbUrl } from '@/api/browse'
 import { cn } from '@/lib/cn'
 import { HeartIcon, EyeOffIcon, XIcon, ArrowLeftIcon, ArrowRightIcon } from '@/components/ui'
 import styles from './Browse.module.css'
@@ -30,7 +30,21 @@ export function Lightbox({
   // The stat-only tree no longer ships dimensions; read them from the loaded
   // full image instead (free — it loads anyway). Keyed reset on index change.
   const [natural, setNatural] = useState<string | null>(null)
-  useEffect(() => setNatural(null), [index])
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    setNatural(null)
+    setLoaded(false)
+  }, [index])
+
+  // Warm the neighbours so arrow navigation doesn't stare at a blank frame
+  // while a brand-new full-res image downloads.
+  useEffect(() => {
+    if (files.length < 2) return
+    const next = new Image()
+    next.src = imageUrl(files[(index + 1) % files.length].path)
+    const prev = new Image()
+    prev.src = imageUrl(files[(index - 1 + files.length) % files.length].path)
+  }, [index, files])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -93,14 +107,25 @@ export function Lightbox({
             <ArrowLeftIcon size={22} />
           </button>
         )}
+        {/* Cached thumbnail as an instant placeholder under the full image. */}
+        {!loaded && (
+          <img
+            className={styles.lbImg}
+            src={thumbUrl(file.path)}
+            alt=""
+            aria-hidden
+            style={{ position: 'absolute', filter: 'blur(14px)', opacity: 0.6 }}
+          />
+        )}
         <img
           className={styles.lbImg}
           src={imageUrl(file.path)}
           alt={file.name}
           onClick={(e) => e.stopPropagation()}
-          onLoad={(e) =>
+          onLoad={(e) => {
+            setLoaded(true)
             setNatural(`${e.currentTarget.naturalWidth}×${e.currentTarget.naturalHeight}`)
-          }
+          }}
         />
         {files.length > 1 && (
           <button

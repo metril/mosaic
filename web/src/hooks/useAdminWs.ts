@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { DisplayGroup } from '@/api/types'
+import { listGroups } from '@/api/admin'
 
 export const GROUPS_KEY = ['groups']
+
+/** Read the groups list. The admin WS ([useAdminWs]) is the live source of
+ *  truth for this cache entry, so REST only bootstraps an empty cache (or a
+ *  mutation-triggered invalidation) — staleTime: Infinity stops every tab
+ *  mount from re-fetching what the socket already keeps fresh. */
+export function useGroups() {
+  return useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups, staleTime: Infinity })
+}
 
 type WsStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
 

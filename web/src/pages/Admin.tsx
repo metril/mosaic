@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useAdminWs, GROUPS_KEY } from '@/hooks/useAdminWs'
-import { listGroups } from '@/api/admin'
+import { useAdminWs, useGroups } from '@/hooks/useAdminWs'
 import { listPulls } from '@/api/immich'
 import { listKeys } from '@/api/keys'
 import { cn } from '@/lib/cn'
@@ -22,7 +21,7 @@ export default function Admin() {
   const [tab, setTab] = useState<TabId>('displays')
 
   // light count queries for the tab badges (cheap, cached)
-  const groups = useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups })
+  const groups = useGroups()
   const pulls = useQuery({ queryKey: ['pulls'], queryFn: listPulls })
   const keys = useQuery({ queryKey: ['keys'], queryFn: listKeys })
 
