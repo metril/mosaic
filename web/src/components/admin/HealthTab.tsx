@@ -5,6 +5,7 @@ import { useNow } from '@/hooks/useNow'
 import { Card, EmptyState, Loading, Button, ActivityIcon, LoadError } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { DisplayPreviewModal } from './DisplayPreviewModal'
+import { StatCards } from './StatCards'
 import styles from '@/pages/Admin.module.css'
 
 type Status = 'online' | 'idle' | 'stale' | 'offline'
@@ -76,22 +77,14 @@ export function HealthTab() {
 
   return (
     <>
-      <div className={styles.statGrid} style={{ marginBottom: 'var(--s5)' }}>
-        <Card className={styles.stat}>
-          <div className={styles.statValue}>{total}</div>
-          <div className={styles.statLabel}>Endpoints</div>
-        </Card>
-        <Card className={styles.stat}>
-          <div className={styles.statValue} style={{ color: 'var(--color-success)' }}>{online}</div>
-          <div className={styles.statLabel}>Online</div>
-        </Card>
-        <Card className={styles.stat}>
-          <div className={styles.statValue} style={{ color: total - online ? 'var(--color-danger)' : undefined }}>
-            {total - online}
-          </div>
-          <div className={styles.statLabel}>Offline</div>
-        </Card>
-      </div>
+      <StatCards
+        className={styles.statRow}
+        items={[
+          { label: 'Endpoints', value: total },
+          { label: 'Online', value: online, tone: 'ok' },
+          { label: 'Offline', value: total - online, tone: total - online ? 'bad' : undefined },
+        ]}
+      />
 
       {groups.map((g) => (
         <GroupHealth key={g.group_id} group={g} now={now} onPreview={setPreview} />

@@ -8,10 +8,11 @@ import {
   downloadConfigExport,
   importConfig,
 } from '@/api/system'
-import { Button, Card, Loading, RefreshIcon, useConfirm, ToggleField, LoadError } from '@/components/ui'
+import { Button, Card, Row, Loading, RefreshIcon, useConfirm, ToggleField, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { LogsPanel } from './LogsPanel'
+import { StatCards } from './StatCards'
 import styles from '@/pages/Admin.module.css'
 
 function fmtUptime(s: number) {
@@ -96,46 +97,34 @@ export function SystemTab() {
   const gauges = metrics.data?.gauges ?? {}
   const counters = metrics.data?.counters ?? {}
 
-  const stats: { label: string; value: string | number }[] = [
-    { label: 'Images', value: health.data?.image_count ?? '—' },
-    { label: 'Uptime', value: metrics.data ? fmtUptime(metrics.data.uptime_seconds) : '—' },
-    { label: 'Active groups', value: gauges.active_groups ?? '—' },
-    { label: 'Connected displays', value: gauges.active_browsers ?? '—' },
-    { label: 'WS connections', value: counters.websocket_connections_total ?? '—' },
-    { label: 'Groups created', value: counters.groups_created_total ?? '—' },
-  ]
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--s4)' }}>
-      <Card pad>
-        <h3 className={styles.sectionTitle}>Status</h3>
-        <div className={styles.statGrid}>
-          {stats.map((s) => (
-            <Card key={s.label} className={styles.stat}>
-              <div className={styles.statValue}>{s.value}</div>
-              <div className={styles.statLabel}>{s.label}</div>
-            </Card>
-          ))}
-        </div>
-      </Card>
+    <div className={styles.tabStack}>
+      <StatCards
+        items={[
+          { label: 'Images', value: health.data?.image_count ?? '—' },
+          { label: 'Uptime', value: metrics.data ? fmtUptime(metrics.data.uptime_seconds) : '—' },
+          { label: 'Active groups', value: gauges.active_groups ?? '—' },
+          { label: 'Connected displays', value: gauges.active_browsers ?? '—' },
+          { label: 'WS connections', value: counters.websocket_connections_total ?? '—' },
+          { label: 'Groups created', value: counters.groups_created_total ?? '—' },
+        ]}
+      />
 
       <Card pad>
-        <h3 className={styles.sectionTitle}>Actions</h3>
-        <div style={{ display: 'flex', gap: 'var(--s3)', flexWrap: 'wrap' }}>
-          <Button loading={haTest.isPending} onClick={() => haTest.mutate()}>
-            Test Home Assistant
-          </Button>
+        <h3 className={styles.sectionTitle}>Maintenance</h3>
+        <Row
+          label="Refresh caches"
+          hint="Re-scan images and clear cached thumbnails after changing files on disk directly."
+        >
           <Button loading={refresh.isPending} onClick={() => refresh.mutate()}>
-            <RefreshIcon size={15} /> Refresh caches
+            <RefreshIcon size={15} /> Refresh
           </Button>
-          <a href="/docs" target="_blank" rel="noreferrer">
-            <Button variant="ghost">API docs ↗</Button>
-          </a>
-        </div>
-        <div className={styles.scopeNote} style={{ marginTop: 'var(--s3)' }}>
-          Groups, endpoints and pulls save automatically. “Refresh caches” re-scans images and
-          clears cached thumbnails/pages — use it after changing files on disk directly.
-        </div>
+        </Row>
+        <Row label="Home Assistant" hint="Check the configured HA connection.">
+          <Button loading={haTest.isPending} onClick={() => haTest.mutate()}>
+            Test connection
+          </Button>
+        </Row>
       </Card>
 
       <Card
@@ -154,37 +143,48 @@ export function SystemTab() {
         }}
       >
         <h3 className={styles.sectionTitle}>Backup &amp; restore</h3>
-        <div style={{ display: 'flex', gap: 'var(--s3)', flexWrap: 'wrap', alignItems: 'center' }}>
-          <Button loading={exporting} onClick={onExport}>
-            Export config
-          </Button>
-          <ToggleField checked={includeKeys} onChange={setIncludeKeys}>Include API keys</ToggleField>
+        <Row
+          label="Export configuration"
+          hint="Groups, Immich pulls, settings and curation as one JSON file. Secrets stay encrypted."
+        >
+          <div className={styles.rowCluster}>
+            <ToggleField checked={includeKeys} onChange={setIncludeKeys}>Include API keys</ToggleField>
+            <Button loading={exporting} onClick={onExport}>
+              Export
+            </Button>
+          </div>
+        </Row>
+        <Row
+          label="Restore from backup"
+          hint="Overwrites current config and reloads — or drop a JSON file anywhere on this card."
+        >
           <Button loading={importMut.isPending} onClick={() => fileInput.current?.click()}>
             Import config…
           </Button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              e.target.value = '' // allow re-selecting the same file
-              if (f) onImportFile(f)
-            }}
-          />
-        </div>
-        <div className={styles.scopeNote} style={{ marginTop: 'var(--s3)' }}>
-          Downloads all groups, Immich pulls, settings and curation as one JSON file. Secrets stay
-          encrypted; import overwrites current config and reloads without a restart. You can also
-          drop a config JSON anywhere on this card to import it.
-        </div>
+        </Row>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            e.target.value = '' // allow re-selecting the same file
+            if (f) onImportFile(f)
+          }}
+        />
       </Card>
 
       <Card pad>
         <h3 className={styles.sectionTitle}>Logs</h3>
         <LogsPanel />
       </Card>
+
+      <div className={styles.tabFooter}>
+        <a href="/docs" target="_blank" rel="noreferrer">
+          API reference ↗
+        </a>
+      </div>
 
       {confirmModal}
     </div>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AppSettings } from '@/api/types'
 import { fetchSettings, updateSettings, testHomeAssistant } from '@/api/system'
-import { FormSection, Row, ToggleRow, NumberRow, TextRow, Input, Button, Loading, LoadError } from '@/components/ui'
+import { Row, ToggleRow, NumberRow, TextRow, Input, Button, Card, Loading, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import styles from '@/pages/Admin.module.css'
@@ -50,62 +50,70 @@ export function SettingsTab() {
     setForm((f) => (f ? { ...f, [key]: v } : f))
   }
 
+  function discard() {
+    if (data) setForm(data)
+    setToken('')
+  }
+
   return (
-    <div>
-      <div className={styles.settingsGrid}>
-      <FormSection title="Integrations" defaultOpen>
+    <div className={styles.tabStack}>
+      <Card pad>
+        <h3 className={styles.sectionTitle}>Integrations</h3>
         <ToggleRow
           label="Home Assistant"
           hint="Enable clock / weather / night-mode via HA"
           value={form.ha_enabled}
           onChange={(v) => set('ha_enabled', v)}
         />
-        <TextRow
-          label="HA URL"
-          hint="e.g. http://homeassistant.local:8123"
-          value={form.ha_url}
-          onChange={(v) => set('ha_url', v)}
-          placeholder="http://homeassistant.local:8123"
-          stack
-        />
-        <Row
-          label="HA token"
-          hint={form.has_ha_token ? 'A token is set — leave blank to keep it' : 'No token set'}
-          stack
-        >
-          <Input
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder={form.has_ha_token ? '•••••••• (unchanged)' : 'paste long-lived access token'}
-            autoComplete="new-password"
+        <fieldset disabled={!form.ha_enabled} className={styles.gatedFields}>
+          <TextRow
+            label="HA URL"
+            value={form.ha_url}
+            onChange={(v) => set('ha_url', v)}
+            placeholder="http://homeassistant.local:8123"
+            stack
           />
-          <div className={styles.shareActions}>
-            <Button size="sm" loading={haTest.isPending} onClick={() => haTest.mutate()}>
-              Test connection
-            </Button>
-            <span className="faint" style={{ fontSize: 'var(--text-xs)', alignSelf: 'center' }}>
-              Save first, then test.
-            </span>
-          </div>
-        </Row>
-        <NumberRow
-          label="HA request timeout"
-          value={form.ha_http_timeout}
-          onChange={(v) => set('ha_http_timeout', v ?? 10)}
-          min={1}
-          max={120}
-          unit="sec"
-        />
-        <NumberRow
-          label="Weather cache"
-          hint="How long HA weather is cached"
-          value={form.ha_weather_cache_ttl}
-          onChange={(v) => set('ha_weather_cache_ttl', v ?? 600)}
-          min={0}
-          max={86400}
-          unit="sec"
-        />
+          <Row
+            label="HA token"
+            hint={
+              form.has_ha_token
+                ? 'A token is set — leave blank to keep it. Save before testing a new one.'
+                : 'No token set. Save before testing.'
+            }
+            stack
+          >
+            <div className={styles.rowCluster}>
+              <Input
+                type="password"
+                style={{ flex: 1 }}
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder={form.has_ha_token ? '•••••••• (unchanged)' : 'paste long-lived access token'}
+                autoComplete="new-password"
+              />
+              <Button loading={haTest.isPending} onClick={() => haTest.mutate()}>
+                Test connection
+              </Button>
+            </div>
+          </Row>
+          <NumberRow
+            label="HA request timeout"
+            value={form.ha_http_timeout}
+            onChange={(v) => set('ha_http_timeout', v ?? 10)}
+            min={1}
+            max={120}
+            unit="sec"
+          />
+          <NumberRow
+            label="Weather cache"
+            hint="How long HA weather is cached"
+            value={form.ha_weather_cache_ttl}
+            onChange={(v) => set('ha_weather_cache_ttl', v ?? 600)}
+            min={0}
+            max={86400}
+            unit="sec"
+          />
+        </fieldset>
         <NumberRow
           label="Immich request timeout"
           value={form.immich_http_timeout}
@@ -121,9 +129,10 @@ export function SettingsTab() {
           min={1}
           max={1000000}
         />
-      </FormSection>
+      </Card>
 
-      <FormSection title="Display & limits">
+      <Card pad>
+        <h3 className={styles.sectionTitle}>Display &amp; limits</h3>
         <NumberRow
           label="Preload lead time"
           hint="Send preload this many seconds before a switch"
@@ -170,9 +179,10 @@ export function SettingsTab() {
           min={1}
           max={1000}
         />
-      </FormSection>
+      </Card>
 
-      <FormSection title="General">
+      <Card pad>
+        <h3 className={styles.sectionTitle}>General</h3>
         <TextRow
           label="Base URL"
           hint="Public URL used to build image links; blank = auto-detect"
@@ -181,14 +191,19 @@ export function SettingsTab() {
           placeholder="https://screensaver.example.com"
           stack
         />
-      </FormSection>
-      </div>
+      </Card>
 
-      <div style={{ marginTop: 'var(--s5)', display: 'flex', justifyContent: 'flex-end' }}>
-        <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>
-          Save settings
-        </Button>
-      </div>
+      {dirty && (
+        <div className={styles.saveBar}>
+          <span className={styles.saveBarText}>Unsaved changes</span>
+          <Button variant="ghost" onClick={discard}>
+            Discard
+          </Button>
+          <Button variant="primary" loading={save.isPending} onClick={() => save.mutate()}>
+            Save settings
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

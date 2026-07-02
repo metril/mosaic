@@ -401,16 +401,79 @@
   gap: var(--s3);
 }
 
-/* Settings form sections: one column when narrow, two side-by-side on wide
-   screens so the form uses the panel width instead of a cramped ribbon. The
-   collapsible sections align to the top so uneven heights don't leave gaps. */
-.settingsGrid {
-  display: grid;
-  /* min(440px, 100%) so the 440px column minimum can't force horizontal
-     scrolling on phone widths */
-  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
-  gap: var(--s3) var(--s5);
-  align-items: start;
+/* Vertical stack of section cards — the shared layout for Settings/System. */
+.tabStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+/* Inline control cluster on the right side of a form Row. */
+.rowCluster {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+/* Fieldset that dims dependent rows while their feature toggle is off. */
+.gatedFields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+  transition: opacity var(--dur-2) var(--ease);
+}
+.gatedFields:disabled {
+  opacity: 0.5;
+}
+
+/* Sticky "unsaved changes" bar at the bottom of the Settings tab. */
+.saveBar {
+  position: sticky;
+  bottom: var(--s4);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  background: var(--color-surface-hi);
+  border: 1px solid var(--color-border);
+  border-radius: var(--r);
+  box-shadow: var(--shadow-lg);
+  animation: saveBarIn var(--dur-2) var(--ease);
+}
+.saveBarText {
+  margin-right: auto;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+@keyframes saveBarIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Muted meta links at the very bottom of a tab (e.g. API reference). */
+.tabFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s3);
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+.tabFooter a {
+  color: inherit;
+  text-decoration: none;
+}
+.tabFooter a:hover {
+  color: var(--color-text);
+  text-decoration: underline;
 }
 
 /* Section heading inside a System-tab card. */
@@ -480,6 +543,10 @@
 }
 
 /* system stats */
+/* Spacing under the stat row when the tab isn't a .tabStack (Health). */
+.statRow {
+  margin-bottom: var(--s5);
+}
 .statGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
