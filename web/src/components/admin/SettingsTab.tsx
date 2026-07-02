@@ -2,20 +2,25 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { AppSettings } from '@/api/types'
 import { fetchSettings, updateSettings, testHomeAssistant } from '@/api/system'
-import { FormSection, Row, ToggleRow, NumberRow, TextRow, Input, Button, Loading } from '@/components/ui'
+import { FormSection, Row, ToggleRow, NumberRow, TextRow, Input, Button, Loading, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import styles from '@/pages/Admin.module.css'
+import { useDirtyGuard } from '@/hooks/useDirtyGuard'
 
 export function SettingsTab() {
   const qc = useQueryClient()
-  const { data, isLoading } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['settings'], queryFn: fetchSettings })
   const [form, setForm] = useState<AppSettings | null>(null)
   const [token, setToken] = useState('') // write-only; blank = keep existing
 
   useEffect(() => {
     if (data) setForm(data)
   }, [data])
+
+  // Warn before reload/close while there are unsaved edits.
+  const dirty = !!form && !!data && (JSON.stringify(form) !== JSON.stringify(data) || token !== '')
+  useDirtyGuard(dirty)
 
   const save = useMutation({
     mutationFn: () => {
@@ -38,6 +43,7 @@ export function SettingsTab() {
     onError: (e) => toast.error(e instanceof ApiError ? e.detail : 'HA test failed'),
   })
 
+  if (isError && !form) return <LoadError title="Couldn’t load settings" onRetry={() => refetch()} />
   if (isLoading || !form) return <Loading label="Loading settings…" />
 
   function set<K extends keyof AppSettings>(key: K, v: AppSettings[K]) {

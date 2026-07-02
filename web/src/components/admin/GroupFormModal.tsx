@@ -8,6 +8,7 @@ import { Modal, Button, Input, Label, FieldError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { GroupSettingsForm } from './GroupSettingsForm'
+import { useDirtyGuard } from '@/hooks/useDirtyGuard'
 
 interface Props {
   /** Existing group to edit, or null to create. */
@@ -19,9 +20,14 @@ export function GroupFormModal({ group, onClose }: Props) {
   const qc = useQueryClient()
   const editing = group !== null
   const [groupId, setGroupId] = useState(group?.group_id ?? '')
-  const [settings, setSettings] = useState<DisplayGroupSettings>(
+  const [initialSettings] = useState<DisplayGroupSettings>(
     group ? { ...DEFAULT_SETTINGS, ...group.settings } : DEFAULT_SETTINGS,
   )
+  const [settings, setSettings] = useState<DisplayGroupSettings>(initialSettings)
+  const dirty =
+    JSON.stringify(settings) !== JSON.stringify(initialSettings) || (!editing && groupId !== '')
+  const guard = useDirtyGuard(dirty)
+  const requestClose = guard(onClose)
 
   const mutation = useMutation({
     mutationFn: () =>
@@ -40,11 +46,11 @@ export function GroupFormModal({ group, onClose }: Props) {
     <Modal
       title={editing ? `Edit ${group!.group_id}` : 'New display group'}
       subtitle={editing ? undefined : 'A group syncs one or more displays.'}
-      onClose={onClose}
+      onClose={requestClose}
       width={620}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={requestClose}>
             Cancel
           </Button>
           <Button

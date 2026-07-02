@@ -1,14 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { fetchCuration, thumbUrl } from '@/api/browse'
 import { useCuration } from '@/hooks/useCuration'
-import { EmptyState, Loading, IconButton, HeartIcon, EyeOffIcon } from '@/components/ui'
+import { EmptyState, Loading, IconButton, HeartIcon, EyeOffIcon, LoadError } from '@/components/ui'
 import styles from '@/pages/Admin.module.css'
 
 export function CurationTab() {
-  const { data, isLoading } = useQuery({ queryKey: ['curation'], queryFn: fetchCuration })
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['curation'], queryFn: fetchCuration })
   const { toggleFavorite, toggleHidden } = useCuration()
 
   if (isLoading) return <Loading label="Loading curation…" />
+  if (isError) return <LoadError title="Couldn’t load curation" onRetry={() => refetch()} />
 
   const favorites = data?.favorites ?? []
   const excluded = data?.excluded ?? []

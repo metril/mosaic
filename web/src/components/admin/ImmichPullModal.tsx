@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ImmichPull } from '@/api/types'
 import { savePull, testConnection, listAlbums, listPeople, type PullSave } from '@/api/immich'
-import { Modal, Button, Input, Select, Label, Toggle, CheckIcon, FieldError } from '@/components/ui'
+import { Modal, Button, Input, Select, Label, CheckIcon, FieldError, ToggleField, Checkbox } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
 import styles from '@/pages/Admin.module.css'
+import { useDirtyGuard } from '@/hooks/useDirtyGuard'
 
 interface Props {
   pull: ImmichPull | null
@@ -41,6 +42,10 @@ export function ImmichPullModal({ pull, onClose }: Props) {
   function set<K extends keyof PullSave>(k: K, v: PullSave[K]) {
     setForm((f) => ({ ...f, [k]: v }))
   }
+
+  const [initialForm] = useState(() => JSON.stringify(form))
+  const guard = useDirtyGuard(JSON.stringify(form) !== initialForm)
+  const requestClose = guard(onClose)
 
   // album/people pickers load on demand
   const connArgs = { server_url: form.server_url, api_key: form.api_key || undefined, pull_name: pull?.name }
@@ -94,11 +99,11 @@ export function ImmichPullModal({ pull, onClose }: Props) {
   return (
     <Modal
       title={editing ? `Edit pull · ${pull!.name}` : 'New Immich pull'}
-      onClose={onClose}
+      onClose={requestClose}
       width={640}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={requestClose}>
             Cancel
           </Button>
           <Button variant="primary" disabled={!canSave} loading={save.isPending} onClick={() => save.mutate()}>
@@ -161,15 +166,15 @@ export function ImmichPullModal({ pull, onClose }: Props) {
           ) : (
             <div className={styles.pickerList}>
               {(albums.data ?? []).map((a) => (
-                <label key={a.id} className={styles.pickerItem}>
-                  <input
-                    type="checkbox"
+                <div key={a.id} className={styles.pickerItem}>
+                  <Checkbox
                     checked={(form.album_ids ?? []).includes(a.id)}
                     onChange={() => toggleId('album_ids', a.id)}
-                  />
-                  {a.name}
+                  >
+                    {a.name}
+                  </Checkbox>
                   <span className={styles.pickerCount}>{a.asset_count}</span>
-                </label>
+                </div>
               ))}
             </div>
           )}
@@ -178,14 +183,14 @@ export function ImmichPullModal({ pull, onClose }: Props) {
               <Label>People ({(form.person_ids ?? []).length} selected)</Label>
               <div className={styles.pickerList}>
                 {people.data.map((p) => (
-                  <label key={p.id} className={styles.pickerItem}>
-                    <input
-                      type="checkbox"
+                  <div key={p.id} className={styles.pickerItem}>
+                    <Checkbox
                       checked={(form.person_ids ?? []).includes(p.id)}
                       onChange={() => toggleId('person_ids', p.id)}
-                    />
-                    {p.name || '(unnamed)'}
-                  </label>
+                    >
+                      {p.name || '(unnamed)'}
+                    </Checkbox>
+                  </div>
                 ))}
               </div>
             </>
@@ -254,10 +259,9 @@ export function ImmichPullModal({ pull, onClose }: Props) {
 
 function ToggleLine({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
-    <label className={cn(styles.pickerItem)} style={{ cursor: 'pointer', padding: 'var(--s2) 0' }}>
-      <Toggle checked={value} onChange={onChange} label={label} />
-      <span style={{ fontSize: 'var(--text-sm)' }}>{label}</span>
+    <div className={cn(styles.pickerItem)} style={{ padding: 'var(--s2) 0' }}>
+      <ToggleField checked={value} onChange={onChange}>{label}</ToggleField>
       {value && <CheckIcon size={14} style={{ marginLeft: 'auto', color: 'var(--color-success)' }} />}
-    </label>
+    </div>
   )
 }

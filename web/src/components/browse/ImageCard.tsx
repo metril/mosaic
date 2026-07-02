@@ -46,27 +46,32 @@ export function ImageCard({ file, favorite, hidden, onOpen, onToggleFav, onToggl
   }
 
   return (
+    // The card is a plain clickable region; keyboard access goes through the
+    // real thumbnail <button> below — nesting the action <button>s inside a
+    // role="button" container is invalid interactive-in-interactive semantics.
     <div
       className={cn(styles.card, hidden && styles.cardHidden, revealed && styles.cardRevealed)}
       onClick={handleActivate}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onOpen()
-        }
-      }}
     >
       <div className={styles.thumbWrap}>
-        <img
-          className={cn(styles.thumb, loaded && styles.thumbLoaded)}
-          src={thumbUrl(file.path)}
-          alt={file.name}
-          loading="lazy"
-          decoding="async"
-          onLoad={() => setLoaded(true)}
-        />
+        <button
+          type="button"
+          className={styles.thumbOpenBtn}
+          aria-label={`Open ${file.name}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            handleActivate()
+          }}
+        >
+          <img
+            className={cn(styles.thumb, loaded && styles.thumbLoaded)}
+            src={thumbUrl(file.path)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setLoaded(true)}
+          />
+        </button>
 
         {favorite && (
           <span className={styles.favBadge} aria-hidden="true">

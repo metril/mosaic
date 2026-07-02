@@ -2,21 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiKey } from '@/api/types'
 import { listKeys, revokeKey, rotateKey, revealKey } from '@/api/keys'
-import {
-  Button,
-  Card,
-  EmptyState,
-  Loading,
-  IconButton,
-  KeyIcon,
-  PlusIcon,
-  EditIcon,
-  TrashIcon,
-  RefreshIcon,
-  ExternalIcon,
-  EyeOffIcon,
-  useConfirm,
-} from '@/components/ui'
+import { Button, Card, EmptyState, Loading, IconButton, KeyIcon, PlusIcon, EditIcon, TrashIcon, RefreshIcon, ExternalIcon, EyeOffIcon, useConfirm, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -27,7 +13,7 @@ import styles from '@/pages/Admin.module.css'
 export function KeysTab() {
   const qc = useQueryClient()
   const [confirm, confirmModal] = useConfirm()
-  const { data: keys, isLoading } = useQuery({ queryKey: ['keys'], queryFn: listKeys })
+  const { data: keys, isLoading, isError, refetch } = useQuery({ queryKey: ['keys'], queryFn: listKeys })
   const [editing, setEditing] = useState<ApiKey | null>(null)
   const [creating, setCreating] = useState(false)
   const [sharing, setSharing] = useState<ApiKey | null>(null)
@@ -62,10 +48,11 @@ export function KeysTab() {
   })
 
   if (isLoading) return <Loading label="Loading keys…" />
+  if (isError) return <LoadError title="Couldn’t load API keys" onRetry={() => refetch()} />
 
   return (
     <>
-      <div style={{ display: 'flex', marginBottom: 'var(--s4)' }}>
+      <div className={styles.toolbar}>
         <Button variant="primary" onClick={() => setCreating(true)}>
           <PlusIcon size={16} /> New API key
         </Button>

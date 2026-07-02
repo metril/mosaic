@@ -2,12 +2,13 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ApiKey } from '@/api/types'
 import { createKey, updateKey, availableResources } from '@/api/keys'
-import { Modal, Button, Input, Label, Toggle, CopyIcon, CheckIcon } from '@/components/ui'
+import { Modal, Button, Input, Label, CopyIcon, CheckIcon, ToggleField, Checkbox } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
 import { copyText } from '@/lib/clipboard'
 import styles from '@/pages/Admin.module.css'
+import { useDirtyGuard } from '@/hooks/useDirtyGuard'
 
 /** Show a key secret with a copy button (used for the post-rotate reveal and
  *  the keys-list "reveal secret" action). */
@@ -93,6 +94,13 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
     setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
   }
 
+  const dirty = editing
+    ? name !== apiKey!.name || enabled !== apiKey!.enabled || JSON.stringify(scopes) !== JSON.stringify(apiKey!.scopes)
+    : name !== '' || JSON.stringify(scopes) !== JSON.stringify(['admin:display:monitor'])
+  // The post-create reveal is not a form — never guard it.
+  const guard = useDirtyGuard(dirty && !created)
+  const requestClose = guard(onClose)
+
   const save = useMutation({
     mutationFn: async () => {
       if (editing) return updateKey(apiKey!.id, { name, enabled, scopes })
@@ -145,11 +153,11 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
   return (
     <Modal
       title={editing ? `Edit key · ${apiKey!.name}` : 'New API key'}
-      onClose={onClose}
+      onClose={requestClose}
       width={560}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={requestClose}>
             Cancel
           </Button>
           <Button variant="primary" disabled={!name || scopes.length === 0} loading={save.isPending} onClick={() => save.mutate()}>
@@ -166,46 +174,49 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
         </div>
 
         {editing && (
-          <label className={styles.pickerItem} style={{ padding: 'var(--s2) 0' }}>
-            <Toggle checked={enabled} onChange={setEnabled} label="Enabled" />
-            <span style={{ fontSize: 'var(--text-sm)' }}>Enabled</span>
-          </label>
+          <div className={styles.pickerItem} style={{ padding: 'var(--s2) 0' }}>
+            <ToggleField checked={enabled} onChange={setEnabled}>Enabled</ToggleField>
+          </div>
         )}
 
         <div className={styles.fieldGroup}>
           <Label>Scopes</Label>
-          <label className={styles.pickerItem} style={{ padding: 'var(--s2) 0' }}>
-            <Toggle checked={full} onChange={(v) => setScopes(v ? ['*'] : ['admin:display:monitor'])} label="Full access" />
-            <span style={{ fontSize: 'var(--text-sm)' }}>Full access (*)</span>
-          </label>
+          <div className={styles.pickerItem} style={{ padding: 'var(--s2) 0' }}>
+            <ToggleField checked={full} onChange={(v) => setScopes(v ? ['*'] : ['admin:display:monitor'])}>
+              Full access (*)
+            </ToggleField>
+          </div>
 
           {!full && (
             <div className={styles.pickerList}>
               {ADMIN_SCOPES.map(([s, label]) => (
-                <label key={s} className={styles.pickerItem}>
-                  <input type="checkbox" checked={scopes.includes(s)} onChange={() => toggleScope(s)} />
-                  {label}
+                <div key={s} className={styles.pickerItem}>
+                  <Checkbox checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
+                    {label}
+                  </Checkbox>
                   <span className={cn(styles.pickerCount, styles.mono)}>{s}</span>
-                </label>
+                </div>
               ))}
               {(resources.data?.groups ?? []).map((g) => {
                 const s = `group:${g.group_id}`
                 return (
-                  <label key={s} className={styles.pickerItem}>
-                    <input type="checkbox" checked={scopes.includes(s)} onChange={() => toggleScope(s)} />
-                    Group: {g.group_id}
+                  <div key={s} className={styles.pickerItem}>
+                    <Checkbox checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
+                      Group: {g.group_id}
+                    </Checkbox>
                     <span className={cn(styles.pickerCount, styles.mono)}>{s}</span>
-                  </label>
+                  </div>
                 )
               })}
               {(resources.data?.folders ?? []).map((f) => {
                 const s = `folder:${f}`
                 return (
-                  <label key={s} className={styles.pickerItem}>
-                    <input type="checkbox" checked={scopes.includes(s)} onChange={() => toggleScope(s)} />
-                    Folder: {f}
+                  <div key={s} className={styles.pickerItem}>
+                    <Checkbox checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
+                      Folder: {f}
+                    </Checkbox>
                     <span className={cn(styles.pickerCount, styles.mono)}>{s}</span>
-                  </label>
+                  </div>
                 )
               })}
             </div>

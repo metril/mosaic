@@ -8,7 +8,7 @@ import {
   downloadConfigExport,
   importConfig,
 } from '@/api/system'
-import { Button, Card, Loading, Toggle, RefreshIcon, useConfirm } from '@/components/ui'
+import { Button, Card, Loading, RefreshIcon, useConfirm, ToggleField, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { LogsPanel } from './LogsPanel'
@@ -90,6 +90,7 @@ export function SystemTab() {
   })
 
   if (health.isLoading) return <Loading label="Loading system status…" />
+  if (health.isError) return <LoadError title="Couldn’t load system status" onRetry={() => health.refetch()} />
 
   const gauges = metrics.data?.gauges ?? {}
   const counters = metrics.data?.counters ?? {}
@@ -145,10 +146,7 @@ export function SystemTab() {
           <Button loading={exporting} onClick={onExport}>
             Export config
           </Button>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5em', fontSize: 'var(--text-sm)' }}>
-            <Toggle checked={includeKeys} onChange={setIncludeKeys} label="Include API keys" />
-            Include API keys
-          </label>
+          <ToggleField checked={includeKeys} onChange={setIncludeKeys}>Include API keys</ToggleField>
           <Button loading={importMut.isPending} onClick={() => fileInput.current?.click()}>
             Import config…
           </Button>

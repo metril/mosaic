@@ -10,7 +10,7 @@ export function Toaster() {
   return (
     <div className={styles.wrap} aria-live="polite" aria-atomic="false">
       {toasts.map((t) => (
-        <div key={t.id} className={cn(styles.toast, styles[t.kind])} role="status">
+        <div key={t.id} className={cn(styles.toast, styles[t.kind])} role={t.kind === 'error' ? 'alert' : 'status'}>
           <span className={styles.dot} />
           <span className={styles.msg}>{t.message}</span>
           <button className={styles.close} onClick={() => dismiss(t.id)} aria-label="Dismiss">

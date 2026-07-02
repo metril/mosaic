@@ -2,21 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ImmichPull, PullResult } from '@/api/types'
 import { listPulls, triggerPull, cancelPull, deletePull, pullStatus } from '@/api/immich'
-import {
-  Button,
-  Card,
-  EmptyState,
-  Loading,
-  IconButton,
-  CloudIcon,
-  PlusIcon,
-  PlayIcon,
-  SparkleIcon,
-  XIcon,
-  EditIcon,
-  TrashIcon,
-  useConfirm,
-} from '@/components/ui'
+import { Button, Card, EmptyState, Loading, IconButton, CloudIcon, PlusIcon, PlayIcon, SparkleIcon, XIcon, EditIcon, TrashIcon, useConfirm, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -24,15 +10,16 @@ import { ImmichPullModal } from './ImmichPullModal'
 import styles from '@/pages/Admin.module.css'
 
 export function ImmichTab() {
-  const { data: pulls, isLoading } = useQuery({ queryKey: ['pulls'], queryFn: listPulls })
+  const { data: pulls, isLoading, isError, refetch } = useQuery({ queryKey: ['pulls'], queryFn: listPulls })
   const [editing, setEditing] = useState<ImmichPull | null>(null)
   const [creating, setCreating] = useState(false)
 
   if (isLoading) return <Loading label="Loading pulls…" />
+  if (isError) return <LoadError title="Couldn’t load Immich pulls" onRetry={() => refetch()} />
 
   return (
     <>
-      <div style={{ display: 'flex', marginBottom: 'var(--s4)' }}>
+      <div className={styles.toolbar}>
         <Button variant="primary" onClick={() => setCreating(true)}>
           <PlusIcon size={16} /> New pull
         </Button>

@@ -411,7 +411,9 @@
    collapsible sections align to the top so uneven heights don't leave gaps. */
 .settingsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(440px, 1fr));
+  /* min(440px, 100%) so the 440px column minimum can't force horizontal
+     scrolling on phone widths */
+  grid-template-columns: repeat(auto-fit, minmax(min(440px, 100%), 1fr));
   gap: var(--s3) var(--s5);
   align-items: start;
 }
@@ -510,4 +512,12 @@
   .groupGrid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Shared tab toolbar (the "New X" row above each list) */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
 }

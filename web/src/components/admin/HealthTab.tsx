@@ -2,7 +2,7 @@ import { memo, useState } from 'react'
 import type { DisplayGroup, DisplayGroupSettings } from '@/api/types'
 import { useGroups } from '@/hooks/useAdminWs'
 import { useNow } from '@/hooks/useNow'
-import { Card, EmptyState, Loading, Button, ActivityIcon } from '@/components/ui'
+import { Card, EmptyState, Loading, Button, ActivityIcon, LoadError } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { DisplayPreviewModal } from './DisplayPreviewModal'
 import styles from '@/pages/Admin.module.css'
@@ -46,13 +46,14 @@ interface PreviewTarget {
 }
 
 export function HealthTab() {
-  const { data: groups, isLoading } = useGroups()
+  const { data: groups, isLoading, isError, refetch } = useGroups()
   // 5s resolution is plenty for heartbeat ages (status thresholds are 45/60s)
   // and avoids re-rendering every endpoint row once a second.
   const now = useNow(5000)
   const [preview, setPreview] = useState<PreviewTarget | null>(null)
 
   if (isLoading) return <Loading label="Loading display health…" />
+  if (isError && !groups) return <LoadError title="Couldn’t load display health" onRetry={() => refetch()} />
   if (!groups || groups.length === 0) {
     return (
       <EmptyState icon={<ActivityIcon size={38} />} title="No display groups">

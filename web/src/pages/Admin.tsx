@@ -51,12 +51,26 @@ export default function Admin() {
         </span>
       </div>
 
-      <div className={styles.tabs} role="tablist">
+      <div
+        className={styles.tabs}
+        role="tablist"
+        onKeyDown={(e) => {
+          // Roving arrow-key navigation per the ARIA tabs pattern.
+          if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+          const i = tabs.findIndex((t) => t.id === tab)
+          const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]
+          setTab(next.id)
+          ;(e.currentTarget.querySelector(`#admin-tab-${next.id}`) as HTMLElement | null)?.focus()
+        }}
+      >
         {tabs.map((t) => (
           <button
             key={t.id}
+            id={`admin-tab-${t.id}`}
             role="tab"
             aria-selected={tab === t.id}
+            aria-controls={`admin-panel-${t.id}`}
+            tabIndex={tab === t.id ? 0 : -1}
             className={cn(styles.tab, tab === t.id && styles.tabActive)}
             onClick={() => setTab(t.id)}
           >
@@ -67,13 +81,15 @@ export default function Admin() {
         ))}
       </div>
 
-      {tab === 'displays' && <GroupsTab />}
-      {tab === 'immich' && <ImmichTab />}
-      {tab === 'curation' && <CurationTab />}
-      {tab === 'keys' && <KeysTab />}
-      {tab === 'health' && <HealthTab />}
-      {tab === 'settings' && <SettingsTab />}
-      {tab === 'system' && <SystemTab />}
+      <div id={`admin-panel-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>
+        {tab === 'displays' && <GroupsTab />}
+        {tab === 'immich' && <ImmichTab />}
+        {tab === 'curation' && <CurationTab />}
+        {tab === 'keys' && <KeysTab />}
+        {tab === 'health' && <HealthTab />}
+        {tab === 'settings' && <SettingsTab />}
+        {tab === 'system' && <SystemTab />}
+      </div>
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DisplayGroup } from '@/api/types'
 import { cloneGroup } from '@/api/admin'
 import { GROUPS_KEY, useGroups } from '@/hooks/useAdminWs'
-import { Button, EmptyState, Loading, GridIcon, PlusIcon, Modal, Input, Label } from '@/components/ui'
+import { Button, EmptyState, Loading, GridIcon, PlusIcon, Modal, Input, Label, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { GroupCard } from './GroupCard'
@@ -11,16 +11,17 @@ import { GroupFormModal } from './GroupFormModal'
 import styles from '@/pages/Admin.module.css'
 
 export function GroupsTab() {
-  const { data: groups, isLoading } = useGroups()
+  const { data: groups, isLoading, isError, refetch } = useGroups()
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<DisplayGroup | null>(null)
   const [cloning, setCloning] = useState<DisplayGroup | null>(null)
 
   if (isLoading && !groups) return <Loading label="Loading groups…" />
+  if (isError && !groups) return <LoadError title="Couldn’t load display groups" onRetry={() => refetch()} />
 
   return (
     <>
-      <div style={{ display: 'flex', marginBottom: 'var(--s4)' }}>
+      <div className={styles.toolbar}>
         <Button variant="primary" onClick={() => setCreating(true)}>
           <PlusIcon size={16} /> New group
         </Button>

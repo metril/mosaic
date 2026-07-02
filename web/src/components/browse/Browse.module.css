@@ -259,6 +259,20 @@
   background: var(--color-surface-press);
   overflow: hidden;
 }
+/* Reset-styled button wrapping the thumbnail — the card's keyboard target. */
+.thumbOpenBtn {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.thumbOpenBtn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
 .thumb {
   width: 100%;
   height: 100%;

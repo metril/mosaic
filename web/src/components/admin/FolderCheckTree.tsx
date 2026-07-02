@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { FolderNode } from '@/api/types'
 import { fetchFolders } from '@/api/browse'
 import { visibleFolders, hasSubfolders, isFolder } from '@/lib/tree'
-import { Loading, EmptyState, SearchInput, ChevronRightIcon, FolderIcon } from '@/components/ui'
+import { Loading, EmptyState, SearchInput, ChevronRightIcon, FolderIcon, Checkbox } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import styles from './FolderCheckTree.module.css'
 
@@ -121,12 +121,13 @@ export function FolderCheckTree({ selected, onToggle }: Props) {
                 ) : (
                   <span className={styles.twistySpacer} />
                 )}
-                <label className={styles.label}>
-                  <input type="checkbox" checked={checked} onChange={() => onToggle(node.path)} />
-                  <span className={styles.name} title={node.path}>
-                    {node.name}
-                  </span>
-                </label>
+                <span className={styles.label}>
+                  <Checkbox checked={checked} onChange={() => onToggle(node.path)}>
+                    <span className={styles.name} title={node.path}>
+                      {node.name}
+                    </span>
+                  </Checkbox>
+                </span>
                 <span className={styles.count}>{node.file_count}</span>
               </div>
             )

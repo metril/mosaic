@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchLogs, logsDownloadUrl } from '@/api/system'
-import { SearchInput, Button, Toggle, DownloadIcon } from '@/components/ui'
+import { SearchInput, Button, DownloadIcon, ToggleField } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import styles from './LogsPanel.module.css'
 
@@ -18,7 +18,7 @@ export function LogsPanel() {
   const [tail, setTail] = useState(true)
   const consoleRef = useRef<HTMLDivElement>(null)
 
-  const { data } = useQuery({
+  const { data, isPending } = useQuery({
     queryKey: ['logs', level, q],
     queryFn: () => fetchLogs({ level, q }),
     refetchInterval: tail ? 3000 : false,
@@ -47,10 +47,7 @@ export function LogsPanel() {
         <div style={{ width: 220 }}>
           <SearchInput placeholder="Filter logs…" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5em', fontSize: 'var(--text-sm)' }}>
-          <Toggle checked={tail} onChange={setTail} label="Live tail" />
-          Live tail
-        </label>
+        <ToggleField checked={tail} onChange={setTail}>Live tail</ToggleField>
         <div className={styles.spacer} />
         <a href={logsDownloadUrl()} download style={{ textDecoration: 'none' }}>
           <Button variant="secondary" size="sm">
@@ -61,7 +58,7 @@ export function LogsPanel() {
 
       <div className={styles.console} ref={consoleRef}>
         {records.length === 0 ? (
-          <div className={styles.empty}>No log records match.</div>
+          <div className={styles.empty}>{isPending ? 'Loading logs…' : 'No log records match.'}</div>
         ) : (
           records.map((r) => (
             <div key={r.seq} className={cn(styles.row, styles[r.level.toLowerCase() as keyof typeof styles])}>

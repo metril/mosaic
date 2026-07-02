@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import { IconButton } from './IconButton'
 import { XIcon } from './Icon'
@@ -16,27 +16,67 @@ interface Props {
   role?: 'dialog' | 'alertdialog'
 }
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 export function Modal({ title, subtitle, onClose, children, footer, footerSpread, width, role = 'dialog' }: Props) {
+  const modalRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+    const previouslyFocused = document.activeElement as HTMLElement | null
+
+    // Move focus into the dialog unless something inside (e.g. an autoFocus
+    // input) already claimed it.
+    const modal = modalRef.current
+    if (modal && !modal.contains(document.activeElement)) {
+      const first = modal.querySelector<HTMLElement>(FOCUSABLE)
+      ;(first ?? modal).focus()
     }
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        onClose()
+        return
+      }
+      // Contain Tab within the dialog — without this, keyboard focus escapes
+      // into the (inert-looking but live) page behind the backdrop.
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusables = Array.from(modalRef.current.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+          (el) => el.offsetParent !== null,
+        )
+        if (focusables.length === 0) return
+        const first = focusables[0]
+        const last = focusables[focusables.length - 1]
+        const active = document.activeElement
+        if (e.shiftKey && (active === first || !modalRef.current.contains(active))) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && (active === last || !modalRef.current.contains(active))) {
+          e.preventDefault()
+          first.focus()
+        }
+      }
+    }
+
     window.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
     return () => {
       window.removeEventListener('keydown', onKey)
       document.body.style.overflow = ''
+      previouslyFocused?.focus?.()
     }
   }, [onClose])
 
   return (
     <div className={styles.backdrop} onMouseDown={onClose}>
       <div
+        ref={modalRef}
         className={styles.modal}
         style={width ? ({ ['--mw' as string]: `${width}px` }) : undefined}
         role={role}
         aria-modal="true"
         aria-label={title}
+        tabIndex={-1}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className={styles.head}>

@@ -8,7 +8,7 @@ import {
   type AnnounceSize,
   type AnnounceColor,
 } from '@/api/admin'
-import { Modal, Button, Input, Select, Label, Toggle } from '@/components/ui'
+import { Modal, Button, Input, Select, Label, ToggleField } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -175,10 +175,9 @@ export function AnnounceModal({ groupId, onClose }: { groupId: string; onClose: 
             </div>
           </div>
 
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.6em', fontSize: 'var(--text-sm)' }}>
-            <Toggle checked={scroll} onChange={setScroll} label="Scroll text" />
+          <ToggleField checked={scroll} onChange={setScroll}>
             Scroll text (single-line ticker instead of wrapping)
-          </label>
+          </ToggleField>
 
           <Label htmlFor="announce-duration">Duration (seconds)</Label>
           <Input
