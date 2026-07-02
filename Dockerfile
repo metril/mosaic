@@ -24,12 +24,11 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies for Pillow and curl (for healthcheck)
+# Runtime dependencies: just curl for the healthcheck. Pillow ships manylinux
+# wheels with bundled libjpeg/zlib/libpng, so no image-library dev headers are
+# needed in the runtime image.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libjpeg-dev \
-    zlib1g-dev \
-    libpng-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

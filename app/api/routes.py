@@ -103,7 +103,7 @@ SPA_ROUTES = {
 
 def spa_shell(route: str) -> Optional[FileResponse]:
     """Return the built SPA shell for `route` if the SPA is built and that route
-    has been migrated, otherwise None (caller falls through to its Jinja page).
+    has been migrated, otherwise None.
 
     The shell itself is never cached (so deploys are picked up immediately); the
     hashed /assets/* bundles it references are safe to cache long-term.
@@ -111,6 +111,22 @@ def spa_shell(route: str) -> Optional[FileResponse]:
     if route in SPA_ROUTES and _SPA_INDEX.exists():
         return FileResponse(_SPA_INDEX, headers={"Cache-Control": "no-cache"})
     return None
+
+
+def spa_shell_or_503(route: str) -> FileResponse:
+    """The SPA is the only UI (the legacy Jinja pages were removed) — fail
+    loudly with a clear message if the frontend build is missing rather than
+    rendering a broken page."""
+    resp = spa_shell(route)
+    if resp is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Frontend build not found. Build the SPA (cd web && npm run build) "
+                "or use the Docker image, which builds it automatically."
+            ),
+        )
+    return resp
 
 
 @router.get("/api/csrf", include_in_schema=False)
@@ -787,80 +803,13 @@ async def get_metrics(auth: Union[APIKey, User] = Depends(get_admin_auth)):
     return metrics.to_dict()
 
 
-@router.get("/browse", responses={
-    200: {
-        "description": "Directory tree with folder statistics",
-        "content": {
-            "application/json": {
-                "example": {
-                    "name": "images",
-                    "type": "folder",
-                    "total_folders": 5,
-                    "total_files": 150,
-                    "children": []
-                }
-            }
-        }
-    }
-})
-async def browse_images(
-    request: Request,
-    format: Optional[Literal['json', 'html']] = Query(None, description="Output format - 'json' or 'html' (default)"),
-    user: Optional[User] = Depends(get_optional_user),
-):
-    """
-    Browse all folders, subfolders, and image files in a tree structure.
-
-    Returns complete recursive directory tree in a single response with folder statistics.
-    Client-side JavaScript handles expand/collapse for folders.
-    Requires authentication when OIDC is enabled.
-
-    Query Parameters:
-    - format: 'json' for API access, 'html' (default) for interactive web interface
-
-    Examples:
-    - GET /browse - Interactive HTML file explorer with statistics
-    - GET /browse?format=json - JSON directory tree API with statistics
-
-    Returns:
-        HTML: Interactive file explorer with collapsible folder tree and statistics
-        JSON: Complete directory tree structure with metadata and statistics
-    """
-    # Serve the SPA shell once /browse is migrated (the React app fetches the
-    # tree via ?format=json and handles auth client-side). The JSON API variant
-    # and all not-yet-migrated cases fall through to the existing logic.
-    if format != 'json' and (resp := spa_shell("/browse")):
-        return resp
-
-    # Check authentication if OIDC is enabled
-    config = get_oidc_config()
-    if config.enabled and user is None:
-        return RedirectResponse(url="/auth/login?redirect=/browse")
-
-    # Build complete directory tree with statistics (always enabled)
-    tree_data = await asyncio.get_running_loop().run_in_executor(
-        image_executor,
-        image_service.build_directory_tree
-    )
-
-    # Return JSON if requested
-    if format == 'json':
-        return JSONResponse(content=tree_data)
-
-    # Return HTML by default
-    return templates.TemplateResponse(
-        "browse.html",
-        {
-            "request": request,
-            "total_folders": tree_data["total_folders"],
-            "total_files": tree_data["total_files"],
-            # CSRF token for curation POSTs (F6)
-            "csrf_token": get_csrf_token(request),
-            # Escape "<" so filenames containing "</script>" can't break
-            # out of the inline <script> block (rendered with | safe)
-            "tree_json": json.dumps(tree_data).replace("<", "\\u003c")
-        }
-    )
+@router.get("/browse", responses={200: {"description": "Library browser (SPA)"}})
+async def browse_images(request: Request):
+    """Serve the SPA library browser. The React app fetches data from the fast
+    stat-only /api/browse/* endpoints and handles auth client-side. (The old
+    server-rendered tree — which opened every image file for metadata — and its
+    ?format=json variant were removed with the legacy templates.)"""
+    return spa_shell_or_503("/browse")
 
 
 def _require_browse_auth(user: Optional[User]) -> None:
@@ -1605,39 +1554,9 @@ def get_display_manager(request: Request) -> DisplayManager:
 
 
 @router.get("/admin", include_in_schema=False)
-async def admin_page(request: Request, user: Optional[User] = Depends(get_optional_user)):
-    """
-    Serve the unified admin dashboard.
-
-    This HTML page provides tabbed access to:
-    - Display Groups: Manage synchronized browser displays
-    - Immich: Configure and trigger image pulls from Immich servers
-
-    Requires authentication if OIDC is configured.
-    """
-    # Serve the SPA shell once /admin is migrated (React handles auth via /auth/me)
-    if resp := spa_shell("/admin"):
-        return resp
-
-    config = get_oidc_config()
-
-    # If OIDC enabled but user not authenticated, redirect to login
-    if config.enabled and user is None:
-        return RedirectResponse(url="/auth/login?redirect=/admin")
-
-    # Generate CSRF token for the page
-    csrf_token = get_csrf_token(request)
-
-    return templates.TemplateResponse(
-        "admin.html",
-        {
-            "request": request,
-            "user": user,
-            "csrf_token": csrf_token,
-            "oidc_enabled": config.enabled,
-            "max_immich_pull_count": request.app.state.settings.get_int("max_immich_pull_count"),
-        }
-    )
+async def admin_page(request: Request):
+    """Serve the SPA admin dashboard (React handles auth via /auth/me)."""
+    return spa_shell_or_503("/admin")
 
 
 @router.get("/display/admin", include_in_schema=False)
@@ -1900,31 +1819,6 @@ async def clone_display_group(
         status = 404 if "not found" in msg else 400
         raise HTTPException(status_code=status, detail=msg)
     return JSONResponse(status_code=201, content=group.to_dict())
-
-
-@router.post("/api/display/save-config", responses={
-    200: {"description": "Configuration saved"},
-    401: {"description": "Not authenticated"},
-    403: {"description": "CSRF token invalid"}
-})
-async def save_display_config(
-    request: Request,
-    auth: Union[APIKey, User] = Depends(get_admin_auth),
-    _csrf: None = Depends(verify_csrf_token),
-    display_manager: DisplayManager = Depends(get_display_manager)
-):
-    """
-    Persist current display groups (now a no-op in practice).
-
-    Group edits already write through to SQLite synchronously, so this endpoint
-    is redundant; it is retained only for the legacy Jinja admin fallback
-    (templates/admin.html) that is served when the SPA build is absent.
-    """
-    check_admin_scope(auth, "admin:display:manage")
-    actor = auth.email if isinstance(auth, User) else f"api_key:{auth.name}"
-    logger.info(f"User {actor} saving display config")
-    saved = display_manager.save_config()
-    return JSONResponse(content={"saved": saved, "message": f"Saved {saved} groups to config"})
 
 
 # --- Sync Group Playback Controls ---
@@ -2886,120 +2780,11 @@ async def endpoint_previous_image(
 
 
 @router.get("/display", include_in_schema=False)
-async def display_page(
-    request: Request,
-    group: Optional[str] = Query(None, description="Display group ID to join"),
-    endpoint: Optional[str] = Query(
-        None,
-        description="Endpoint ID for persistent history",
-        pattern=r"^[a-zA-Z0-9_\-]+$",
-        max_length=64
-    ),
-    action: Optional[str] = Query(
-        None,
-        description="Action to perform: 'next' or 'previous'",
-        pattern=r"^(next|previous)$"
-    ),
-    key: Optional[str] = Query(
-        None,
-        description="API key for authentication (required when OIDC is enabled)"
-    ),
-    auth: Optional[Union[APIKey, User]] = Depends(get_image_auth),
-):
-    """
-    Serve the display page for a browser to join a display group.
-
-    The browser connects via WebSocket to the specified display group
-    and displays images synchronized with other browsers in the group.
-    Requires API key or session auth when OIDC is enabled.
-
-    Query Parameters:
-        group: The group ID to join (must exist, created via admin API)
-        endpoint: Optional endpoint ID for persistent history across reconnects
-        action: Optional action to perform before rendering ('next' or 'previous')
-        key: API key for authentication (e.g., sk_xxxx...)
-    """
-    # Serve the SPA shell once /display is migrated. The React kiosk reads the
-    # group/endpoint query params client-side and drives everything over the
-    # WebSocket, so the server-side group lookup / action handling below is
-    # bypassed. (group remains a required query param at the signature level.)
-    if resp := spa_shell("/display"):
-        return resp
-
-    # Legacy (no SPA build) path requires an explicit group.
-    if not group:
-        raise HTTPException(status_code=400, detail="Query parameter 'group' is required.")
-
-    # Check authentication if OIDC is enabled
-    config = get_oidc_config()
-    if config.enabled and auth is None:
-        # Redirect to login for browser access (user can then access via session)
-        redirect_url = f"/auth/login?redirect=/display?group={group}"
-        if endpoint:
-            redirect_url += f"&endpoint={endpoint}"
-        return RedirectResponse(url=redirect_url)
-
-    # Check API key scope access
-    if isinstance(auth, APIKey):
-        if not check_scope_access(auth, request, group_id=group, endpoint_id=endpoint):
-            raise HTTPException(status_code=403, detail="API key not authorized for this endpoint")
-
-    display_manager = get_display_manager(request)
-    display_group = await display_manager.get_group(group)
-
-    if not display_group:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Display group '{group}' not found. Create it via /admin first."
-        )
-
-    # Handle action parameter for on-demand navigation
-    if action and endpoint:
-        endpoint_obj = display_group.endpoints.get(endpoint)
-        if not endpoint_obj:
-            # Create endpoint if it doesn't exist
-            endpoint_obj = display_group.get_or_create_endpoint(endpoint)
-
-        # Find connected browser for this endpoint
-        browser = next(
-            (b for b in display_group.browsers.values() if b.endpoint_id == endpoint),
-            None
-        )
-
-        if action == "next":
-            if browser:
-                await display_manager._advance_browsers(display_group, [browser.browser_id])
-            else:
-                display_manager.advance_endpoint_no_browser(display_group, endpoint_obj)
-        elif action == "previous":
-            if browser:
-                await display_manager._rewind_browsers(display_group, [browser.browser_id])
-            else:
-                display_manager.rewind_endpoint_no_browser(endpoint_obj)
-
-        # Notify admin clients of the change
-        await display_manager._notify_admins({
-            "type": "GROUP_UPDATED",
-            "group": display_group.to_dict()
-        })
-
-    # Get WebSocket URL - check X-Forwarded-Proto for reverse proxy support
-    original_scheme = request.headers.get("x-forwarded-proto", request.url.scheme)
-    ws_scheme = "wss" if original_scheme == "https" else "ws"
-    ws_url = f"{ws_scheme}://{request.url.netloc}/ws/display/{group}"
-    if endpoint:
-        ws_url += f"?endpoint={endpoint}"
-
-    return templates.TemplateResponse(
-        "display.html",
-        {
-            "request": request,
-            "group_id": group,
-            "endpoint_id": endpoint,
-            "ws_url": ws_url,
-            "settings": display_group.settings.to_dict()
-        }
-    )
+async def display_page(request: Request):
+    """Serve the SPA display kiosk. The React kiosk reads the group/endpoint
+    query params client-side and drives everything over the WebSocket; use the
+    admin API (POST endpoint navigation) for programmatic next/previous."""
+    return spa_shell_or_503("/display")
 
 
 async def _ws_admin_authorized(websocket: WebSocket) -> bool:

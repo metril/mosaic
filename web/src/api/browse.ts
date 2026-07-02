@@ -1,11 +1,6 @@
 import { api } from './client'
 import type { BrowseTree, CurationState, FilesPage } from './types'
 
-/** The full recursive directory tree (root node under `.tree` + totals). */
-export function fetchTree() {
-  return api.get<BrowseTree>('/browse?format=json')
-}
-
 /** Fast folders-only tree (no per-file image opens) for the sidebar + counts. */
 export function fetchFolders() {
   return api.get<BrowseTree>('/api/browse/folders')

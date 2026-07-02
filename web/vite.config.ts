@@ -17,7 +17,6 @@ const proxied = {
   '/health': { target: API_TARGET, changeOrigin: true },
   '/metrics': { target: API_TARGET, changeOrigin: true },
   '/css': { target: API_TARGET, changeOrigin: true },
-  '/js': { target: API_TARGET, changeOrigin: true },
   '/ws': { target: WS_TARGET, ws: true, changeOrigin: true },
 }
 

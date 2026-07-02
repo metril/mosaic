@@ -1,9 +1,5 @@
 import { api } from './client'
-import type { Metrics, Health, AppSettings, HaEntity, DisplayHealth, LogRecord, ConfigImportResult } from './types'
-
-export function fetchDisplayHealth() {
-  return api.get<DisplayHealth>('/api/display/health')
-}
+import type { Metrics, Health, AppSettings, HaEntity, LogRecord, ConfigImportResult } from './types'
 
 /* ---- Logs ---------------------------------------------------------------- */
 export function fetchLogs(params: { level?: string; q?: string; limit?: number } = {}) {

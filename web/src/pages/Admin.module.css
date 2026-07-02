@@ -36,11 +36,6 @@
 .wsLedOff {
   background: var(--color-warning);
 }
-.headActions {
-  margin-left: auto;
-  display: flex;
-  gap: var(--s3);
-}
 
 /* ---- Tabs ---------------------------------------------------------------- */
 .tabs {
