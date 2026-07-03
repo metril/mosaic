@@ -2849,6 +2849,67 @@ def _key_has_admin_monitor(scopes: Optional[List[str]]) -> bool:
     )
 
 
+def _display_key_can_access(api_key: APIKey, group_id: str, group) -> bool:
+    """True if an image API key may drive this display group's WebSocket.
+
+    Access is by *folder*, mirroring what ``/api/image`` already enforces: any
+    key that can load the group's images — via ``*``, ``folder:*``,
+    ``group:{id}``, or a ``folder:{name}`` covering one of the group's folders —
+    may join its display WS. (Endpoint-only scopes can't load images either, so
+    they're excluded.) This deliberately does NOT require a group/endpoint scope,
+    so folder-scoped and persistent-endpoint displays keep working.
+    """
+    scopes = api_key.scopes or []
+    if not _has_valid_scopes(scopes):
+        return False
+    if "*" in scopes or "folder:*" in scopes or f"group:{group_id}" in scopes:
+        return True
+    folders = getattr(getattr(group, "settings", None), "folders", None)
+    if folders:
+        for folder in (f.strip() for f in folders.split(",")):
+            if folder and f"folder:{folder}" in scopes:
+                return True
+    return False
+
+
+async def _ws_display_authorized(websocket: WebSocket, group_id: str, group) -> bool:
+    """Authorize a display WebSocket via session user OR an image API key.
+
+    The key may arrive via the ``?key=`` query param (what the SPA display
+    sends), an ``Authorization: Bearer`` header, or a previously-seeded session.
+    Only consulted when OIDC is enabled (caller gates on that).
+    """
+    # Session user (OIDC login) — allowed.
+    if hasattr(websocket, "session") and websocket.session.get("user"):
+        return True
+
+    manager = getattr(websocket.app.state, "api_key_manager", None)
+    if manager is None:
+        return False
+
+    key: Optional[str] = None
+    authorization = websocket.headers.get("authorization")
+    if authorization and authorization.startswith("Bearer "):
+        key = authorization[7:]
+    else:
+        key_param = websocket.query_params.get("key")
+        if key_param and key_param.startswith("sk_"):
+            key = key_param
+
+    if key:
+        # Argon2id verify is CPU-heavy — run off the event loop.
+        api_key = await asyncio.get_running_loop().run_in_executor(
+            None, manager.verify_key, key
+        )
+    else:
+        key_id = websocket.session.get("api_key_id") if hasattr(websocket, "session") else None
+        api_key = manager.get_key(key_id) if key_id else None
+
+    if not api_key or not api_key.enabled:
+        return False
+    return _display_key_can_access(api_key, group_id, group)
+
+
 @router.websocket("/ws/admin")
 async def websocket_admin(websocket: WebSocket):
     """
@@ -2954,12 +3015,27 @@ async def websocket_display(
             await websocket.close(code=4003, reason="Forbidden origin")
             return
 
-    # Check if group exists BEFORE accepting (#4)
+    # Check the group exists, then authorize, before doing any real work. Both
+    # rejections accept() first, then close() with a code: a close *before*
+    # accept() rejects the handshake without a close frame, so the browser only
+    # sees a generic 1006 and can't act on the specific code (or show the right
+    # message). Accepting then immediately closing — before any browser is
+    # registered or any data is sent — delivers the real 4004/4001 to onclose.
     group = await display_manager.get_group(group_id)
     if not group:
-        # Close without accepting - client receives close frame
+        await websocket.accept()
         await websocket.close(code=4004, reason=f"Group '{group_id}' not found")
         return
+
+    # Authentication (only when OIDC is enabled): a session-less display must
+    # present a valid API key (?key= / Authorization) that can access this group.
+    # Mirrors /api/image so anonymous clients can't join a display WS and read
+    # its image paths, captions, and settings.
+    if get_oidc_config().enabled:
+        if not await _ws_display_authorized(websocket, group_id, group):
+            await websocket.accept()
+            await websocket.close(code=4001, reason="Not authorized")
+            return
 
     # Accept the connection
     await websocket.accept()

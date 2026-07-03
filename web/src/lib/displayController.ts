@@ -652,6 +652,9 @@ export function mountDisplay(wsUrl: string, apiKey?: string | null): () => void 
       stopHeartbeat()
       if (event.code === 4004) {
         showFatal('Sync group not found. Create it via /admin first.')
+      } else if (event.code === 4001) {
+        // Auth rejected — deterministic (bad/absent ?key=), so don't reconnect-storm.
+        showFatal('Not authorized for this display. Add or fix the ?key= in the URL.')
       } else if (reconnectAttempts !== Infinity) {
         scheduleReconnect()
       }
