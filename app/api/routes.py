@@ -2954,16 +2954,6 @@ async def websocket_display(
             await websocket.close(code=4003, reason="Forbidden origin")
             return
 
-    # Set base URL from first request
-    if not display_manager._base_url:
-        settings = getattr(websocket.app.state, 'settings', None)
-        base_url = settings.get_str('base_url') if settings else os.environ.get('BASE_URL', '')
-        if not base_url:
-            scheme = "https" if websocket.url.scheme == "wss" else "http"
-            host = websocket.headers.get("host", "localhost")
-            base_url = f"{scheme}://{host}"
-        display_manager.set_base_url(base_url)
-
     # Check if group exists BEFORE accepting (#4)
     group = await display_manager.get_group(group_id)
     if not group:
@@ -4383,13 +4373,11 @@ async def root(
     # Default mode - serve web interface
     else:
         try:
-            # Get base URL from settings (env-seeded) or use request host
-            settings = getattr(request.app.state, 'settings', None)
-            base_url = settings.get_str('base_url') if settings else os.environ.get('BASE_URL', '')
-            if not base_url:
-                # Construct from request
-                base_url = f"{request.url.scheme}://{request.url.netloc}"
-
+            # Image URLs below are root-relative on purpose: this page is served
+            # same-origin, so relative URLs resolve to the request origin and
+            # satisfy the strict `img-src 'self'` CSP regardless of how the page
+            # was reached (an absolute base_url URL breaks when the viewing
+            # origin differs from the configured host).
             if refresh:
                 # Refresh mode: single random image with processing support
                 image_path = image_service.get_random_image_path(final_folder_paths, recursive)
@@ -4423,7 +4411,7 @@ async def root(
                     params.append(f"sharpen={str(sharpen).lower()}")
 
                 query_string = "&".join(params) if params else ""
-                image_url = f"{base_url}/api/image/{relative_path}"
+                image_url = f"/api/image/{relative_path}"
                 if query_string:
                     image_url += f"?{query_string}"
 
@@ -4442,7 +4430,7 @@ async def root(
                 # Build image URLs — URL-encode the relative path so filenames
                 # with spaces or non-ASCII characters produce valid URLs.
                 image_urls = [
-                    f"{base_url}/images/{quote(str(file.relative_to(image_service.image_dir)))}"
+                    f"/images/{quote(str(file.relative_to(image_service.image_dir)))}"
                     for file in image_files
                 ]
 

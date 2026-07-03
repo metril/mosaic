@@ -666,7 +666,6 @@ class DisplayManager:
         self._is_excluded = is_excluded or (lambda _: False)
         self.groups: Dict[str, DisplayGroup] = {}
         self._lock = asyncio.Lock()
-        self._base_url: str = ""
         # Admin WebSocket connections for real-time updates
         self.admin_connections: Set[WebSocket] = set()
         self._admin_lock = asyncio.Lock()
@@ -680,10 +679,6 @@ class DisplayManager:
         # Debounced-save bookkeeping (see schedule_save / flush_save).
         self._save_handle: Optional[asyncio.TimerHandle] = None
         self._save_pending = False
-
-    def set_base_url(self, base_url: str) -> None:
-        """Set the base URL for image URLs"""
-        self._base_url = base_url.rstrip("/")
 
     async def load_config(self) -> int:
         """Load display groups from the SQLite store.
@@ -1634,7 +1629,13 @@ class DisplayManager:
         if settings.format:
             params.append(f"format={settings.format}")
 
-        url = f"{self._base_url}/api/image/{quote(image_path, safe='/')}"
+        # Root-relative on purpose: the display client loads this into an <img>
+        # on the same page the app served, so a relative URL resolves to the
+        # page's own origin and satisfies the strict `img-src 'self'` CSP no
+        # matter how the page was reached (custom domain, LAN IP, iframe embed,
+        # or a domain mid-rename). An absolute {base_url}/... URL would be
+        # cross-origin — and blocked — whenever the page origin != base_url host.
+        url = f"/api/image/{quote(image_path, safe='/')}"
         if params:
             url += "?" + "&".join(params)
         return url

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ApiKey } from '@/api/types'
 import { listKeys, revokeKey, rotateKey, revealKey } from '@/api/keys'
-import { Button, Card, EmptyState, Loading, IconButton, KeyIcon, PlusIcon, EditIcon, TrashIcon, RefreshIcon, ExternalIcon, EyeOffIcon, useConfirm, LoadError } from '@/components/ui'
+import { Button, Card, EmptyState, Loading, IconButton, KeyIcon, PlusIcon, EditIcon, TrashIcon, RefreshIcon, ExternalIcon, UnlockIcon, useConfirm, LoadError } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -84,7 +84,7 @@ export function KeysTab() {
                   disabled={!k.recoverable || reveal.isPending}
                   onClick={() => reveal.mutate(k)}
                 >
-                  <EyeOffIcon size={15} />
+                  <UnlockIcon size={15} />
                 </IconButton>
                 <IconButton
                   label="Copy display link"

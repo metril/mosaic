@@ -239,6 +239,13 @@ export const KeyIcon = (p: Props) => (
   </Svg>
 )
 
+export const UnlockIcon = (p: Props) => (
+  <Svg {...p}>
+    <rect x="3" y="11" width="18" height="11" rx="2" />
+    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+  </Svg>
+)
+
 export const CloudIcon = (p: Props) => (
   <Svg {...p}>
     <path d="M17.5 19a4.5 4.5 0 0 0 .3-9 6 6 0 0 0-11.5 1.5A3.75 3.75 0 0 0 6.5 19h11Z" />
