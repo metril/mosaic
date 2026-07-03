@@ -46,7 +46,7 @@ cd mosaic
 2. Configure environment variables:
 ```bash
 cp .env.example .env
-# Edit .env to set your BASE_URL
+# Edit .env for your deployment (OIDC, Home Assistant, limits — all optional)
 ```
 
 3. Build and start the application:
@@ -720,10 +720,6 @@ The application implements Floyd-Steinberg dithering to convert images to the 6-
 Configure via `.env` file (see `.env.example` for all options):
 
 ```bash
-# Base URL for the application (optional)
-# Leave empty for dynamic detection based on incoming requests
-BASE_URL=https://mosaic.azureolympos.com
-
 # Image directory (inside container)
 IMAGE_DIR=/www/images
 
@@ -852,9 +848,6 @@ mosaic/
 ```bash
 # Install dependencies
 pip install -r requirements.txt
-
-# Set environment variables
-export BASE_URL=http://localhost
 
 # Create image directory (for testing)
 mkdir -p /www/images

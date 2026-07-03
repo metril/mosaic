@@ -182,18 +182,6 @@ export function SettingsTab() {
         />
       </Card>
 
-      <Card pad>
-        <h3 className={styles.sectionTitle}>General</h3>
-        <TextRow
-          label="Base URL"
-          hint="Public URL used to build image links; blank = auto-detect"
-          value={form.base_url}
-          onChange={(v) => set('base_url', v)}
-          placeholder="https://mosaic.example.com"
-          stack
-        />
-      </Card>
-
       {dirty && (
         <div className={styles.saveBar}>
           <span className={styles.saveBarText}>Unsaved changes</span>

@@ -39,8 +39,6 @@ SCHEMA: Dict[str, Tuple[str, Optional[str], Any]] = {
     "endpoint_cleanup": ("str", "ENDPOINT_CLEANUP", "24h"),
     "max_browsers_per_group": ("int", "MAX_BROWSERS_PER_GROUP", 100),
     "max_groups": ("int", "MAX_GROUPS", 50),
-    # General
-    "base_url": ("str", "BASE_URL", ""),
 }
 
 _SECRET_KEYS = {k for k, (t, _, _) in SCHEMA.items() if t == "secret"}

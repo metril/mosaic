@@ -368,7 +368,6 @@ export interface AppSettings {
   endpoint_cleanup: string
   max_browsers_per_group: number
   max_groups: number
-  base_url: string
 }
 
 export interface HaEntity {

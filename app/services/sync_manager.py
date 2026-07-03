@@ -1633,8 +1633,8 @@ class DisplayManager:
         # on the same page the app served, so a relative URL resolves to the
         # page's own origin and satisfies the strict `img-src 'self'` CSP no
         # matter how the page was reached (custom domain, LAN IP, iframe embed,
-        # or a domain mid-rename). An absolute {base_url}/... URL would be
-        # cross-origin — and blocked — whenever the page origin != base_url host.
+        # or a domain mid-rename). An absolute URL to a fixed host would be
+        # cross-origin — and blocked — whenever the page origin != that host.
         url = f"/api/image/{quote(image_path, safe='/')}"
         if params:
             url += "?" + "&".join(params)

@@ -144,8 +144,9 @@ with the old image.
 
 ## External follow-ups (outside the code)
 
-- Repoint DNS / reverse-proxy / TLS cert and set `BASE_URL` to the new subdomain
-  (e.g. `mosaic.azureolympos.com`).
+- Repoint DNS / reverse-proxy / TLS cert to the new subdomain
+  (e.g. `mosaic.azureolympos.com`). The app builds image links relative to the
+  request origin, so there's no `BASE_URL` to update.
 - If OIDC is enabled and `OIDC_CLIENT_ID=screensaver`, update the client registration in
   your identity provider and the env var.
 - Optionally rename the repo directory and its git remote.

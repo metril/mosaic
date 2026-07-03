@@ -209,9 +209,6 @@ async def lifespan(app: FastAPI):
             image_count = len(list(images_path.glob("*")))
             logger.info(f"Total Files: {image_count}")
 
-        base_url = os.environ.get('BASE_URL', 'Not set (using dynamic detection)')
-        logger.info(f"Base URL: {base_url}")
-
         # Initialize runtime-tunable settings (SQLite, seeded from env). Read at
         # use-time so admin Settings edits apply without a restart.
         from app.services.settings_service import SettingsService

@@ -4376,8 +4376,8 @@ async def root(
             # Image URLs below are root-relative on purpose: this page is served
             # same-origin, so relative URLs resolve to the request origin and
             # satisfy the strict `img-src 'self'` CSP regardless of how the page
-            # was reached (an absolute base_url URL breaks when the viewing
-            # origin differs from the configured host).
+            # was reached (an absolute URL to a fixed host breaks when the
+            # viewing origin differs from that host).
             if refresh:
                 # Refresh mode: single random image with processing support
                 image_path = image_service.get_random_image_path(final_folder_paths, recursive)
