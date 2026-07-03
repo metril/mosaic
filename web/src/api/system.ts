@@ -23,7 +23,7 @@ export async function downloadConfigExport(includeKeys: boolean) {
   const blob = await res.blob()
   const cd = res.headers.get('Content-Disposition') || ''
   const m = cd.match(/filename="?([^"]+)"?/)
-  const name = m ? m[1] : 'screensaver-config.json'
+  const name = m ? m[1] : 'mosaic-config.json'
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

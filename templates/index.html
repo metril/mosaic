@@ -9,9 +9,9 @@
         <meta http-equiv="refresh" content="300">
         {% endif %}
         <link rel="icon" type="image/x-icon" href="/favicon.ico">
-        <title>Screensaver</title>
+        <title>Mosaic</title>
         <style type="text/css">
-            .screensaver-image {
+            .mosaic-image {
                 border: none;
                 max-height: 100vh;
                 max-width: 100vw;
@@ -33,10 +33,10 @@
     <body>
         {% if refresh %}
         <!-- Refresh mode: single image, page auto-reloads -->
-        <img class="screensaver-image" src="{{ image_url }}" alt="Screensaver">
+        <img class="mosaic-image" src="{{ image_url }}" alt="Mosaic">
         {% else %}
         <!-- Slideshow mode: JavaScript rotation -->
-        <img id="rotatingImage" class="screensaver-image" src="" alt="Screensaver">
+        <img id="rotatingImage" class="mosaic-image" src="" alt="Mosaic">
         <script type="text/javascript">
             var rotatingImages = [{% for url in image_urls %}"{{ url }}"{% if not loop.last %}, {% endif %}{% endfor %}];
             var imageCount = rotatingImages.length;

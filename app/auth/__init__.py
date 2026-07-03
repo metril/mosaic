@@ -1,5 +1,5 @@
 """
-Authentication module for screensaver application.
+Authentication module for Mosaic application.
 
 Provides OIDC authentication for admin endpoints.
 """

@@ -110,13 +110,13 @@ export default function Display() {
         <div className="frame--background hidden" id="backgroundBlur" />
 
         <div className="frame frame--layout-single" id="frame1">
-          <img id="currentImage" className="screensaver-image visible fit-contain" alt="" />
-          <img id="preloadImage" className="screensaver-image hidden fit-contain" alt="" />
+          <img id="currentImage" className="mosaic-image visible fit-contain" alt="" />
+          <img id="preloadImage" className="mosaic-image hidden fit-contain" alt="" />
         </div>
 
         <div className="frame frame--layout-single" id="frame2" style={{ display: 'none' }}>
-          <img id="currentImage2" className="screensaver-image visible fit-contain" alt="" />
-          <img id="preloadImage2" className="screensaver-image hidden fit-contain" alt="" />
+          <img id="currentImage2" className="mosaic-image visible fit-contain" alt="" />
+          <img id="preloadImage2" className="mosaic-image hidden fit-contain" alt="" />
         </div>
       </div>
 

@@ -189,7 +189,7 @@ export function SettingsTab() {
           hint="Public URL used to build image links; blank = auto-detect"
           value={form.base_url}
           onChange={(v) => set('base_url', v)}
-          placeholder="https://screensaver.example.com"
+          placeholder="https://mosaic.example.com"
           stack
         />
       </Card>

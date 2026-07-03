@@ -27,7 +27,7 @@ class HomeAssistantProvider:
     """
     Service for fetching data from Home Assistant.
 
-    Provides time and weather data for screensaver overlays.
+    Provides time and weather data for Mosaic overlays.
     Weather data is cached to avoid excessive API calls.
     """
 

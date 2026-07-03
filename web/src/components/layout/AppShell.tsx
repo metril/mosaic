@@ -37,7 +37,7 @@ export function AppShell() {
           <span className={styles.brandMark} aria-hidden="true">
             <ImageIcon size={18} />
           </span>
-          Screensaver
+          Mosaic
         </NavLink>
 
         <nav className={cn(styles.links, !open && styles.linksClosed)} onClick={() => setOpen(false)}>

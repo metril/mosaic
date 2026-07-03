@@ -1,5 +1,5 @@
 """
-API Routes for Screensaver Application
+API Routes for Mosaic
 
 Provides endpoints for random image serving and web interface.
 """
@@ -2202,7 +2202,7 @@ async def test_webhook(
         "group_id": group_id,
         "event_type": "test",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "message": "This is a test webhook from the screensaver admin"
+        "message": "This is a test webhook from the Mosaic admin"
     }
 
     # Build headers
@@ -3509,7 +3509,7 @@ async def get_logs(
         return Response(
             content="\n".join(lines) + "\n",
             media_type="text/plain",
-            headers={"Content-Disposition": 'attachment; filename="screensaver-logs.txt"'},
+            headers={"Content-Disposition": 'attachment; filename="mosaic-logs.txt"'},
         )
     return JSONResponse(content={"records": records, "count": len(records)})
 
@@ -3554,7 +3554,7 @@ async def export_config(
     return Response(
         content=payload,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="screensaver-config-{stamp}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="mosaic-config-{stamp}.json"'},
     )
 
 

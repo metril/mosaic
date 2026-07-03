@@ -1,6 +1,6 @@
-# Screensaver Application
+# Mosaic
 
-A modern image screensaver service built with Python/FastAPI, featuring image processing capabilities including resizing and E-Ink color mapping for Spectra-6 displays.
+Synchronized multi-display photo & signage engine, built with Python/FastAPI — drives a fleet of screens in perfect sync, each showing a different image from a curated collection, with image processing including resizing and E-Ink color mapping for Spectra-6 displays.
 
 ## Features
 
@@ -40,7 +40,7 @@ A modern image screensaver service built with Python/FastAPI, featuring image pr
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd screensaver
+cd mosaic
 ```
 
 2. Configure environment variables:
@@ -325,8 +325,8 @@ FRAME_ANCESTORS=https://homeassistant.local:8123
 **Wallpanel Configuration:**
 
 1. Install Wallpanel from HACS
-2. Configure the screensaver panel in your Wallpanel settings:
-   - Set the screensaver URL: `http://your-server/display?group=your-group&endpoint=wallpanel`
+2. Point Wallpanel at your Mosaic display in its settings:
+   - Set the display URL: `http://your-server/display?group=your-group&endpoint=wallpanel`
    - Enable full-screen mode for best experience
 3. The display will connect via WebSocket and cycle images automatically
 
@@ -337,7 +337,7 @@ FRAME_ANCESTORS=https://homeassistant.local:8123
 
 ### Clock & Weather Overlays
 
-Display time, date, and weather information on the screensaver.
+Display time, date, and weather information on the display.
 
 **Clock Features:**
 - 12 or 24-hour time format
@@ -722,7 +722,7 @@ Configure via `.env` file (see `.env.example` for all options):
 ```bash
 # Base URL for the application (optional)
 # Leave empty for dynamic detection based on incoming requests
-BASE_URL=https://screensaver.azureolympos.com
+BASE_URL=https://mosaic.azureolympos.com
 
 # Image directory (inside container)
 IMAGE_DIR=/www/images
@@ -741,14 +741,14 @@ LOG_LEVEL=info
 
 # Authentication (OIDC) - leave empty to disable auth
 OIDC_ISSUER=https://keycloak.example.com/realms/myrealm
-OIDC_CLIENT_ID=screensaver
+OIDC_CLIENT_ID=mosaic
 OIDC_CLIENT_SECRET=your-client-secret
-OIDC_REDIRECT_URI=https://screensaver.example.com/auth/callback
+OIDC_REDIRECT_URI=https://mosaic.example.com/auth/callback
 SESSION_SECRET=random-32-char-secret-for-sessions
 
 # Security
-ALLOWED_ORIGINS=https://screensaver.example.com
-ALLOWED_WS_ORIGINS=https://screensaver.example.com
+ALLOWED_ORIGINS=https://mosaic.example.com
+ALLOWED_WS_ORIGINS=https://mosaic.example.com
 HTTPS_ONLY=true
 
 # Iframe Embedding (for Wallpanel, Home Assistant, etc.)
@@ -773,7 +773,7 @@ The application uses Docker Compose for orchestration. Key configuration:
 
 ```yaml
 services:
-  screensaver:
+  mosaic:
     build: .
     ports:
       - "80:80"
@@ -812,7 +812,7 @@ services:
 ### Project Structure
 
 ```
-screensaver/
+mosaic/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI application entry point
@@ -880,10 +880,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 80
 
 ```bash
 # Follow logs
-docker compose logs -f screensaver
+docker compose logs -f mosaic
 
 # View recent logs
-docker compose logs --tail=100 screensaver
+docker compose logs --tail=100 mosaic
 ```
 
 ### Container Status
@@ -966,7 +966,7 @@ All responses include security headers:
 
 ```bash
 # Check logs
-docker compose logs screensaver
+docker compose logs mosaic
 
 # Verify image directory exists
 ls -la /mnt/usb-storage-1/images/
@@ -984,7 +984,7 @@ netstat -tulpn | grep :80
 ### Slow Performance
 
 - Check image sizes (very large images take longer to process)
-- Monitor container resources: `docker stats screensaver`
+- Monitor container resources: `docker stats mosaic`
 - Consider adding resource limits in `compose.yaml`
 
 ## Migration from PHP

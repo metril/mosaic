@@ -1,21 +1,21 @@
 networks:
-  screensaver:
-    name: screensaver
+  mosaic:
+    name: mosaic
     driver: bridge
 
 services:
-  screensaver:
+  mosaic:
     build: .
-    container_name: screensaver
+    container_name: mosaic
     user: "${UID:-1000}:${GID:-1000}"
     restart: unless-stopped
     networks:
-      - screensaver
+      - mosaic
     ports:
       - 80:80
     volumes:
-      - /mnt/usb-storage-1/screensaver/images:/www/images
-      - /mnt/usb-storage-1/screensaver/thumbnails:/www/thumbnails
+      - /mnt/usb-storage-1/mosaic/images:/www/images
+      - /mnt/usb-storage-1/mosaic/thumbnails:/www/thumbnails
       - ./config:/app/config
     env_file:
       - .env

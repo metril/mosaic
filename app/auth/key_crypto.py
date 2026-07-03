@@ -41,7 +41,7 @@ from app.utils.logging import logger
 # *deterministic* key needs a stable salt (so the same secret always yields the
 # same key); a fixed app-constant is the standard approach here. The salt is not
 # secret — Argon2's strength comes from the work factor over the input secret.
-_KDF_SALT = b"screensaver-api-key-encryption-v2"
+_KDF_SALT = b"mosaic-api-key-encryption-v3"
 # Argon2id parameters (mirror the API key hasher: 64 MiB, 3 passes, 1 lane).
 _KDF_TIME_COST = 3
 _KDF_MEMORY_COST = 65536  # KiB = 64 MiB
@@ -120,7 +120,7 @@ def secret_fingerprint() -> str:
     salted SHA-256 prefix of the resolved secret — it never exposes the secret.
     """
     import hashlib
-    h = hashlib.sha256(b"screensaver-fingerprint-v1:" + _resolve_secret()).hexdigest()
+    h = hashlib.sha256(b"mosaic-fingerprint-v1:" + _resolve_secret()).hexdigest()
     return h[:12]
 
 

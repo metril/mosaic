@@ -1,5 +1,5 @@
 """
-Custom exception classes for the screensaver application.
+Custom exception classes for the Mosaic application.
 
 These exceptions are used throughout the application and mapped to appropriate
 HTTP status codes in the API layer.
@@ -25,12 +25,12 @@ def error_response(error: str, detail: Optional[str] = None) -> Dict[str, Any]:
     return response
 
 
-class ScreensaverException(Exception):
-    """Base exception for all screensaver application errors."""
+class MosaicException(Exception):
+    """Base exception for all Mosaic application errors."""
     pass
 
 
-class PathSecurityError(ScreensaverException):
+class PathSecurityError(MosaicException):
     """Base exception for path security violations (maps to 400 Bad Request)."""
     pass
 
@@ -50,6 +50,6 @@ class SymlinkError(PathSecurityError):
     pass
 
 
-class NoImagesFoundError(ScreensaverException):
+class NoImagesFoundError(MosaicException):
     """Raised when no images are found in the specified location (maps to 404 Not Found)."""
     pass

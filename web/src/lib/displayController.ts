@@ -801,7 +801,7 @@ export function mountDisplay(wsUrl: string): () => void {
 
   function applyImageFit() {
     const fit = currentSettings.image_fit === 'cover' ? 'fit-cover' : 'fit-contain'
-    document.querySelectorAll<HTMLElement>('.screensaver-image').forEach((img) => {
+    document.querySelectorAll<HTMLElement>('.mosaic-image').forEach((img) => {
       img.classList.remove('fit-contain', 'fit-cover')
       img.classList.add(fit)
     })

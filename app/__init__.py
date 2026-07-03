@@ -1,1 +1,1 @@
-# Screensaver Application Package
+# Mosaic Application Package

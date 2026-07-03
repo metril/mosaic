@@ -1,7 +1,7 @@
 """
 Immich Image Provider Service
 
-Pulls images from an Immich server and stores them locally for the screensaver.
+Pulls images from an Immich server and stores them locally for Mosaic.
 """
 import asyncio
 import logging

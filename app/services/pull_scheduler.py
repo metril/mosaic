@@ -2,7 +2,7 @@
 
 Ported from the pfsense-backups project (worker/scheduler.py), adapted from a
 sync BackgroundScheduler in a separate worker to an AsyncIOScheduler running in
-the screensaver's FastAPI event loop.
+Mosaic's FastAPI event loop.
 """
 
 from __future__ import annotations

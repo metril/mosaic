@@ -26,7 +26,7 @@ export const useThemeStore = create<ThemeState>()(
       toggle: () => get().setTheme(get().theme === 'dark' ? 'light' : 'dark'),
     }),
     {
-      name: 'screensaver-theme',
+      name: 'mosaic-theme',
       onRehydrateStorage: () => (state) => {
         if (state) apply(state.theme)
       },

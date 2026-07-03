@@ -1,5 +1,5 @@
 """
-Logging configuration for the Screensaver application.
+Logging configuration for the Mosaic application.
 
 Provides structured logging with configurable log levels via environment variables.
 """
@@ -62,7 +62,7 @@ class RingBufferLogHandler(logging.Handler):
 log_buffer = RingBufferLogHandler()
 
 
-def setup_logging(name: str = 'screensaver') -> logging.Logger:
+def setup_logging(name: str = 'mosaic') -> logging.Logger:
     """
     Configure and return the application logger.
 
@@ -70,7 +70,7 @@ def setup_logging(name: str = 'screensaver') -> logging.Logger:
     Outputs to stdout with timestamp, name, level, and message.
 
     Args:
-        name: Logger name (default: 'screensaver')
+        name: Logger name (default: 'mosaic')
 
     Returns:
         Configured Logger instance

@@ -1,7 +1,7 @@
 """
-Screensaver Application - FastAPI Main Entry Point
+Mosaic - FastAPI Main Entry Point
 
-A modern image screensaver service with resizing and E-Ink color mapping capabilities.
+A synchronized multi-display photo engine with resizing and E-Ink color mapping capabilities.
 """
 
 import asyncio
@@ -30,7 +30,7 @@ from app.services.homeassistant_provider import HomeAssistantProvider, HomeAssis
 from app.services.file_watcher import ImageFileWatcher
 from app.services.thumbnail_cache import ThumbnailCache, THUMBNAIL_CACHE_DIR
 from app.utils.logging import logger
-from app.exceptions import PathSecurityError, NoImagesFoundError, ScreensaverException, error_response
+from app.exceptions import PathSecurityError, NoImagesFoundError, MosaicException, error_response
 from pytimeparse import parse as parse_duration
 
 # Iframe embedding configuration (for Wallpanel, Home Assistant, etc.)
@@ -200,7 +200,7 @@ async def lifespan(app: FastAPI):
     try:
         # Startup
         logger.info("=" * 60)
-        logger.info("Screensaver Application Starting")
+        logger.info("Mosaic Starting")
         logger.info("=" * 60)
         logger.info(f"Image Directory: {images_path}")
         logger.info(f"Images Exist: {images_path.exists()}")
@@ -422,13 +422,13 @@ async def lifespan(app: FastAPI):
         if hasattr(app.state, 'ha_provider') and app.state.ha_provider:
             await app.state.ha_provider.close()
 
-        logger.info("Screensaver Application Shutting Down")
+        logger.info("Mosaic Shutting Down")
 
 
 # Create FastAPI application with lifespan
 app = FastAPI(
-    title="Screensaver API",
-    description="Modern screensaver service with image processing capabilities",
+    title="Mosaic API",
+    description="Synchronized multi-display photo engine with image processing",
     version="2.0.0",
     lifespan=lifespan,
     docs_url=None,  # Disable default /docs (loads from CDN, blocked by CSP)
@@ -450,7 +450,7 @@ oidc_config = get_oidc_config()
 app.add_middleware(
     SessionMiddleware,
     secret_key=oidc_config.session_secret,
-    session_cookie="screensaver_session",
+    session_cookie="mosaic_session",
     max_age=int(os.environ.get("SESSION_MAX_AGE", "3600")),
     same_site="lax",
     https_only=os.environ.get("HTTPS_ONLY", "false").lower() == "true",
@@ -554,9 +554,9 @@ async def no_images_exception_handler(request: Request, exc: NoImagesFoundError)
     )
 
 
-@app.exception_handler(ScreensaverException)
-async def screensaver_exception_handler(request: Request, exc: ScreensaverException):
-    """Handle generic screensaver exceptions with 500 Internal Server Error."""
+@app.exception_handler(MosaicException)
+async def mosaic_exception_handler(request: Request, exc: MosaicException):
+    """Handle generic Mosaic exceptions with 500 Internal Server Error."""
     logger.error(f"Application error: {exc} - Path: {request.url.path}")
     return JSONResponse(
         status_code=500,
