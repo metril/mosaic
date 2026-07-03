@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import type { DisplayGroup, DisplayEndpoint } from '@/api/types'
+import type { DisplayGroup, DisplayEndpoint, BrowserState } from '@/api/types'
 import { endpointNav, deleteEndpoint } from '@/api/admin'
 import { GROUPS_KEY } from '@/hooks/useAdminWs'
 import { useCuration } from '@/hooks/useCuration'
@@ -36,27 +36,12 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
   })
 
   const eps = group.endpoints ?? []
-  // "Online" = an endpoint with a connected browser whose heartbeat is fresh.
-  const now = useNow(5000)
-  const liveIds = new Set(
-    (group.browsers ?? [])
-      .filter((b) => b.last_heartbeat && (now - new Date(b.last_heartbeat).getTime()) / 1000 <= 60)
-      .map((b) => b.endpoint_id),
-  )
-  const online = eps.filter((e) => liveIds.has(e.endpoint_id)).length
-  const offline = eps.length - online
 
   return (
     <details className={styles.endpoints}>
       <summary className={styles.endpointsSummary}>
         Endpoints <span className={styles.tabCount}>{eps.length}</span>
-        {eps.length > 0 && (
-          <span className={styles.epSummaryMeta}>
-            <span style={{ color: online ? 'var(--color-success)' : undefined }}>{online} online</span>
-            {' · '}
-            <span style={{ color: offline ? 'var(--color-danger)' : undefined }}>{offline} offline</span>
-          </span>
-        )}
+        {eps.length > 0 && <EndpointsStatus browsers={group.browsers ?? []} endpoints={eps} />}
       </summary>
 
       {eps.length === 0 ? (
@@ -167,3 +152,30 @@ export function EndpointsPanel({ group }: { group: DisplayGroup }) {
     </details>
   )
 }
+
+/** Online/offline endpoint count — isolated into a memo'd leaf so its 5s freshness
+ *  ticker (`useNow`) re-renders only this small span, not the whole panel. */
+const EndpointsStatus = memo(function EndpointsStatus({
+  browsers,
+  endpoints,
+}: {
+  browsers: BrowserState[]
+  endpoints: DisplayEndpoint[]
+}) {
+  const now = useNow(5000)
+  // "Online" = an endpoint with a connected browser whose heartbeat is fresh.
+  const liveIds = new Set(
+    browsers
+      .filter((b) => b.last_heartbeat && (now - new Date(b.last_heartbeat).getTime()) / 1000 <= 60)
+      .map((b) => b.endpoint_id),
+  )
+  const online = endpoints.filter((e) => liveIds.has(e.endpoint_id)).length
+  const offline = endpoints.length - online
+  return (
+    <span className={styles.epSummaryMeta}>
+      <span style={{ color: online ? 'var(--color-success)' : undefined }}>{online} online</span>
+      {' · '}
+      <span style={{ color: offline ? 'var(--color-danger)' : undefined }}>{offline} offline</span>
+    </span>
+  )
+})

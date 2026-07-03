@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { useAdminWs, useGroups } from '@/hooks/useAdminWs'
+import { useAdminWs, useGroupCount } from '@/hooks/useAdminWs'
 import { listPulls } from '@/api/immich'
 import { listKeys } from '@/api/keys'
 import { cn } from '@/lib/cn'
@@ -20,13 +20,15 @@ export default function Admin() {
   const wsStatus = useAdminWs()
   const [tab, setTab] = useState<TabId>('displays')
 
-  // light count queries for the tab badges (cheap, cached)
-  const groups = useGroups()
+  // light count queries for the tab badges (cheap, cached). The groups badge
+  // subscribes to only the COUNT so the whole Admin page doesn't re-render on
+  // every live group tick (which the admin WS pushes constantly).
+  const groupCount = useGroupCount()
   const pulls = useQuery({ queryKey: ['pulls'], queryFn: listPulls })
   const keys = useQuery({ queryKey: ['keys'], queryFn: listKeys })
 
   const tabs: { id: TabId; label: string; icon: React.ReactNode; count?: number }[] = [
-    { id: 'displays', label: 'Displays', icon: <GridIcon size={16} />, count: groups.data?.length },
+    { id: 'displays', label: 'Displays', icon: <GridIcon size={16} />, count: groupCount },
     { id: 'immich', label: 'Immich', icon: <CloudIcon size={16} />, count: pulls.data?.length },
     { id: 'curation', label: 'Curation', icon: <HeartIcon size={16} /> },
     { id: 'keys', label: 'API keys', icon: <KeyIcon size={16} />, count: keys.data?.length },

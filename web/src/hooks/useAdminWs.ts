@@ -13,6 +13,43 @@ export function useGroups() {
   return useQuery({ queryKey: GROUPS_KEY, queryFn: listGroups, staleTime: Infinity })
 }
 
+/* Narrow selectors on the same ['groups'] cache. TanStack re-renders a component
+ * only when its SELECTED value changes (structural sharing), so a single group's
+ * update no longer re-renders every groups consumer — it re-renders only the one
+ * card whose object actually changed. `upsert` preserves unchanged group object
+ * references, which is what makes `useGroup(id)` isolate per card. */
+
+/** Just the group count — for badges. Re-renders only on add/remove. */
+export function useGroupCount() {
+  return useQuery({
+    queryKey: GROUPS_KEY,
+    queryFn: listGroups,
+    staleTime: Infinity,
+    select: (groups) => groups.length,
+  }).data
+}
+
+/** The list of group ids — for the list container. Re-renders only when the set
+ *  of ids changes (add/remove/reorder), not when a group's live state ticks. */
+export function useGroupIds() {
+  return useQuery({
+    queryKey: GROUPS_KEY,
+    queryFn: listGroups,
+    staleTime: Infinity,
+    select: (groups) => groups.map((g) => g.group_id),
+  })
+}
+
+/** One group by id. Re-renders only when THAT group's object changes. */
+export function useGroup(groupId: string) {
+  return useQuery({
+    queryKey: GROUPS_KEY,
+    queryFn: listGroups,
+    staleTime: Infinity,
+    select: (groups) => groups.find((g) => g.group_id === groupId) ?? null,
+  }).data
+}
+
 type WsStatus = 'connecting' | 'connected' | 'reconnecting' | 'disconnected'
 
 function wsUrl() {

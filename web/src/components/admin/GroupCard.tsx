@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { DisplayGroup } from '@/api/types'
 import { groupAction, deleteGroup, type PlaybackAction } from '@/api/admin'
@@ -67,8 +67,6 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
 
   const current = group.browsers.find((b) => b.current_image)?.current_image ?? null
   const live = group.browser_count > 0
-  const now = useNow()
-  const secs = group.paused ? null : secondsUntil(group.next_switch_at, now)
   const endpoints = group.endpoints ?? []
   // Default the history view to the endpoint currently on screen, else the first.
   const shownEndpointId = group.browsers.find((b) => b.current_image)?.endpoint_id as string | undefined
@@ -154,17 +152,7 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
           </IconButton>
         </div>
 
-        <div className={styles.countdown}>
-          {group.paused ? (
-            <span>Paused</span>
-          ) : secs != null ? (
-            <>
-              Next image in <span className={styles.countdownValue}>{secs}s</span>
-            </>
-          ) : (
-            <span className="faint">Idle</span>
-          )}
-        </div>
+        <SwitchCountdown paused={group.paused} nextSwitchAt={group.next_switch_at} />
 
         {group.error && <div style={{ color: 'var(--color-danger)', fontSize: 'var(--text-xs)' }}>{group.error}</div>}
       </div>
@@ -241,3 +229,30 @@ export function GroupCard({ group, onEdit, onClone }: Props) {
     </Card>
   )
 }
+
+/** The 1s countdown ticker, isolated into its own memo'd leaf so `useNow()`
+ *  re-renders only this tiny node each second — not the whole GroupCard (and the
+ *  modals mounted inside it). */
+const SwitchCountdown = memo(function SwitchCountdown({
+  paused,
+  nextSwitchAt,
+}: {
+  paused: boolean
+  nextSwitchAt: string | null
+}) {
+  const now = useNow()
+  const secs = paused ? null : secondsUntil(nextSwitchAt, now)
+  return (
+    <div className={styles.countdown}>
+      {paused ? (
+        <span>Paused</span>
+      ) : secs != null ? (
+        <>
+          Next image in <span className={styles.countdownValue}>{secs}s</span>
+        </>
+      ) : (
+        <span className="faint">Idle</span>
+      )}
+    </div>
+  )
+})

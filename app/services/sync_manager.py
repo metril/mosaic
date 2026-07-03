@@ -34,6 +34,10 @@ PRELOAD_LEAD_TIME_SECONDS = int(os.environ.get("PRELOAD_LEAD_TIME", "5"))
 MAX_CYCLE_COUNT = 2**31  # Wrap cycle counter to prevent overflow (S14)
 MAX_IMAGE_HISTORY = int(os.environ.get("MAX_IMAGE_HISTORY", "100"))
 WEBSOCKET_SEND_TIMEOUT = float(os.environ.get("WEBSOCKET_SEND_TIMEOUT", "5.0"))
+# Coalesce admin GROUP_UPDATED broadcasts per group into at most one send per this
+# many seconds (leading-edge + trailing), so a per-switch burst of updates across
+# N browsers collapses instead of re-rendering the admin UI N+1 times per cycle.
+_ADMIN_COALESCE_S = float(os.environ.get("ADMIN_COALESCE_S", "0.5"))
 # Bound the per-path EXIF caption cache so a huge library can't leak memory.
 _CAPTION_CACHE_MAX = int(os.environ.get("CAPTION_CACHE_MAX", "5000"))
 # Bound the blur data-URL cache (entries; each is a downscaled JPEG data URL).
@@ -679,6 +683,10 @@ class DisplayManager:
         # Debounced-save bookkeeping (see schedule_save / flush_save).
         self._save_handle: Optional[asyncio.TimerHandle] = None
         self._save_pending = False
+        # Per-group coalescing of admin GROUP_UPDATED broadcasts (see _notify_admins).
+        self._admin_bcast_last: Dict[str, float] = {}          # group_id -> loop time of last send
+        self._admin_bcast_pending: Dict[str, asyncio.TimerHandle] = {}  # group_id -> scheduled trailing send
+        self._admin_bcast_latest: Dict[str, Dict[str, Any]] = {}        # group_id -> freshest pending payload
 
     async def load_config(self) -> int:
         """Load display groups from the SQLite store.
@@ -772,7 +780,54 @@ class DisplayManager:
         logger.debug(f"Admin WebSocket unregistered, total: {len(self.admin_connections)}")
 
     async def _notify_admins(self, message: Dict[str, Any]) -> None:
-        """Broadcast an update to all connected admin clients."""
+        """Broadcast an update to admin clients.
+
+        GROUP_UPDATED is coalesced per group_id (leading-edge + trailing throttle,
+        `_ADMIN_COALESCE_S`): the first update in a quiet window sends immediately
+        (snappy for admin actions), and a burst within the window — the per-browser
+        `SWITCH_COMPLETE` fan-out plus the countdown tick — collapses into a single
+        trailing send carrying the latest state. All other message types (CREATE /
+        DELETE / INITIAL_STATE) send immediately.
+        """
+        if message.get("type") == "GROUP_UPDATED":
+            gid = (message.get("group") or {}).get("group_id")
+            if gid is not None:
+                self._coalesce_group_update(gid, message)
+                return
+        await self._send_to_admins(message)
+
+    def _coalesce_group_update(self, gid: str, message: Dict[str, Any]) -> None:
+        """Leading-edge + trailing per-group throttle for GROUP_UPDATED sends."""
+        if not self.admin_connections:
+            return
+        self._admin_bcast_latest[gid] = message  # always keep the freshest payload
+        now = asyncio.get_running_loop().time()
+        last = self._admin_bcast_last.get(gid, 0.0)
+        if now - last >= _ADMIN_COALESCE_S:
+            self._admin_bcast_last[gid] = now
+            self._dispatch_group_update(gid)
+        elif gid not in self._admin_bcast_pending:
+            self._admin_bcast_pending[gid] = asyncio.get_running_loop().call_later(
+                _ADMIN_COALESCE_S - (now - last), self._flush_group_update, gid
+            )
+
+    def _flush_group_update(self, gid: str) -> None:
+        """Trailing-edge timer callback."""
+        self._admin_bcast_pending.pop(gid, None)
+        self._admin_bcast_last[gid] = asyncio.get_running_loop().time()
+        self._dispatch_group_update(gid)
+
+    def _dispatch_group_update(self, gid: str) -> None:
+        """Fire off the latest pending payload for a group, unless it's gone."""
+        message = self._admin_bcast_latest.pop(gid, None)
+        # Skip if the group was deleted after this was queued (avoid resurrecting a
+        # ghost group on the client) or if no admins remain.
+        if message is None or gid not in self.groups or not self.admin_connections:
+            return
+        asyncio.ensure_future(self._send_to_admins(message))
+
+    async def _send_to_admins(self, message: Dict[str, Any]) -> None:
+        """Fan a message out to all connected admin clients in parallel."""
         async with self._admin_lock:
             if not self.admin_connections:
                 return
@@ -1140,6 +1195,14 @@ class DisplayManager:
             except Exception as e:
                 # Log error but continue cleanup (P2)
                 logger.debug(f"Error closing browser {browser.browser_id}: {e}")
+
+        # Drop any pending coalesced GROUP_UPDATED so a trailing send can't
+        # resurrect this group on the client after the delete.
+        handle = self._admin_bcast_pending.pop(group_id, None)
+        if handle:
+            handle.cancel()
+        self._admin_bcast_latest.pop(group_id, None)
+        self._admin_bcast_last.pop(group_id, None)
 
         # Notify admin clients (outside lock to avoid deadlock)
         await self._notify_admins({
