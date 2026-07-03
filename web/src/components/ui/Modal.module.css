@@ -41,6 +41,13 @@
   padding: var(--s5) var(--s5) var(--s4);
   border-bottom: 1px solid var(--color-line);
 }
+/* Fill the header row so the close button is pushed to the far corner. The
+   close is an IconButton wrapped in a Tooltip <span>, so `margin-left:auto`
+   on the button itself can't move the flex child — growing the heading does. */
+.heading {
+  flex: 1;
+  min-width: 0;
+}
 .title {
   font-family: var(--font-display);
   font-weight: 500;

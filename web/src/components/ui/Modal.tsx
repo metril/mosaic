@@ -93,7 +93,7 @@ export function Modal({ title, subtitle, onClose, children, footer, footerSpread
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className={styles.head}>
-          <div>
+          <div className={styles.heading}>
             <div className={styles.title}>{title}</div>
             {subtitle && <div className={styles.subtitle}>{subtitle}</div>}
           </div>
