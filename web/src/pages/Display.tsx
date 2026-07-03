@@ -86,17 +86,18 @@ function GroupPicker() {
 
 export default function Display() {
   const wsUrl = buildWsUrl()
+  const apiKey = new URLSearchParams(window.location.search).get('key')
 
   useEffect(() => {
     if (!wsUrl) return
     ensureOverlayCss()
     document.body.style.overflow = 'hidden'
-    const teardown = mountDisplay(wsUrl)
+    const teardown = mountDisplay(wsUrl, apiKey)
     return () => {
       teardown()
       document.body.style.overflow = ''
     }
-  }, [wsUrl])
+  }, [wsUrl, apiKey])
 
   if (!wsUrl) return <GroupPicker />
 

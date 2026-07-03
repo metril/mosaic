@@ -15,10 +15,17 @@ import { DEFAULT_SETTINGS } from '@/lib/settingsDefaults'
 
 type Settings = Record<string, any>
 
-export function mountDisplay(wsUrl: string): () => void {
+export function mountDisplay(wsUrl: string, apiKey?: string | null): () => void {
   let currentSettings: Settings = { ...DEFAULT_SETTINGS }
 
   const $ = (id: string) => document.getElementById(id)
+
+  // When OIDC is enabled, /api/image requests need a credential. An <img> can't
+  // send an Authorization header and carries no session on a key-only kiosk, so
+  // append the API key as a query param (the ?key= path the server accepts).
+  // String concat keeps it relative-safe (image URLs are root-relative).
+  const withKey = (url: string) =>
+    apiKey ? url + (url.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(apiKey) : url
 
   // ---- Clock ---------------------------------------------------------------
   class Clock {
@@ -848,7 +855,7 @@ export function mountDisplay(wsUrl: string): () => void {
     updateDebug('Cycle', currentCycle)
     updateDebug('CurrentImage', msg.image_id)
     const blurUrl = blurManager.enabled && msg.blur_url ? msg.blur_url : null
-    loadImage(currentImage, msg.image_url, () => {
+    loadImage(currentImage, withKey(msg.image_url), () => {
       if (blurUrl) blurManager.update(blurUrl)
       applyKenBurns(currentImage)
       currentCaption = msg.caption || null
@@ -869,7 +876,7 @@ export function mountDisplay(wsUrl: string): () => void {
     pendingCaption = msg.caption || null
     loadImage(
       preloadImage,
-      maybeDowngrade(msg.image_url),
+      maybeDowngrade(withKey(msg.image_url)),
       () => {
         preloadComplete = true
         sendPreloadReady()
