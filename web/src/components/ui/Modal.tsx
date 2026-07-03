@@ -22,6 +22,16 @@ const FOCUSABLE =
 export function Modal({ title, subtitle, onClose, children, footer, footerSpread, width, role = 'dialog' }: Props) {
   const modalRef = useRef<HTMLDivElement>(null)
 
+  // Keep the latest onClose in a ref so the focus-management effect below can
+  // stay mount-only. If the effect depended on `onClose`, an unstable inline
+  // `onClose={() => …}` from the parent (re-created on every render — and the
+  // Displays tab re-renders constantly from the live admin WS) would tear the
+  // effect down and re-run it, whose cleanup refocuses `previouslyFocused` and
+  // steals focus from whatever's open inside — snapping native <select>
+  // dropdowns shut mid-interaction.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null
 
@@ -35,7 +45,7 @@ export function Modal({ title, subtitle, onClose, children, footer, footerSpread
 
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        onClose()
+        onCloseRef.current()
         return
       }
       // Contain Tab within the dialog — without this, keyboard focus escapes
@@ -65,7 +75,10 @@ export function Modal({ title, subtitle, onClose, children, footer, footerSpread
       document.body.style.overflow = ''
       previouslyFocused?.focus?.()
     }
-  }, [onClose])
+    // Mount-only: focus trap + focus restoration run exactly once each. onClose
+    // is read through onCloseRef so its identity changing never re-runs this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className={styles.backdrop} onMouseDown={onClose}>
