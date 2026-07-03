@@ -334,8 +334,13 @@ export interface ApiKey {
   recoverable: boolean
 }
 
+export interface AvailableResourceEndpoint {
+  endpoint_id: string
+  name: string | null
+  is_persistent: boolean
+}
 export interface AvailableResources {
-  groups: { group_id: string; endpoints: string[]; folders: string[] }[]
+  groups: { group_id: string; endpoints: AvailableResourceEndpoint[]; folders: string[] }[]
   folders: string[]
 }
 

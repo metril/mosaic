@@ -4058,10 +4058,19 @@ async def get_available_resources(
     """
     display_manager = get_display_manager(request)
 
-    # Get groups with their endpoints and folders
+    # Get groups with their endpoints and folders. Endpoints carry name +
+    # persistence so the key editor can label them and offer explicit
+    # endpoint scopes for saved (persistent) displays.
     groups = []
     for group in display_manager.groups.values():
-        endpoints = [ep.endpoint_id for ep in group.endpoints.values()]
+        endpoints = [
+            {
+                "endpoint_id": ep.endpoint_id,
+                "name": ep.name,
+                "is_persistent": ep.is_persistent,
+            }
+            for ep in group.endpoints.values()
+        ]
         folders = [f.strip() for f in (group.settings.folders or "").split(",") if f.strip()]
         groups.append({
             "group_id": group.group_id,

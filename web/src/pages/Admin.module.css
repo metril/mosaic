@@ -393,6 +393,50 @@
   color: var(--color-text-faint);
 }
 
+/* API-key scopes editor: grouped sections, nested saved-display rows, summary.
+ * pickerListFlush drops the border/padding since the enclosing FormSection
+ * already frames it. */
+.pickerListFlush {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.scopeGroup + .scopeGroup {
+  margin-top: var(--s2);
+  padding-top: var(--s2);
+  border-top: 1px solid var(--color-border);
+}
+.scopeGroupHead {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+  padding: var(--s1) var(--s3);
+}
+/* Saved (persistent) displays nest under their group with a tree rail. */
+.scopeChildren {
+  margin-left: var(--s4);
+  padding-left: var(--s3);
+  border-left: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scopeSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  align-items: center;
+  min-height: 20px;
+}
+.scopeEmpty {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+  padding: var(--s2) var(--s3);
+}
+
 .formGrid {
   display: flex;
   flex-direction: column;

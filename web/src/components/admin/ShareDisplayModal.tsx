@@ -63,11 +63,28 @@ function GroupFirst({ group, onClose }: { group: DisplayGroup; onClose: () => vo
     const others: { key: ApiKey; reason: string }[] = []
     for (const k of keys ?? []) {
       const ok = authorizesDisplay(k.scopes, group.group_id, endpointId, epPersistent)
-      if (ok && k.recoverable) usable.push(k)
-      else others.push({ key: k, reason: !ok ? 'no access to this target' : 'secret unavailable' })
+      if (ok && k.recoverable) {
+        usable.push(k)
+        continue
+      }
+      let reason: string
+      if (!ok) {
+        // A group-scoped key covers the group but NOT a saved (persistent)
+        // display — surface that precisely instead of a blanket "no access".
+        const grantsGroup = authorizesDisplay(k.scopes, group.group_id, null)
+        reason = grantsGroup && endpointId ? 'grants the group, not this saved display' : 'no access'
+      } else {
+        reason = 'secret not recoverable — rotate to enable'
+      }
+      others.push({ key: k, reason })
     }
     return { usable, others }
   }, [keys, group.group_id, endpointId, epPersistent])
+
+  // When a saved display is selected and a key grants the group but not this
+  // display, point the user at the fix (grant it endpoint access in the editor).
+  const blockedBySavedDisplay =
+    !!endpointId && epPersistent && others.some((o) => o.reason === 'grants the group, not this saved display')
 
   // If the currently-selected key is no longer usable for the new target, reset.
   const keyStillUsable = keyId === NO_KEY || usable.some((k) => k.id === keyId)
@@ -122,9 +139,14 @@ function GroupFirst({ group, onClose }: { group: DisplayGroup; onClose: () => vo
                 </option>
               ))}
           </Select>
+          {blockedBySavedDisplay && (
+            <div className={styles.shareWarn}>
+              Saved displays need their own key access — add it in API keys → Edit → Display access.
+            </div>
+          )}
           {others.length > 0 && (
             <div className={styles.shareToggle}>
-              <ToggleField checked={showAll} onChange={setShowAll}>Show keys that don’t grant access</ToggleField>
+              <ToggleField checked={showAll} onChange={setShowAll}>Show keys that can’t be used here</ToggleField>
             </div>
           )}
           {effectiveKeyId !== NO_KEY && !secret && (

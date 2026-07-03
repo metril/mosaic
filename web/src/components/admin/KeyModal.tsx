@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ApiKey } from '@/api/types'
 import { createKey, updateKey, availableResources } from '@/api/keys'
-import { Modal, Button, Input, Label, CopyIcon, CheckIcon, ToggleField, Checkbox } from '@/components/ui'
+import { Modal, Button, Input, Label, CopyIcon, CheckIcon, ToggleField, Checkbox, Segmented, Pill, FormSection, InfoTip } from '@/components/ui'
 import { toast } from '@/stores/toast'
 import { ApiError } from '@/api/client'
 import { cn } from '@/lib/cn'
@@ -75,7 +75,6 @@ const ADMIN_SCOPES = [
   ['admin:immich:monitor', 'View Immich pulls'],
   ['admin:immich:manage', 'Manage Immich pulls'],
   ['admin:immich:trigger', 'Trigger pulls'],
-  ['images:read', 'Read images (legacy)'],
 ] as const
 
 export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: () => void }) {
@@ -93,6 +92,35 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
   function toggleScope(s: string) {
     setScopes((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]))
   }
+
+  // Remember the custom selection so flipping to Full access and back doesn't
+  // wipe it. Only snapshot at the moment we switch to Full.
+  const lastCustomRef = useRef<string[]>(full ? [] : scopes)
+  function setMode(m: 'full' | 'custom') {
+    if (m === 'full') {
+      if (!scopes.includes('*')) lastCustomRef.current = scopes
+      setScopes(['*'])
+    } else {
+      setScopes(lastCustomRef.current.filter((s) => s !== '*'))
+    }
+  }
+
+  // Plain-language summary of what the key grants.
+  const summary: ReactNode = (() => {
+    if (full) return <Pill tone="accent">Full access</Pill>
+    const count = (pfx: string) => scopes.filter((s) => s.startsWith(pfx)).length
+    const groupN = count('group:')
+    const epN = count('endpoint:')
+    const allFolders = scopes.includes('folder:*')
+    const folderN = allFolders ? 1 : count('folder:')
+    const adminN = count('admin:')
+    const pills: ReactNode[] = []
+    if (groupN) pills.push(<Pill key="g">{groupN} group{groupN > 1 ? 's' : ''}</Pill>)
+    if (epN) pills.push(<Pill key="e">{epN} display{epN > 1 ? 's' : ''}</Pill>)
+    if (folderN) pills.push(<Pill key="f">{allFolders ? 'all folders' : `${folderN} folder${folderN > 1 ? 's' : ''}`}</Pill>)
+    if (adminN) pills.push(<Pill key="a">{adminN} admin</Pill>)
+    return pills.length ? <>{pills}</> : <Pill tone="warning">No access</Pill>
+  })()
 
   const dirty = editing
     ? name !== apiKey!.name || enabled !== apiKey!.enabled || JSON.stringify(scopes) !== JSON.stringify(apiKey!.scopes)
@@ -180,46 +208,96 @@ export function KeyModal({ apiKey, onClose }: { apiKey: ApiKey | null; onClose: 
         )}
 
         <div className={styles.fieldGroup}>
-          <Label>Scopes</Label>
-          <div className={cn(styles.pickerItem, styles.pickerItemFlush)}>
-            <ToggleField checked={full} onChange={(v) => setScopes(v ? ['*'] : ['admin:display:monitor'])}>
-              Full access (*)
-            </ToggleField>
+          <div className={styles.rowCluster}>
+            <Label>Scopes</Label>
+            <div className={styles.grow} />
+            <Segmented
+              ariaLabel="Access level"
+              options={[
+                { value: 'custom', label: 'Custom' },
+                { value: 'full', label: 'Full access' },
+              ]}
+              value={full ? 'full' : 'custom'}
+              onChange={setMode}
+            />
           </div>
 
+          <div className={styles.scopeSummary}>{summary}</div>
+
           {!full && (
-            <div className={styles.pickerList}>
-              {ADMIN_SCOPES.map(([s, label]) => (
-                <div key={s} className={styles.pickerItem}>
-                  <Checkbox checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
-                    {label}
-                  </Checkbox>
-                  <span className={cn(styles.pickerCount, styles.mono)}>{s}</span>
+            <>
+              <FormSection title="Display access" defaultOpen>
+                {(resources.data?.groups ?? []).length === 0 ? (
+                  <div className={styles.scopeEmpty}>No display groups yet.</div>
+                ) : (
+                  <div className={styles.pickerListFlush}>
+                    {(resources.data?.groups ?? []).map((g) => {
+                      const groupScope = `group:${g.group_id}`
+                      const saved = g.endpoints.filter((e) => e.is_persistent)
+                      return (
+                        <div key={g.group_id} className={styles.scopeGroup}>
+                          <div className={styles.scopeGroupHead}>{g.group_id}</div>
+                          <div className={styles.pickerItem}>
+                            <Checkbox checked={scopes.includes(groupScope)} onChange={() => toggleScope(groupScope)}>
+                              Whole group
+                            </Checkbox>
+                            <InfoTip text="Grants the group and its anonymous (unnamed) displays. Each saved display below needs its own access." />
+                          </div>
+                          {saved.length > 0 && (
+                            <div className={styles.scopeChildren}>
+                              {saved.map((e) => {
+                                const epScope = `endpoint:${g.group_id}:${e.endpoint_id}`
+                                return (
+                                  <div key={e.endpoint_id} className={styles.pickerItem}>
+                                    <Checkbox checked={scopes.includes(epScope)} onChange={() => toggleScope(epScope)}>
+                                      {e.name || e.endpoint_id}
+                                    </Checkbox>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </FormSection>
+
+              <FormSection title="Folder access">
+                <div className={styles.pickerListFlush}>
+                  <div className={styles.pickerItem}>
+                    <Checkbox checked={scopes.includes('folder:*')} onChange={() => toggleScope('folder:*')}>
+                      All folders
+                    </Checkbox>
+                    <InfoTip text="Direct read access to every image folder." />
+                  </div>
+                  {(resources.data?.folders ?? []).map((f) => {
+                    const s = `folder:${f}`
+                    return (
+                      <div key={s} className={styles.pickerItem}>
+                        <Checkbox checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
+                          {f}
+                        </Checkbox>
+                      </div>
+                    )
+                  })}
                 </div>
-              ))}
-              {(resources.data?.groups ?? []).map((g) => {
-                const s = `group:${g.group_id}`
-                return (
-                  <div key={s} className={styles.pickerItem}>
-                    <Checkbox checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
-                      Group: {g.group_id}
-                    </Checkbox>
-                    <span className={cn(styles.pickerCount, styles.mono)}>{s}</span>
-                  </div>
-                )
-              })}
-              {(resources.data?.folders ?? []).map((f) => {
-                const s = `folder:${f}`
-                return (
-                  <div key={s} className={styles.pickerItem}>
-                    <Checkbox checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
-                      Folder: {f}
-                    </Checkbox>
-                    <span className={cn(styles.pickerCount, styles.mono)}>{s}</span>
-                  </div>
-                )
-              })}
-            </div>
+              </FormSection>
+
+              <FormSection title="Admin dashboard & automation">
+                <div className={styles.pickerListFlush}>
+                  {ADMIN_SCOPES.map(([s, label]) => (
+                    <div key={s} className={styles.pickerItem}>
+                      <Checkbox checked={scopes.includes(s)} onChange={() => toggleScope(s)}>
+                        {label}
+                      </Checkbox>
+                      <span className={cn(styles.pickerCount, styles.mono)}>{s}</span>
+                    </div>
+                  ))}
+                </div>
+              </FormSection>
+            </>
           )}
         </div>
       </div>
