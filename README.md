@@ -60,6 +60,14 @@ docker compose up -d
 - API documentation: `http://localhost/docs` (FastAPI auto-generated)
 - Health check: `http://localhost/health`
 
+## Docker image
+
+Multi-arch (amd64/arm64) images are published to GitHub Container Registry on each release:
+
+```bash
+docker pull ghcr.io/metril/mosaic:latest
+```
+
 ## API Endpoints
 
 ### Web Interface

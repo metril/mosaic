@@ -5,6 +5,7 @@ networks:
 
 services:
   mosaic:
+    image: ghcr.io/metril/mosaic:latest
     build: .
     container_name: mosaic
     user: "${UID:-1000}:${GID:-1000}"
