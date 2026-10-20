@@ -377,6 +377,7 @@ export interface AppSettings {
   immich_http_timeout: number
   max_immich_pull_count: number
   stream_cache_mb: number
+  stream_prefetch: boolean
   preload_lead_time: number
   browser_stale_timeout: number
   cleanup_interval: number

@@ -777,6 +777,10 @@ async def update_settings(
         fetcher = getattr(request.app.state, 'stream_fetcher', None)
         if fetcher:
             fetcher.set_cache_mb(settings.get_int("stream_cache_mb"))
+    if "stream_prefetch" in payload:
+        fetcher = getattr(request.app.state, 'stream_fetcher', None)
+        if fetcher:
+            fetcher.prefetch_enabled = settings.get_bool("stream_prefetch")
     if immich_timeout_changed:
         provider = getattr(request.app.state, 'immich_provider', None)
         if provider:

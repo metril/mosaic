@@ -138,6 +138,12 @@ export function SettingsTab() {
           max={65536}
           unit="MB"
         />
+        <ToggleRow
+          label="Prefetch next stream image"
+          hint="Warm the cache with each display's upcoming image so it appears instantly."
+          value={form.stream_prefetch}
+          onChange={(v) => set('stream_prefetch', v)}
+        />
       </Card>
 
       <Card pad>

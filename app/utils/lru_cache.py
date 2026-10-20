@@ -36,6 +36,11 @@ class BoundedLRU:
             self._store.move_to_end(key)
             return item[0]
 
+    def contains(self, key: str) -> bool:
+        """Membership test that does not touch recency."""
+        with self._lock:
+            return key in self._store
+
     def put(self, key: str, value: Any, size: int) -> None:
         if self._max_bytes <= 0:
             return

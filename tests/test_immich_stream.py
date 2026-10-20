@@ -207,3 +207,62 @@ def test_mpo_treated_as_jpeg():
         m.Image.open = orig
     assert ct == "image/jpeg" and Image.open(BytesIO(data)).format == "JPEG"
 
+
+
+# ---- prefetch ------------------------------------------------------------------ #
+
+@respx.mock
+def test_prefetch_warms_cache_once_and_swallows_failures():
+    fetcher = make_fetcher(make_cfg())
+    ok = respx.get(f"{SERVER}/api/assets/a1/thumbnail").respond(content=make_image())
+    respx.get(f"{SERVER}/api/assets/bad/thumbnail").respond(status_code=500)
+
+    async def run():
+        assert fetcher.prefetch(asset()) is True
+        assert fetcher.prefetch(asset()) is False  # already queued
+        assert fetcher.prefetch(asset(aid="bad")) is True
+        await asyncio.sleep(0.3)
+        assert fetcher.prefetch(asset()) is False  # now cached
+        assert fetcher._prefetching == set()
+        await fetcher.get_bytes(asset())
+
+    asyncio.run(run())
+    assert ok.call_count == 1 and fetcher.stats()["hits"] == 1
+
+    fetcher.prefetch_enabled = False
+    assert fetcher.prefetch(asset(aid="x")) is False
+
+
+def test_prefetch_noop_without_loop():
+    assert make_fetcher(make_cfg()).prefetch(asset()) is False
+
+
+@respx.mock
+def test_pool_prefetches_exactly_the_next_served_image(tmp_path):
+    from pathlib import Path
+    from app.services.sync_manager import ImagePool
+
+    fetcher = make_fetcher(make_cfg())
+    index = StreamIndex(tmp_path / "idx.db")
+    assets = [asset_from_search("p", "pics", {"id": f"id{i}", "originalFileName": f"{i}.jpg",
+                                                "originalMimeType": "image/jpeg"}) for i in range(6)]
+    index.replace("p", assets)
+    for a in assets:
+        respx.get(f"{SERVER}/api/assets/{a.asset_id}/thumbnail").respond(content=make_image())
+    svc = SimpleNamespace(
+        image_dir=Path("/img"), stream_index=index, stream_fetcher=fetcher,
+        get_image_files=lambda folder_paths=None, recursive=False: [Path("/img") / a.path for a in assets],
+    )
+
+    async def run():
+        pool = ImagePool(svc, SimpleNamespace(folders="pics", recursive=False))
+        pool.assign_unique_image("b1")
+        upcoming = pool.peek_upcoming(1)
+        await asyncio.sleep(0.5)
+        nxt = pool.assign_unique_image("b1")
+        return upcoming, nxt
+
+    upcoming, nxt = asyncio.run(run())
+    assert upcoming == [nxt]
+    warmed = fetcher.cache_key(make_cfg(), index.lookup(nxt))
+    assert fetcher.cache.contains(warmed)

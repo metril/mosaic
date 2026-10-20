@@ -290,6 +290,7 @@ async def lifespan(app: FastAPI):
             cache_mb=app.state.settings.get_int("stream_cache_mb"),
             timeout=app.state.settings.get_float("immich_http_timeout"),
         )
+        app.state.stream_fetcher.prefetch_enabled = app.state.settings.get_bool("stream_prefetch")
         image_service.stream_fetcher = app.state.stream_fetcher
         loaded_pulls = await app.state.immich_provider.load_config()
         if loaded_pulls > 0:

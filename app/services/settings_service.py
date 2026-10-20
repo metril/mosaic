@@ -33,6 +33,7 @@ SCHEMA: Dict[str, Tuple[str, Optional[str], Any]] = {
     "immich_http_timeout": ("float", "IMMICH_HTTP_TIMEOUT", 30.0),
     "max_immich_pull_count": ("int", "MAX_IMMICH_PULL_COUNT", 1000),
     "stream_cache_mb": ("int", "STREAM_CACHE_MB", 256),
+    "stream_prefetch": ("bool", None, True),
     # Display & connection limits
     "preload_lead_time": ("int", "PRELOAD_LEAD_TIME", 5),
     "browser_stale_timeout": ("int", "BROWSER_STALE_TIMEOUT", 60),

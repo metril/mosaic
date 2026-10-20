@@ -36,6 +36,7 @@ _EXT_MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
 _FORMAT_CT = {"jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
 
 THUMB_CACHE_BYTES = 32 * 1024 * 1024
+PREFETCH_CONCURRENCY = 2
 
 
 class StreamError(Exception):
@@ -348,6 +349,10 @@ class StreamFetcher:
         self.thumb_cache = BoundedLRU(THUMB_CACHE_BYTES)
         self._client: Optional[httpx.AsyncClient] = None
         self._inflight: Dict[str, asyncio.Task] = {}
+        self._prefetching: Set[str] = set()
+        self._prefetch_tasks: Set[asyncio.Task] = set()
+        self._prefetch_sem: Optional[asyncio.Semaphore] = None
+        self.prefetch_enabled = True
         self.hits = 0
         self.misses = 0
 
@@ -450,6 +455,41 @@ class StreamFetcher:
             self._inflight[key] = task
             task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
         return await asyncio.shield(task)
+
+    def prefetch(self, asset: StreamAsset) -> bool:
+        """Fire-and-forget warm of the exact cache entry /api/image will read.
+
+        No-op when disabled, already cached/in-flight/queued, or outside a
+        running loop. At most PREFETCH_CONCURRENCY run at once; errors are
+        swallowed (the real request surfaces them). Returns True if scheduled."""
+        if not self.prefetch_enabled or not self.cache.enabled:
+            return False
+        cfg = self._get_pull(asset.pull_name)
+        if cfg is None:
+            return False
+        key = self.cache_key(cfg, asset)
+        if key in self._prefetching or key in self._inflight or self.cache.contains(key):
+            return False
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return False
+        self._prefetching.add(key)
+        task = loop.create_task(self._prefetch_run(asset, key))
+        self._prefetch_tasks.add(task)
+        task.add_done_callback(self._prefetch_tasks.discard)
+        return True
+
+    async def _prefetch_run(self, asset: StreamAsset, key: str) -> None:
+        try:
+            if self._prefetch_sem is None:
+                self._prefetch_sem = asyncio.Semaphore(PREFETCH_CONCURRENCY)
+            async with self._prefetch_sem:
+                await self.get_bytes(asset)
+        except Exception as e:
+            logger.debug(f"Stream prefetch failed for {asset.asset_id}: {e}")
+        finally:
+            self._prefetching.discard(key)
 
     async def _produce(self, cfg, asset: StreamAsset, key: str) -> StreamImage:
         raw = await self._fetch_upstream(cfg, asset)

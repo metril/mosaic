@@ -490,7 +490,37 @@ class ImagePool:
 
         self._assigned_images[browser_id] = selected
         self._shown_images.add(selected)
+        self._prefetch_upcoming()
         return selected
+
+    def peek_upcoming(self, n: int) -> List[str]:
+        """The next ``n`` paths the cycle queue will hand out, in order,
+        applying the same filters as _pop_cycle_candidate (not yet shown, not on
+        another browser). Non-mutating, so these are the actual next picks."""
+        assigned = set(self._assigned_images.values())
+        out: List[str] = []
+        for cand in self._cycle_queue:
+            if cand in self._shown_images or cand in assigned:
+                continue
+            out.append(cand)
+            if len(out) >= n:
+                break
+        return out
+
+    def _prefetch_upcoming(self) -> None:
+        """Warm the stream cache for what the group's browsers will be served
+        next (one per browser). No-op for disk paths; never raises."""
+        try:
+            fetcher = getattr(self.image_service, "stream_fetcher", None)
+            index = self.image_service.stream_index
+            if fetcher is None or index is None or not fetcher.prefetch_enabled:
+                return
+            for path in self.peek_upcoming(max(1, len(self._assigned_images))):
+                asset = index.lookup(path)
+                if asset is not None:
+                    fetcher.prefetch(asset)
+        except Exception as e:
+            logger.debug(f"Stream prefetch scheduling failed: {e}")
 
     def _refill_cycle_queue(self, all_paths: List[str]) -> None:
         """Rebuild the shuffled queue of paths not yet shown this cycle."""
