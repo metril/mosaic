@@ -54,6 +54,7 @@ from app.utils.rate_limit import (
 )
 from app.services.thumbnail_cache import ThumbnailCache
 from app.services import cron_utils
+from app.services.immich_stream import StreamNotFound, StreamUpstreamError
 
 # Allowed WebSocket origins (comma-separated in env, empty = allow all)
 ALLOWED_WS_ORIGINS = os.environ.get("ALLOWED_WS_ORIGINS", "").split(",")
@@ -512,19 +513,23 @@ async def _get_cached_image_count() -> int:
         }
     }
 })
-async def health_check():
+async def health_check(request: Request):
     """
     Health check endpoint (unauthenticated — keep the payload free of
     filesystem details).
 
     Returns:
-        JSON with status and image count
+        JSON with status, image count and Immich stream-cache stats
     """
     image_count = await _get_cached_image_count()
+    fetcher = getattr(request.app.state, "stream_fetcher", None)
 
     return {
         "status": "healthy",
         "image_count": image_count,
+        "stream_cache": fetcher.stats() if fetcher else {
+            "entries": 0, "bytes": 0, "max_bytes": 0, "hits": 0, "misses": 0,
+        },
     }
 
 
@@ -753,6 +758,8 @@ async def update_settings(
 
     ha_changed = False
     immich_timeout_changed = False
+    stream_cache_changed = False
+    old_stream_mb = settings.get_int("stream_cache_mb")
     for key, value in payload.items():
         if key == "ha_token" and not value:
             continue  # blank = keep existing secret
@@ -761,9 +768,15 @@ async def update_settings(
             ha_changed = True
         if key == "immich_http_timeout":
             immich_timeout_changed = True
+        if key == "stream_cache_mb" and settings.get_int("stream_cache_mb") != old_stream_mb:
+            stream_cache_changed = True
 
     if ha_changed:
         request.app.state.ha_provider = build_ha_provider(settings)
+    if stream_cache_changed:
+        fetcher = getattr(request.app.state, 'stream_fetcher', None)
+        if fetcher:
+            fetcher.set_cache_mb(settings.get_int("stream_cache_mb"))
     if immich_timeout_changed:
         provider = getattr(request.app.state, 'immich_provider', None)
         if provider:
@@ -925,6 +938,21 @@ async def get_thumbnail(
         # Validate path using centralized security function
         full_path = resolve_image_path(image_path, image_service.image_dir)
 
+        # Stream-mode asset: proxy Immich's own thumbnail (small memory LRU)
+        stream_asset = image_service.stream_index.lookup(image_path) if image_service.stream_index else None
+        if stream_asset is not None:
+            try:
+                thumb, thumb_type = await request.app.state.stream_fetcher.get_thumbnail(stream_asset)
+            except StreamNotFound:
+                return JSONResponse(status_code=404, content=error_response("Image not found"))
+            except StreamUpstreamError as e:
+                logger.warning(f"Immich thumbnail fetch failed for {image_path}: {e}")
+                return JSONResponse(status_code=502, content=error_response("Image source unavailable"))
+            return Response(content=thumb, media_type=thumb_type, headers={
+                "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
+                "Content-Disposition": f'inline; filename="{_ascii_filename("thumb_" + Path(image_path).name)}"',
+            })
+
         # Security check: ensure file exists and is not a symlink
         if not full_path.exists() or full_path.is_symlink():
             return JSONResponse(
@@ -1073,6 +1101,28 @@ async def get_image_metadata(
         # Validate path using centralized security function
         full_path = resolve_image_path(image_path, image_service.image_dir)
 
+        # Stream-mode asset: build metadata from the index row (no file to stat)
+        stream_asset = image_service.stream_index.lookup(image_path) if image_service.stream_index else None
+        if stream_asset is not None:
+            dims = f"{stream_asset.width}x{stream_asset.height}" if stream_asset.width and stream_asset.height else "Unknown"
+            return JSONResponse(content={
+                "name": stream_asset.filename or Path(image_path).name,
+                "path": stream_asset.path,
+                "size": 0,
+                "size_formatted": "Streamed",
+                "dimensions": dims,
+                "width": stream_asset.width,
+                "height": stream_asset.height,
+                "format": stream_asset.ext.upper(),
+                "mode": None,
+                "modified": stream_asset.taken_at,
+                "type": "file",
+                "stream": True,
+                "is_favorite": stream_asset.is_favorite,
+                "city": stream_asset.city,
+                "country": stream_asset.country,
+            })
+
         # Check if file exists (reject symlinks to match the other image
         # endpoints — they must not be reachable via symlinked paths)
         if not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
@@ -1164,15 +1214,43 @@ async def serve_processed_image(
         # Validate path using centralized security function
         full_path = resolve_image_path(image_path, image_service.image_dir)
 
-        # Check file exists and is not a symlink
-        if not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
-            return JSONResponse(
-                status_code=404,
-                content=error_response("Image not found")
-            )
+        # Immich stream-mode assets have no file: they're fetched/rendered by the
+        # StreamFetcher, and its render-cache key stands in for the mtime below.
+        stream_asset = image_service.stream_index.lookup(image_path) if image_service.stream_index else None
+        stream_data: Optional[bytes] = None
+        if stream_asset is not None:
+            fetcher = request.app.state.stream_fetcher
+            mtime = fetcher.key_for(stream_asset)
+            if mtime is None:
+                return JSONResponse(status_code=404, content=error_response("Image not found"))
+        else:
+            # Check file exists and is not a symlink
+            if not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
+                return JSONResponse(
+                    status_code=404,
+                    content=error_response("Image not found")
+                )
 
-        # mtime keys the server-side cache and feeds Last-Modified.
-        mtime = full_path.stat().st_mtime
+            # mtime keys the server-side cache and feeds Last-Modified.
+            mtime = full_path.stat().st_mtime
+
+        # Stream fast path: nothing to transform, serve the pre-rendered bytes.
+        if stream_asset is not None and not (width or height or eink or format):
+            etag = hashlib.md5(f"{mtime}\x00original".encode()).hexdigest()
+            if _etag_matches(request.headers.get("If-None-Match"), etag):
+                return Response(status_code=304)
+            rendered = await fetcher.get_bytes(stream_asset)
+            headers = {
+                "Cache-Control": f"public, max-age={STATIC_CACHE_MAX_AGE}",
+                "Content-Disposition": f'inline; filename="{_ascii_filename(full_path.name)}"',
+                "Content-Location": f"/api/image/{quote(image_path, safe='/')}",
+                "ETag": f'"{etag}"',
+                "Content-Length": str(len(rendered.data)),
+                "Vary": "Accept",
+            }
+            if request.method == "HEAD":
+                return Response(status_code=200, headers=headers, media_type=rendered.content_type)
+            return Response(content=rendered.data, media_type=rendered.content_type, headers=headers)
 
         # Fast path: nothing to transform and the pixels are already upright —
         # stream the original bytes and skip the decode/re-encode entirely (no
@@ -1181,7 +1259,7 @@ async def serve_processed_image(
         wants_transform = bool(
             width or height or eink or (format and format != source_format)
         )
-        if not wants_transform and source_format in ("jpeg", "jpg", "png", "webp", "gif", "bmp"):
+        if stream_asset is None and not wants_transform and source_format in ("jpeg", "jpg", "png", "webp", "gif", "bmp"):
             needs_transpose = await asyncio.get_running_loop().run_in_executor(
                 image_executor, _needs_exif_transpose, full_path, mtime
             )
@@ -1218,7 +1296,7 @@ async def serve_processed_image(
         def process():
             from app.utils.color_mapping import apply_spectra_6
 
-            img = image_service.load_image(full_path)
+            img = image_service.load_image(BytesIO(stream_data) if stream_data is not None else full_path)
 
             # Apply resizing if requested
             if width or height:
@@ -1264,6 +1342,8 @@ async def serve_processed_image(
         if cached is not None:
             content, content_type, filename_out = cached
         else:
+            if stream_asset is not None:
+                stream_data = (await fetcher.get_bytes(stream_asset)).data
             content, content_type, filename_out = await asyncio.get_running_loop().run_in_executor(
                 image_executor, process
             )
@@ -1277,8 +1357,8 @@ async def serve_processed_image(
         # spaces, Unicode, and other special characters in filenames.
         content_location = f"/api/image/{quote(image_path, safe='/')}"
 
-        # Format Last-Modified as RFC 7231 HTTP-date
-        last_modified = formatdate(mtime, usegmt=True)
+        # Format Last-Modified as RFC 7231 HTTP-date (none for stream assets)
+        last_modified = formatdate(mtime, usegmt=True) if stream_asset is None else None
 
         headers = {
             "Content-Length": str(content_length),
@@ -1287,9 +1367,10 @@ async def serve_processed_image(
             "Content-Disposition": f'inline; filename="{_ascii_filename(filename_out)}"',
             "Content-Location": content_location,
             "ETag": f'"{etag}"',
-            "Last-Modified": last_modified,
             "Vary": "Accept",  # Response varies based on Accept header
         }
+        if last_modified:
+            headers["Last-Modified"] = last_modified
 
         # HEAD request - return headers only, no body
         if request.method == "HEAD":
@@ -1297,6 +1378,11 @@ async def serve_processed_image(
 
         return Response(content=content, media_type=content_type, headers=headers)
 
+    except StreamNotFound:
+        return JSONResponse(status_code=404, content=error_response("Image not found"))
+    except StreamUpstreamError as e:
+        logger.warning(f"Immich stream fetch failed for {image_path}: {e}")
+        return JSONResponse(status_code=502, content=error_response("Image source unavailable"))
     except PathSecurityError:
         return JSONResponse(
             status_code=400,
@@ -1350,8 +1436,12 @@ async def get_blur_background(
         # Validate path using centralized security function
         full_path = resolve_image_path(image_path, image_service.image_dir)
 
+        stream_asset = image_service.stream_index.lookup(image_path) if image_service.stream_index else None
+        stream_data: Optional[bytes] = None
+        if stream_asset is not None:
+            stream_data = (await request.app.state.stream_fetcher.get_bytes(stream_asset)).data
         # Check file exists and is not a symlink
-        if not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
+        elif not full_path.exists() or not full_path.is_file() or full_path.is_symlink():
             return JSONResponse(
                 status_code=404,
                 content=error_response("Image not found")
@@ -1359,13 +1449,18 @@ async def get_blur_background(
 
         # Generate blur in thread pool (CPU-intensive)
         def generate_blur():
-            img = image_service.load_image(full_path)
+            img = image_service.load_image(BytesIO(stream_data) if stream_data is not None else full_path)
             return create_blur_background(img, blur_amount=blur_amount)
 
         blur_url = await asyncio.get_running_loop().run_in_executor(image_executor, generate_blur)
 
         return JSONResponse(content={"blur_url": blur_url})
 
+    except StreamNotFound:
+        return JSONResponse(status_code=404, content=error_response("Image not found"))
+    except StreamUpstreamError as e:
+        logger.warning(f"Immich stream fetch failed for {image_path}: {e}")
+        return JSONResponse(status_code=502, content=error_response("Image source unavailable"))
     except PathSecurityError:
         return JSONResponse(
             status_code=400,
@@ -3206,6 +3301,28 @@ class ImmichPullCreateRequest(BaseModel):
     # Curation interaction (F6)
     protect_favorites: bool = Field(True, description="Keep favorited files across replace_existing pulls")
     skip_excluded: bool = Field(True, description="Never re-download excluded assets")
+    # Storage mode: "stream" keeps nothing on disk and renders images on demand
+    storage_mode: Literal["download", "stream"] = Field("download", description="'download' to IMAGE_DIR or 'stream' (memory cache only)")
+    stream_source: Literal["preview", "fullsize", "original"] = Field("preview", description="Immich rendition fetched in stream mode")
+    stream_max_w: int = Field(0, ge=0, le=16384, description="Max width in stream mode (0 = source size)")
+    stream_max_h: int = Field(0, ge=0, le=16384, description="Max height in stream mode (0 = source size)")
+    stream_format: Literal["original", "jpeg", "png", "webp"] = Field("jpeg", description="Re-encode format in stream mode")
+    stream_quality: int = Field(85, ge=1, le=100, description="JPEG/WebP quality in stream mode")
+
+
+async def _forget_stream_pull(request: Request, pull_name: str, folder: Optional[str], drop_index: bool) -> None:
+    """Clear a stream pull's cached renders and (optionally) its index rows, then
+    refresh anything that listed its virtual folder."""
+    fetcher = getattr(request.app.state, "stream_fetcher", None)
+    if fetcher:
+        fetcher.clear_pull(pull_name)
+    if folder:
+        processed_image_cache.clear_prefix(f"{folder}/")
+    if drop_index and image_service.stream_index:
+        image_service.stream_index.drop(pull_name)
+        invalidate_browse_cache()
+        if folder is not None:
+            await request.app.state.display_manager.refresh_groups_by_folder(folder)
 
 
 @router.get(
@@ -3231,7 +3348,11 @@ async def list_immich_pulls(
     # Mask API keys for security; attach schedule preview (F1)
     from app.services.pull_scheduler import default_timezone
     default_tz = default_timezone()
+    stream_index = image_service.stream_index
     for pull in pulls:
+        pull["stream_asset_count"] = (
+            stream_index.count(pull["name"]) if stream_index and pull.get("storage_mode") == "stream" else 0
+        )
         if pull.get("api_key"):
             pull["api_key"] = "***" + pull["api_key"][-4:] if len(pull["api_key"]) > 4 else "***"
         cron = pull.get("cron_expression")
@@ -3294,6 +3415,9 @@ async def create_immich_pull(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    if body.storage_mode == "stream" and body.media_type != "IMAGE":
+        raise HTTPException(status_code=400, detail="Stream mode supports images only")
+
     # Preserve last_run across edits
     existing = provider.get_pull(body.name)
     last_run = existing.last_run if existing else None
@@ -3318,10 +3442,22 @@ async def create_immich_pull(
         last_run=last_run,
         protect_favorites=body.protect_favorites,
         skip_excluded=body.skip_excluded,
+        storage_mode=body.storage_mode,
+        stream_source=body.stream_source,
+        stream_max_w=body.stream_max_w,
+        stream_max_h=body.stream_max_h,
+        stream_format=body.stream_format,
+        stream_quality=body.stream_quality,
     )
 
     provider.add_pull(config)
     provider.save_config()
+    # Edited pull: cached renders may be stale; leaving stream mode (or moving
+    # the folder) drops the index. Disk folders are never touched.
+    old_folder = existing.target_folder.strip("/") if existing else None
+    left_stream = bool(existing and existing.storage_mode == "stream" and (
+        config.storage_mode != "stream" or config.target_folder.strip("/") != old_folder))
+    await _forget_stream_pull(request, body.name, old_folder, drop_index=left_stream)
     # Re-install/remove the scheduled job for this pull (F1)
     scheduler = getattr(request.app.state, "pull_scheduler", None)
     if scheduler:
@@ -3353,8 +3489,11 @@ async def delete_immich_pull(
     provider = get_immich_provider(request)
     logger.info(f"User {actor} deleting Immich pull: {pull_name}")
 
+    removed = provider.get_pull(pull_name)
     if provider.remove_pull(pull_name):
         provider.save_config()
+        if removed and removed.storage_mode == "stream":
+            await _forget_stream_pull(request, pull_name, removed.target_folder.strip("/"), drop_index=True)
         scheduler = getattr(request.app.state, "pull_scheduler", None)
         if scheduler:
             scheduler.reload_pull(pull_name)
@@ -3894,6 +4033,9 @@ class CurationToggleRequest(BaseModel):
 def _validate_curation_path(path: str) -> str:
     """Normalize + validate the image path; raises 400 on traversal."""
     try:
+        # Stream-mode assets are virtual (no file); the index is the source of truth
+        if image_service.stream_index and image_service.stream_index.lookup(path):
+            return path.strip().strip("/")
         full = resolve_image_path(path, image_service.image_dir)
         return str(full.relative_to(image_service.image_dir))
     except Exception:
@@ -4380,8 +4522,25 @@ async def root(
             actual_brightness = brightness if brightness is not None else EINK_BRIGHTNESS
             actual_sharpen = sharpen if sharpen is not None else EINK_SHARPEN
 
+            # Pick the image first: stream-mode bytes must be fetched here on the
+            # loop, since an image_executor task can't wait on another one.
+            loop = asyncio.get_running_loop()
+            picked = await loop.run_in_executor(
+                image_executor, image_service.get_random_image_path, final_folder_paths, recursive
+            )
+            stream_data = None
+            stream_asset = image_service.stream_asset(picked) if picked else None
+            if stream_asset is not None:
+                try:
+                    stream_data = (await request.app.state.stream_fetcher.get_bytes(stream_asset)).data
+                except StreamNotFound:
+                    return JSONResponse(status_code=404, content=error_response("Image not found"))
+                except StreamUpstreamError as e:
+                    logger.warning(f"Immich stream fetch failed for {picked}: {e}")
+                    return JSONResponse(status_code=502, content=error_response("Image source unavailable"))
+
             # Run CPU-intensive image processing in thread pool to avoid blocking event loop
-            result = await asyncio.get_running_loop().run_in_executor(
+            result = await loop.run_in_executor(
                 image_executor,
                 image_service.process_image,
                 width,
@@ -4396,7 +4555,9 @@ async def root(
                 actual_brightness,
                 actual_sharpen,
                 final_folder_paths,
-                recursive
+                recursive,
+                picked,
+                stream_data
             )
 
             if result is None:
@@ -4514,8 +4675,10 @@ async def root(
 
                 # Build image URLs — URL-encode the relative path so filenames
                 # with spaces or non-ASCII characters produce valid URLs.
+                # (stream-mode assets have no file under /images/, so use /api/image)
                 image_urls = [
-                    f"/images/{quote(str(file.relative_to(image_service.image_dir)))}"
+                    f"{'/api/image' if image_service.stream_asset(file) else '/images'}/"
+                    f"{quote(str(file.relative_to(image_service.image_dir)))}"
                     for file in image_files
                 ]
 

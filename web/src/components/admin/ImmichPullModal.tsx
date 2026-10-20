@@ -10,6 +10,13 @@ import { cn } from '@/lib/cn'
 import styles from '@/pages/Admin.module.css'
 import { useDirtyGuard } from '@/hooks/useDirtyGuard'
 
+const RES_PRESETS = [
+  { value: '0x0', label: 'Source' },
+  { value: '1920x1080', label: '1080p (1920×1080)' },
+  { value: '2560x1440', label: '1440p (2560×1440)' },
+  { value: '3840x2160', label: '4K (3840×2160)' },
+]
+
 interface Props {
   pull: ImmichPull | null
   onClose: () => void
@@ -38,7 +45,26 @@ export function ImmichPullModal({ pull, onClose }: Props) {
     cron_timezone: pull?.cron_timezone ?? '',
     protect_favorites: pull?.protect_favorites ?? true,
     skip_excluded: pull?.skip_excluded ?? true,
+    storage_mode: pull?.storage_mode ?? 'download',
+    stream_source: pull?.stream_source ?? 'preview',
+    stream_max_w: pull?.stream_max_w ?? 0,
+    stream_max_h: pull?.stream_max_h ?? 0,
+    stream_format: pull?.stream_format ?? 'jpeg',
+    stream_quality: pull?.stream_quality ?? 85,
   })
+  const [preset, setPreset] = useState<string>(() => {
+    const k = `${pull?.stream_max_w ?? 0}x${pull?.stream_max_h ?? 0}`
+    return RES_PRESETS.some((r) => r.value === k) ? k : 'custom'
+  })
+  const isStream = form.storage_mode === 'stream'
+
+  function pickPreset(v: string) {
+    setPreset(v)
+    if (v !== 'custom') {
+      const [w, h] = v.split('x').map(Number)
+      setForm((f) => ({ ...f, stream_max_w: w, stream_max_h: h }))
+    }
+  }
 
   function set<K extends keyof PullSave>(k: K, v: PullSave[K]) {
     setForm((f) => ({ ...f, [k]: v }))
@@ -147,6 +173,80 @@ export function ImmichPullModal({ pull, onClose }: Props) {
               Test &amp; load
             </Button>
           </div>
+          <Label>
+            Storage <InfoTip text="Stream serves images straight from Immich (nothing is written to disk). HEIC/RAW originals fall back to Immich’s full-size JPEG, since browsers can’t display them." />
+          </Label>
+          <Select
+            className={formStyles.controlMd}
+            value={form.storage_mode}
+            onChange={(e) => set('storage_mode', e.target.value as 'download' | 'stream')}
+          >
+            <option value="download">Download</option>
+            <option value="stream">Stream (no disk)</option>
+          </Select>
+          {isStream && (
+            <>
+              <div className={styles.grid2}>
+                <div>
+                  <Label>Source</Label>
+                  <Select
+                    className={formStyles.controlMd}
+                    value={form.stream_source}
+                    onChange={(e) => set('stream_source', e.target.value as 'preview' | 'fullsize' | 'original')}
+                  >
+                    <option value="preview">Preview</option>
+                    <option value="fullsize">Full size</option>
+                    <option value="original">Original</option>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Resolution</Label>
+                  <Select className={formStyles.controlMd} value={preset} onChange={(e) => pickPreset(e.target.value)}>
+                    {RES_PRESETS.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                    <option value="custom">Custom</option>
+                  </Select>
+                </div>
+              </div>
+              {preset === 'custom' && (
+                <div className={styles.grid2}>
+                  <div>
+                    <Label>Max width <InfoTip text="Pixels; 0 keeps the source size." /></Label>
+                    <Input type="number" className={formStyles.controlNum} min={0} value={form.stream_max_w}
+                      onChange={(e) => set('stream_max_w', Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <Label>Max height</Label>
+                    <Input type="number" className={formStyles.controlNum} min={0} value={form.stream_max_h}
+                      onChange={(e) => set('stream_max_h', Number(e.target.value))} />
+                  </div>
+                </div>
+              )}
+              <div className={styles.grid2}>
+                <div>
+                  <Label>Format</Label>
+                  <Select
+                    className={formStyles.controlMd}
+                    value={form.stream_format}
+                    onChange={(e) => set('stream_format', e.target.value as 'original' | 'jpeg' | 'png' | 'webp')}
+                  >
+                    <option value="original">As fetched</option>
+                    <option value="jpeg">JPEG</option>
+                    <option value="png">PNG</option>
+                    <option value="webp">WebP</option>
+                  </Select>
+                </div>
+                {(form.stream_format === 'jpeg' || form.stream_format === 'webp') && (
+                  <div>
+                    <Label>Quality</Label>
+                    <Input type="number" className={formStyles.controlNum} min={1} max={100} value={form.stream_quality}
+                      onChange={(e) => set('stream_quality', Math.min(100, Math.max(1, Number(e.target.value))))} />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
           <div className={styles.grid2}>
             <div>
               <Label>Target folder</Label>
@@ -265,8 +365,12 @@ export function ImmichPullModal({ pull, onClose }: Props) {
               />
             </div>
           </div>
-          <ToggleLine label="Replace existing on each pull" value={form.replace_existing!} onChange={(v) => set('replace_existing', v)} />
-          <ToggleLine label="Protect favorited images from replacement" value={form.protect_favorites!} onChange={(v) => set('protect_favorites', v)} />
+          {!isStream && (
+            <>
+              <ToggleLine label="Replace existing on each pull" value={form.replace_existing!} onChange={(v) => set('replace_existing', v)} />
+              <ToggleLine label="Protect favorited images from replacement" value={form.protect_favorites!} onChange={(v) => set('protect_favorites', v)} />
+            </>
+          )}
           <ToggleLine label="Skip images you’ve hidden" value={form.skip_excluded!} onChange={(v) => set('skip_excluded', v)} />
         </div>
       </div>

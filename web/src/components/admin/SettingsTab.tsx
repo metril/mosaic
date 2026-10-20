@@ -129,6 +129,15 @@ export function SettingsTab() {
           min={1}
           max={1000000}
         />
+        <NumberRow
+          label="Stream cache size"
+          hint="Memory used to cache streamed Immich images (0 disables caching)."
+          value={form.stream_cache_mb}
+          onChange={(v) => set('stream_cache_mb', v ?? 256)}
+          min={0}
+          max={65536}
+          unit="MB"
+        />
       </Card>
 
       <Card pad>

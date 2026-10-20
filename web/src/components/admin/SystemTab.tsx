@@ -107,6 +107,14 @@ export function SystemTab() {
           { label: 'Connected displays', value: gauges.active_browsers ?? '—' },
           { label: 'WS connections', value: counters.websocket_connections_total ?? '—' },
           { label: 'Groups created', value: counters.groups_created_total ?? '—' },
+          ...(health.data?.stream_cache
+            ? [
+                {
+                  label: 'Stream cache',
+                  value: `${(health.data.stream_cache.bytes / 1048576).toFixed(1)} MB · ${health.data.stream_cache.hits}/${health.data.stream_cache.hits + health.data.stream_cache.misses} hits`,
+                },
+              ]
+            : []),
         ]}
       />
 

@@ -282,6 +282,13 @@ export interface ImmichPull {
   cron_timezone: string | null
   protect_favorites: boolean
   skip_excluded: boolean
+  storage_mode?: 'download' | 'stream'
+  stream_source?: 'preview' | 'fullsize' | 'original'
+  stream_max_w?: number
+  stream_max_h?: number
+  stream_format?: 'original' | 'jpeg' | 'png' | 'webp'
+  stream_quality?: number
+  stream_asset_count?: number
   last_run: string | null
   // server-augmented
   schedule_description?: string | null
@@ -298,6 +305,7 @@ export interface PullResult {
   search_collected: number
   skipped: number
   errors: string[]
+  stream_asset_count?: number
   started_at: string | null
   completed_at: string | null
 }
@@ -355,6 +363,7 @@ export interface Health {
   status: string
   image_count: number
   image_directory?: string
+  stream_cache?: { entries: number; bytes: number; hits: number; misses: number }
 }
 
 /* ============================== Settings ================================= */
@@ -367,6 +376,7 @@ export interface AppSettings {
   ha_weather_cache_ttl: number
   immich_http_timeout: number
   max_immich_pull_count: number
+  stream_cache_mb: number
   preload_lead_time: number
   browser_stale_timeout: number
   cleanup_interval: number

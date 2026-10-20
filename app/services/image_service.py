@@ -91,6 +91,31 @@ class ImageService:
             image_dir: Path to the directory containing images
         """
         self.image_dir = image_dir
+        # Stream-mode virtual folders (Immich stream pulls); set at app startup.
+        # Their images have no file on disk — see app.services.immich_stream.
+        self.stream_index = None
+        # StreamFetcher; async callers fetch bytes with it *before* entering the
+        # image executor (its renders need that pool, so never block on it there).
+        self.stream_fetcher = None
+
+    def stream_asset(self, image_path: Path):
+        """The StreamAsset behind a virtual path, or None for a real file."""
+        if not self.stream_index:
+            return None
+        try:
+            return self.stream_index.lookup(str(image_path.relative_to(self.image_dir)))
+        except ValueError:
+            return None
+
+    def _rel_dir(self, file_path: Path) -> Optional[str]:
+        try:
+            return str(file_path.parent.relative_to(self.image_dir))
+        except ValueError:
+            return None
+
+    def _stream_files(self, folder: str, recursive: bool) -> list[Path]:
+        """Virtual (non-existent) Paths for a stream folder's assets."""
+        return [self.image_dir / rel for rel in self.stream_index.list_folder(folder, recursive)]
 
     def get_image_files(
         self,
@@ -114,14 +139,34 @@ class ImageService:
             PathSecurityError: If any folder path fails security validation
         """
         image_files = []
+        stream = self.stream_index
+        stream_folders = set(stream.stream_folders()) if stream else set()
 
         # Determine which directories to search
         if folder_paths:
+            # Stream folders are virtual: serve them from the index, and let
+            # them shadow any same-named disk folder.
+            disk_folders = []
+            for fp in folder_paths:
+                if stream and stream.is_stream_folder(fp):
+                    image_files.extend(self._stream_files(fp, recursive))
+                else:
+                    disk_folders.append(fp)
+                    # A recursive parent also covers its stream sub-folders
+                    if stream and recursive:
+                        norm = fp.strip().strip("/")
+                        image_files.extend(
+                            self.image_dir / rel
+                            for sf in stream_folders if not norm or sf.startswith(norm + "/")
+                            for rel in stream.list_folder(sf)
+                        )
             # Validate and resolve all folder paths
-            search_dirs = validate_folder_paths(folder_paths, self.image_dir)
+            search_dirs = validate_folder_paths(disk_folders, self.image_dir)
         else:
             # No folder specified - search base directory
             search_dirs = [self.image_dir]
+            if stream and recursive:
+                image_files.extend(self._stream_files("", True))
 
         # Search each directory
         for search_dir in search_dirs:
@@ -135,6 +180,8 @@ class ImageService:
                     # Skip hidden dirs/files (e.g. Immich pull staging ".<name>.tmp")
                     if any(part.startswith('.') for part in file_path.relative_to(search_dir).parts):
                         continue
+                    if stream_folders and self._rel_dir(file_path) in stream_folders:
+                        continue  # shadowed by a stream folder of the same name
                     if file_path.is_file() and file_path.suffix.lower() in SUPPORTED_FORMATS:
                         # Additional security: verify file is not a symlink
                         if not file_path.is_symlink():
@@ -148,6 +195,9 @@ class ImageService:
                         # Additional security: verify file is not a symlink
                         if not file_path.is_symlink():
                             image_files.append(file_path)
+
+        if stream and stream_folders:
+            image_files = list(dict.fromkeys(image_files))  # parent+child folders can overlap
 
         return image_files
 
@@ -432,7 +482,9 @@ class ImageService:
         brightness: float = 1.1,
         sharpen: bool = True,
         folder_paths: Optional[list[str]] = None,
-        recursive: bool = False
+        recursive: bool = False,
+        image_path: Optional[Path] = None,
+        stream_data: Optional[bytes] = None
     ) -> Optional[Tuple[BytesIO, str, str, str, float]]:
         """
         Process a random image with specified parameters.
@@ -458,6 +510,8 @@ class ImageService:
             sharpen: Whether to apply sharpening for E-Ink preprocessing (default True)
             folder_paths: Optional list of relative folder paths to search within
             recursive: If True, recursively search subfolders
+            image_path: Pre-selected image (skips the random pick)
+            stream_data: Rendered bytes for ``image_path`` when it is a stream-mode asset
 
         Returns:
             Tuple of (BytesIO buffer, content_type, filename, relative_path, mtime)
@@ -469,12 +523,17 @@ class ImageService:
             PathSecurityError: If any folder path fails security validation
         """
         # Get random image from specified folders
-        image_path = self.get_random_image_path(folder_paths, recursive)
+        if image_path is None:
+            image_path = self.get_random_image_path(folder_paths, recursive)
         if image_path is None:
             return None
 
-        # Load image
-        image = self.load_image(image_path)
+        # Load image (stream-mode assets have no file: fetch rendered bytes)
+        stream_asset = self.stream_asset(image_path)
+        if stream_asset is not None:
+            image = self.load_image(BytesIO(stream_data))
+        else:
+            image = self.load_image(image_path)
 
         # Resize first if parameters provided
         # This ensures preprocessing and dithering happen at final resolution
@@ -555,7 +614,7 @@ class ImageService:
         relative_path = str(image_path.relative_to(self.image_dir))
 
         # Get file modification time for Last-Modified header
-        mtime = image_path.stat().st_mtime
+        mtime = 0.0 if stream_asset is not None else image_path.stat().st_mtime
 
         return (buffer, content_type, filename, relative_path, mtime)
 
@@ -657,9 +716,15 @@ class ImageService:
             for item in self.image_dir.iterdir():
                 if item.is_dir() and not item.name.startswith('.'):
                     folders.append(item.name)
-            folders.sort()
         except Exception as e:
             logger.error(f"Failed to list folders: {e}")
+        # Stream-mode virtual folders (top-level segment only, like the disk scan)
+        if self.stream_index:
+            for f in self.stream_index.stream_folders():
+                top = f.split("/")[0]
+                if top and top not in folders:
+                    folders.append(top)
+        folders.sort()
         return folders
 
     def get_image_metadata(self, file_path: Path, include_exif: bool = False) -> Dict[str, Any]:
@@ -757,6 +822,62 @@ class ImageService:
             return f"{file_size / (1024 * 1024):.1f} MB"
         return f"{file_size / (1024 * 1024 * 1024):.2f} GB"
 
+    def _merge_stream_folders(self, tree: Dict[str, Any], flat_files: List[Dict[str, Any]]) -> None:
+        """Add stream (virtual) folders to the browse tree + flat list. Where a
+        stream folder collides with a disk folder, its entries replace the disk
+        files directly in it."""
+        idx = self.stream_index
+        if not idx:
+            return
+        folders = sorted(f for f in idx.stream_folders() if f)
+        if not folders:
+            return
+        stream_set = set(folders)
+        disk_direct: Dict[str, int] = {}
+        kept = []
+        for f in flat_files:
+            parent = f["path"].rpartition("/")[0]
+            if parent in stream_set:
+                disk_direct[parent] = disk_direct.get(parent, 0) + 1
+            else:
+                kept.append(f)
+        flat_files[:] = kept
+
+        for folder in folders:
+            rels = idx.list_folder(folder)
+            # Walk/create the node chain, remembering it to fix ancestor counts
+            chain = [tree]
+            node = tree
+            for i, part in enumerate(folder.split("/")):
+                child = next((c for c in node["children"] if c["type"] == "folder" and c["name"] == part), None)
+                if child is None:
+                    child = {"type": "folder", "name": part, "path": "/".join(folder.split("/")[:i + 1]),
+                             "children": [], "file_count": 0, "folder_count": 0}
+                    node["children"].append(child)
+                    node["folder_count"] += 1
+                    node["children"].sort(key=lambda x: (x["type"] != "folder", x["name"].lower()))
+                node = child
+                chain.append(node)
+            delta = len(rels) - disk_direct.get(folder, 0)
+            for n in chain:
+                n["file_count"] += delta
+            for rel in rels:
+                a = idx.lookup(rel)
+                flat_files.append({
+                    "type": "file",
+                    "name": rel.rpartition("/")[2],
+                    "path": rel,
+                    "size": 0,
+                    "size_formatted": "Streamed",
+                    "dimensions": f"{a.width}x{a.height}" if a.width and a.height else "Unknown",
+                    "width": a.width,
+                    "height": a.height,
+                    "format": a.ext.upper(),
+                    "mode": None,
+                    "modified": a.taken_at,
+                    "stream": True,
+                })
+
     def build_browse_index(self) -> Dict[str, Any]:
         """
         Fast, metadata-free scan of the image directory.
@@ -830,6 +951,7 @@ class ImageService:
             return folder
 
         tree = scan(self.image_dir, "")
+        self._merge_stream_folders(tree, flat_files)
         flat_files.sort(key=lambda f: f["path"].lower())
 
         def count_folders(node: Dict[str, Any]) -> int:

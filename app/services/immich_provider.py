@@ -19,6 +19,7 @@ import httpx
 
 from app.services.config_store import ConfigStore
 from app.auth.key_crypto import decrypt_secret, encrypt_secret
+from app.services.immich_stream import asset_from_search
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,15 @@ class ImmichPullConfig:
     protect_favorites: bool = True               # Keep favorited files across replace_existing pulls
     skip_excluded: bool = True                   # Never re-download excluded assets
 
+    # Storage: "download" writes originals under IMAGE_DIR; "stream" indexes asset
+    # ids only and fetches/renders each image on demand into a memory cache.
+    storage_mode: str = "download"               # "download" | "stream"
+    stream_source: str = "preview"               # "preview" | "fullsize" | "original"
+    stream_max_w: int = 0                        # fit-within bounds; 0 = source size
+    stream_max_h: int = 0
+    stream_format: str = "jpeg"                  # "original" | "jpeg" | "png" | "webp"
+    stream_quality: int = 85                     # JPEG/WebP quality
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
         return asdict(self)
@@ -95,7 +105,10 @@ class ImmichPullConfig:
                       # F1 scheduling
                       "cron_expression", "cron_timezone", "last_run",
                       # F6 curation interaction
-                      "protect_favorites", "skip_excluded"}
+                      "protect_favorites", "skip_excluded",
+                      # Stream storage mode
+                      "storage_mode", "stream_source", "stream_max_w", "stream_max_h",
+                      "stream_format", "stream_quality"}
         filtered = {k: v for k, v in data.items() if k in valid_keys}
 
         return cls(**filtered)
@@ -151,7 +164,8 @@ class ImmichProvider:
         config_path: Optional[Path] = None,
         on_pull_complete: Optional[Callable[[str], Awaitable[None]]] = None,
         curation=None,
-        settings=None
+        settings=None,
+        stream_index=None
     ):
         self.image_dir = image_dir
         self.settings = settings
@@ -160,6 +174,8 @@ class ImmichProvider:
         self._store = ConfigStore(self.config_path, "pulls")
         # Curation service (F6) — drives skip_excluded / protect_favorites
         self.curation = curation
+        # Stream-mode asset index (virtual folders); None disables stream pulls
+        self.stream_index = stream_index
         self.pulls: Dict[str, ImmichPullConfig] = {}
         self._pull_results: Dict[str, PullResult] = {}
         self._running_tasks: Dict[str, asyncio.Task] = {}
@@ -393,6 +409,8 @@ class ImmichProvider:
             filter_body["updatedAfter"] = config.updated_after
         if config.person_ids:
             filter_body["personIds"] = config.person_ids
+        if config.storage_mode == "stream":
+            filter_body["withExif"] = True  # stream index keeps dimensions/date/location
 
         logger.debug(f"Immich search filters: {filter_body}")
 
@@ -496,6 +514,8 @@ class ImmichProvider:
             base_filter["takenBefore"] = f"{config.taken_before}T23:59:59.999Z"
         if config.updated_after:
             base_filter["updatedAfter"] = config.updated_after
+        if config.storage_mode == "stream":
+            base_filter["withExif"] = True
 
         # Add AND-mode filters (single value or "all" mode with multiple)
         if config.album_ids and not need_album_or:
@@ -701,6 +721,27 @@ class ImmichProvider:
                 logger.warning(f"Failed to preserve favorite {rel}: {e}")
         return preserved
 
+    def _index_stream_assets(self, config, assets: List[Dict[str, Any]], result: PullResult) -> List[tuple]:
+        """Stream mode: record the found assets in the index instead of downloading.
+
+        A full run replaces the pull's rows (favorited paths survive when
+        protect_favorites); a delta run upserts. Returns (asset_id, filename)
+        pairs covering the pull's whole index, for the curation asset map.
+        """
+        if self.stream_index is None:
+            raise RuntimeError("Stream index unavailable")
+        tf = config.target_folder.strip("/")
+        rows = [asset_from_search(config.name, tf, a) for a in assets]
+        if config.replace_existing:
+            keep: set = set()
+            if config.protect_favorites and self.curation is not None:
+                keep = self.curation.favorite_paths(prefix=tf)
+            self.stream_index.replace(config.name, rows, keep_paths=keep)
+        else:
+            self.stream_index.upsert(rows)
+        result.downloaded = len(rows)
+        return [(a.asset_id, f"{a.asset_id}.{a.ext}") for a in self.stream_index.assets_for_pull(config.name)]
+
     async def pull_images(self, pull_name: str, delta: bool = False) -> PullResult:
         """Execute a pull operation - search, download, store locally.
 
@@ -776,6 +817,11 @@ class ImmichProvider:
             cancelled = False
             downloaded_items = []  # (asset_id, basename) for curation asset-map
 
+            # Stream mode: index the ids, download nothing
+            if config.storage_mode == "stream":
+                downloaded_items = self._index_stream_assets(config, assets, result)
+                assets = []
+
             # Download each asset
             for asset in assets:
                 # Check for cancellation before each download
@@ -813,7 +859,7 @@ class ImmichProvider:
                 return result
 
             # Atomically swap staging dir into place for replace_existing pulls
-            if config.replace_existing:
+            if config.replace_existing and config.storage_mode != "stream":
                 # Preserve favorited files so a re-pull never deletes them (F6)
                 preserved = self._carry_over_favorites(config, staging_dir)
                 if final_dir.exists():

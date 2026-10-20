@@ -86,6 +86,8 @@ function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
   })
 
   const st = result?.status ?? 'idle'
+  const isStream = pull.storage_mode === 'stream'
+  const streamCount = result?.stream_asset_count ?? pull.stream_asset_count
   const pct =
     result && result.total > 0 ? Math.round((result.downloaded / result.total) * 100) : 0
 
@@ -104,9 +106,11 @@ function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
         <div className={styles.itemTitle}>
           {pull.name}
           <span className={cn(styles.statusPill, stClass)}>{st}</span>
+          {isStream && <span className={cn(styles.statusPill, styles.stIdle)}>Stream</span>}
         </div>
         <div className={styles.itemSub}>
           → {pull.target_folder} · {pull.count} images
+          {isStream && streamCount != null ? ` · ${streamCount} assets indexed` : ''}
           {pull.schedule_description ? ` · ${pull.schedule_description}` : ' · manual'}
         </div>
         {isRunning && result && (
@@ -115,7 +119,7 @@ function PullCard({ pull, onEdit }: { pull: ImmichPull; onEdit: () => void }) {
               <div className={styles.progressBar} style={{ width: `${pct}%` }} />
             </div>
             <div className={styles.itemSub}>
-              {result.phase} · {result.downloaded}/{result.total} downloaded
+              {result.phase} · {isStream ? `${result.downloaded}/${result.total} indexed` : `${result.downloaded}/${result.total} downloaded`}
               {result.skipped ? ` · ${result.skipped} skipped` : ''}
             </div>
           </>

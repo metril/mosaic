@@ -220,6 +220,11 @@ async def lifespan(app: FastAPI):
         app.state.curation_service = CurationService(Path("config/curation.db"))
         logger.info("Curation service initialized")
 
+        # Stream-mode Immich pulls expose virtual folders; the index must exist
+        # before display groups load so their folder checks/pools see them.
+        from app.services.immich_stream import StreamIndex
+        image_service.stream_index = StreamIndex(Path("config/curation.db"))
+
         # Initialize DisplayManager for synchronized multi-browser display
         # The is_folder_locked callback checks if a folder is being updated by Immich pull
         # It uses a closure so it can access app.state.immich_provider after it's initialized
@@ -256,6 +261,11 @@ async def lifespan(app: FastAPI):
         async def on_pull_complete(folder: str) -> None:
             display_manager = getattr(app.state, 'display_manager', None)
             if display_manager:
+                # Stream pulls write nothing to disk, so the file watcher never
+                # fires for them: drop the browse index and caption/blur caches here.
+                from app.api.routes import invalidate_browse_cache
+                invalidate_browse_cache()
+                display_manager.clear_caption_cache()
                 refreshed = await display_manager.refresh_groups_by_folder(folder)
                 if refreshed:
                     logger.info(
@@ -263,12 +273,24 @@ async def lifespan(app: FastAPI):
                         f"refreshed groups: {list(refreshed.keys())}"
                     )
 
+        # Stream-mode (no-disk) Immich pulls: on-demand fetcher with an in-memory
+        # render cache (the asset index is created above)
+        from app.api.routes import image_executor
+        from app.services.immich_stream import StreamFetcher
         app.state.immich_provider = ImmichProvider(
             image_service.image_dir,
             on_pull_complete=on_pull_complete,
             curation=app.state.curation_service,
             settings=app.state.settings,
+            stream_index=image_service.stream_index,
         )
+        app.state.stream_fetcher = StreamFetcher(
+            app.state.immich_provider.get_pull,
+            executor=image_executor,
+            cache_mb=app.state.settings.get_int("stream_cache_mb"),
+            timeout=app.state.settings.get_float("immich_http_timeout"),
+        )
+        image_service.stream_fetcher = app.state.stream_fetcher
         loaded_pulls = await app.state.immich_provider.load_config()
         if loaded_pulls > 0:
             logger.info(f"Loaded {loaded_pulls} Immich pull configurations")
@@ -414,6 +436,8 @@ async def lifespan(app: FastAPI):
         # Close Immich provider HTTP client
         if hasattr(app.state, 'immich_provider'):
             await app.state.immich_provider.close()
+        if hasattr(app.state, 'stream_fetcher'):
+            await app.state.stream_fetcher.close()
 
         # Close Home Assistant provider HTTP client
         if hasattr(app.state, 'ha_provider') and app.state.ha_provider:

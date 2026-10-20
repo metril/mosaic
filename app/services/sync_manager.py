@@ -14,6 +14,7 @@ import time
 import uuid
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
+from io import BytesIO
 from datetime import datetime, timezone, timedelta
 from enum import Enum
 from pathlib import Path
@@ -383,7 +384,10 @@ class ImagePool:
 
             # Check for missing folders (only check unlocked ones)
             missing = []
+            stream_index = self.image_service.stream_index
             for folder in folder_paths:
+                if stream_index and stream_index.is_stream_folder(folder):
+                    continue  # virtual folder: nothing on disk to check
                 full_path = self.image_service.image_dir / folder.lstrip("/")
                 if not full_path.exists():
                     missing.append(folder)
@@ -1614,6 +1618,18 @@ class DisplayManager:
             self._caption_cache.move_to_end(image_path)
             return cached
         meta: Dict[str, Any] = {}
+        stream_asset = self.image_service.stream_index.lookup(image_path) if self.image_service.stream_index else None
+        if stream_asset is not None:
+            # Stream mode: Immich already told us the date and place at pull time
+            if stream_asset.taken_at:
+                meta["date_taken"] = stream_asset.taken_at[:10]
+            loc = ", ".join(x for x in (stream_asset.city, stream_asset.country) if x)
+            if loc:
+                meta["location"] = loc
+            self._caption_cache[image_path] = meta
+            while len(self._caption_cache) > _CAPTION_CACHE_MAX:
+                self._caption_cache.popitem(last=False)
+            return meta
         try:
             from PIL import Image as _PILImage
             full = self.image_service.image_dir / image_path
@@ -1718,8 +1734,9 @@ class DisplayManager:
         # across cycles — this avoids regenerating an identical expensive
         # Gaussian blur each time. Bounded LRU; invalidated on folder change.
         amount = settings.background_blur_amount
+        stream_asset = self.image_service.stream_index.lookup(image_path) if self.image_service.stream_index else None
         try:
-            mtime = (self.image_service.image_dir / image_path).stat().st_mtime
+            mtime = 0 if stream_asset is not None else (self.image_service.image_dir / image_path).stat().st_mtime
         except OSError:
             mtime = 0
         cache_key = f"{image_path}\x00{mtime}\x00{amount}"
@@ -1728,7 +1745,18 @@ class DisplayManager:
             self._blur_cache.move_to_end(cache_key)
             return cached
 
+        stream_data: Optional[bytes] = None
+        if stream_asset is not None:
+            try:
+                stream_data = (await self.image_service.stream_fetcher.get_bytes(stream_asset)).data
+            except Exception as e:
+                logger.warning(f"Failed to fetch stream image for blur {image_path}: {e}")
+                return None
+
         def _generate():
+            if stream_data is not None:
+                img = self.image_service.load_image(BytesIO(stream_data))
+                return create_blur_background(img, amount)
             full_path = resolve_image_path(image_path, self.image_service.image_dir)
             img = self.image_service.load_image(full_path)
             return create_blur_background(img, amount)
@@ -2948,6 +2976,9 @@ class DisplayManager:
         """Check if an image path still exists on disk."""
         if not path:
             return False
+        stream_index = self.image_service.stream_index
+        if stream_index and stream_index.lookup(path) is not None:
+            return True
         full_path = self.image_service.image_dir / path
         return full_path.exists() and full_path.is_file()
 

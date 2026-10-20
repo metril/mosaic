@@ -30,6 +30,12 @@ export interface PullSave {
   cron_timezone?: string | null
   protect_favorites?: boolean
   skip_excluded?: boolean
+  storage_mode?: 'download' | 'stream'
+  stream_source?: 'preview' | 'fullsize' | 'original'
+  stream_max_w?: number
+  stream_max_h?: number
+  stream_format?: 'original' | 'jpeg' | 'png' | 'webp'
+  stream_quality?: number
 }
 
 export function savePull(body: PullSave) {
